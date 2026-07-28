@@ -38,35 +38,50 @@ export async function POST(
     where: { name: templateName },
   });
 
-  // ממלאים {{1}} בשם הפרטי של הלקוח
   const firstName = (lead.firstName || "").trim().split(/\s+/)[0] || "";
   const variableCount = template?.variables ?? 1;
-  const body = variableCount > 0 ? [firstName] : undefined;
 
-  const result = await sendTemplate({
+  /**
+   * לא תמיד ברור כמה משתנים יש בתבנית - טקסטר לא תמיד מחזיר את הטקסט.
+   * לכן מנסים פעם אחת עם השם הפרטי, ואם טקסטר מתלונן על הפרמטרים
+   * מנסים שוב בלי. ככה שליחה לא נכשלת בגלל חוסר מידע על התבנית.
+   */
+  let result = await sendTemplate({
     templateName,
     to: lead.phone,
-    body,
+    body: variableCount > 0 ? [firstName] : undefined,
   });
 
-  const sentText =
-    result.data && typeof result.data === "object"
-      ? (result.data as { text?: string }).text ?? null
-      : null;
-  const messageId =
-    result.data && typeof result.data === "object"
-      ? (result.data as { messageId?: string }).messageId ?? null
-      : null;
+  let attempts = variableCount > 0 ? "עם שם" : "בלי משתנים";
+
+  if (!result.ok) {
+    const retry = await sendTemplate({
+      templateName,
+      to: lead.phone,
+      body: variableCount > 0 ? undefined : [firstName],
+    });
+    if (retry.ok) {
+      result = retry;
+      attempts = variableCount > 0 ? "בלי משתנים (ניסיון שני)" : "עם שם (ניסיון שני)";
+    }
+  }
+
+  const data = (result.data ?? {}) as {
+    text?: string;
+    messageId?: string;
+  };
 
   await db.message.create({
     data: {
       leadId: lead.id,
       direction: "out",
       templateName,
-      bodyText: sentText ?? template?.bodyText ?? null,
-      texterMessageId: messageId,
+      bodyText: data.text ?? template?.bodyText ?? null,
+      texterMessageId: data.messageId ?? null,
       status: result.ok ? "sent" : "failed",
-      error: result.ok ? null : result.error,
+      error: result.ok
+        ? null
+        : `${result.error ?? "שגיאה"} · ${JSON.stringify(result.raw).slice(0, 500)}`,
     },
   });
 
@@ -75,9 +90,19 @@ export async function POST(
       leadId: lead.id,
       type: result.ok ? "message_sent" : "message_failed",
       actor: "user",
-      payload: { templateName, status: result.status },
+      payload: { templateName, status: result.status, attempts },
     },
   });
+
+  // אם טקסטר החזיר את הטקסט האמיתי - שומרים אותו לתבנית להבא
+  if (result.ok && data.text && template && !template.bodyText) {
+    await db.template
+      .update({
+        where: { name: templateName },
+        data: { bodyText: data.text },
+      })
+      .catch(() => null);
+  }
 
   if (!result.ok) {
     return NextResponse.json(
@@ -86,5 +111,5 @@ export async function POST(
     );
   }
 
-  return NextResponse.json({ ok: true, messageId });
+  return NextResponse.json({ ok: true, messageId: data.messageId });
 }

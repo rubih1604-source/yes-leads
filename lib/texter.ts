@@ -178,7 +178,9 @@ export function parseTemplates(payload: unknown): ParsedTemplate[] {
         name,
         displayName: pick(item, ["displayName", "display_name", "title", "label"]),
         bodyText,
-        variableCount: countVariables(bodyText),
+        // אם לא הצלחנו לקרוא את הטקסט - מניחים משתנה אחד (שם פרטי).
+        // השליחה יודעת ליפול חזרה לבלי משתנים אם טקסטר יתלונן.
+        variableCount: bodyText === null ? 1 : countVariables(bodyText),
         // אם לא צוין סטטוס - מניחים מאושרת, כי ה-endpoint מחזיר מאושרות
         approved: statusText ? /approved|מאושר/i.test(statusText) : true,
         raw: item,

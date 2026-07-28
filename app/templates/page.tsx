@@ -68,6 +68,29 @@ export default async function TemplatesPage() {
                   : "בלי משתנים · "}
                 עודכן {formatDate(t.syncedAt)}
               </div>
+              {!t.bodyText && t.raw ? (
+                <details style={{ marginTop: 8 }}>
+                  <summary style={{ fontSize: 12, color: "#64748b", cursor: "pointer" }}>
+                    הצג נתונים גולמיים
+                  </summary>
+                  <pre
+                    style={{
+                      direction: "ltr",
+                      textAlign: "left",
+                      fontSize: 11,
+                      background: "#f8fafc",
+                      padding: 10,
+                      borderRadius: 8,
+                      overflowX: "auto",
+                      marginTop: 6,
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-all",
+                    }}
+                  >
+                    {JSON.stringify(t.raw, null, 2)}
+                  </pre>
+                </details>
+              ) : null}
             </div>
           ))}
         </div>
