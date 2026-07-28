@@ -1,0 +1,294 @@
+:root {
+  --bg: #eef1f5;
+  --card: #ffffff;
+  --ink: #0f172a;
+  --ink-soft: #64748b;
+  --line: #dde3ea;
+  --brand: #1e293b;
+  --hot: #16a34a;
+  --danger: #dc2626;
+  --radius: 14px;
+  --tap: 56px;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Heebo", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; font-size: inherit; cursor: pointer; }
+
+/* ---------- מבנה ---------- */
+
+.app {
+  max-width: 560px;
+  margin: 0 auto;
+  min-height: 100vh;
+  background: var(--bg);
+  padding-bottom: 32px;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--brand);
+  color: #fff;
+  padding: 14px 16px 12px;
+}
+
+.topbar h1 {
+  margin: 0 0 10px;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.topbar .count {
+  font-weight: 400;
+  font-size: 14px;
+  opacity: 0.7;
+  margin-inline-start: 8px;
+}
+
+.search {
+  width: 100%;
+  height: 44px;
+  border: none;
+  border-radius: 10px;
+  padding: 0 14px;
+  font-size: 16px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+.search::placeholder { color: rgba(255, 255, 255, 0.55); }
+.search:focus { outline: 2px solid rgba(255, 255, 255, 0.5); }
+
+/* ---------- שורת סינון ---------- */
+
+.filters {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 12px 16px;
+  scrollbar-width: none;
+}
+.filters::-webkit-scrollbar { display: none; }
+
+.chip {
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink-soft);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.chip[data-active="true"] {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ---------- רשימת לידים ---------- */
+
+.list { padding: 0 16px; display: flex; flex-direction: column; gap: 10px; }
+
+.lead {
+  display: flex;
+  align-items: stretch;
+  background: var(--card);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+/* הפס הצבעוני - מאפשר לסרוק את כל הפייפליין בלי לקרוא */
+.lead .bar { width: 6px; flex: 0 0 6px; }
+
+.lead .body { flex: 1; padding: 12px 14px; min-width: 0; }
+
+.lead .name {
+  font-weight: 600;
+  font-size: 16px;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lead .meta {
+  font-size: 13px;
+  color: var(--ink-soft);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.lead .status-text { font-weight: 600; }
+
+.lead .go {
+  flex: 0 0 var(--tap);
+  display: grid;
+  place-items: center;
+  border-inline-start: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 20px;
+  background: none;
+  border-top: none;
+  border-bottom: none;
+  border-inline-end: none;
+}
+.lead .go:active { background: #f1f5f9; }
+
+/* ---------- מצב ריק ---------- */
+
+.empty {
+  margin: 40px 16px;
+  padding: 28px 20px;
+  background: var(--card);
+  border-radius: var(--radius);
+  text-align: center;
+  color: var(--ink-soft);
+  line-height: 1.7;
+}
+.empty strong { display: block; color: var(--ink); margin-bottom: 6px; font-size: 17px; }
+
+/* ---------- כרטיס ליד ---------- */
+
+.card {
+  margin: 16px;
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+.card h2 { margin: 0 0 4px; font-size: 22px; }
+.card .sub { color: var(--ink-soft); font-size: 14px; margin-bottom: 16px; }
+
+.actions { display: flex; gap: 10px; margin-bottom: 4px; }
+
+.btn {
+  flex: 1;
+  height: var(--tap);
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  font-weight: 600;
+  display: grid;
+  place-items: center;
+}
+.btn:active { background: #f1f5f9; }
+.btn.primary { background: var(--brand); color: #fff; border-color: var(--brand); }
+.btn.call { background: var(--hot); color: #fff; border-color: var(--hot); }
+
+.section-title {
+  margin: 24px 16px 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  letter-spacing: 0.02em;
+}
+
+/* ---------- יומן ---------- */
+
+.timeline { margin: 0 16px; display: flex; flex-direction: column; gap: 8px; }
+
+.event {
+  background: var(--card);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 14px;
+  border-inline-start: 3px solid var(--line);
+}
+.event .when { color: var(--ink-soft); font-size: 12px; margin-top: 2px; }
+
+/* ---------- בוחר סטטוס ---------- */
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.sheet {
+  width: 100%;
+  max-width: 560px;
+  background: var(--bg);
+  border-radius: 18px 18px 0 0;
+  padding: 8px 12px 24px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.sheet h3 {
+  margin: 12px 6px 12px;
+  font-size: 16px;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.status-option {
+  width: 100%;
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  font-size: 16px;
+  font-weight: 500;
+  text-align: start;
+}
+.status-option:active { background: #f1f5f9; }
+.status-option[data-current="true"] { border-color: var(--brand); border-width: 2px; }
+.status-option .dot { width: 12px; height: 12px; border-radius: 50%; flex: 0 0 12px; }
+
+/* ---------- כניסה ---------- */
+
+.login-wrap { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.login-box { width: 100%; max-width: 340px; background: var(--card); border-radius: var(--radius); padding: 24px; }
+.login-box h1 { margin: 0 0 18px; font-size: 20px; }
+.field {
+  width: 100%;
+  height: 50px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0 14px;
+  font-size: 16px;
+  margin-bottom: 12px;
+  background: #fff;
+  color: var(--ink);
+}
+.error { color: var(--danger); font-size: 14px; margin-bottom: 10px; min-height: 20px; }
+
+.nav-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #fff;
+  font-size: 15px;
+  opacity: 0.85;
+  margin-bottom: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
