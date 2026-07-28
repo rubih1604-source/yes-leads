@@ -46,24 +46,25 @@ function tokenIsValid(request: Request): boolean {
 async function handle(request: Request) {
   const fromQuery = queryToObject(request.url);
 
-  // גוף הבקשה - קיים רק ב-POST
-  let fromBody: unknown = null;
+  // גוף הבקשה - קיים רק ב-POST.
+  // חשוב: קוראים את הגוף פעם אחת בלבד כטקסט, ורק אחר כך מנתחים אותו.
+  // קריאה כפולה (json ואז text) מרוקנת את הגוף ומחזירה ריק.
+  let bodyText = "";
   if (request.method !== "GET") {
+    bodyText = await request.text().catch(() => "");
+  }
+
+  let fromBody: unknown = null;
+  if (bodyText.trim()) {
     try {
-      fromBody = await request.json();
+      // ניסיון ראשון: JSON
+      fromBody = JSON.parse(bodyText);
     } catch {
-      const text = await request.text().catch(() => "");
-      if (text.trim()) {
-        // ייתכן שזה form-encoded ולא JSON
-        try {
-          const params = new URLSearchParams(text);
-          const obj: Record<string, string> = {};
-          for (const [k, v] of params.entries()) obj[k] = v;
-          fromBody = Object.keys(obj).length ? obj : { _unparsed: text };
-        } catch {
-          fromBody = { _unparsed: text };
-        }
-      }
+      // ניסיון שני: form-urlencoded (key=value&key=value)
+      const params = new URLSearchParams(bodyText);
+      const obj: Record<string, string> = {};
+      for (const [k, v] of params.entries()) obj[k] = v;
+      fromBody = Object.keys(obj).length ? obj : { _unparsed: bodyText };
     }
   }
 
@@ -72,6 +73,8 @@ async function handle(request: Request) {
     ...fromQuery,
     ...(fromBody && typeof fromBody === "object" ? (fromBody as object) : {}),
     _method: request.method,
+    _contentType: request.headers.get("content-type") || "(אין)",
+    _bodyLength: String(bodyText.length),
   };
 
   // 1. שומרים גולמי לפני הכל

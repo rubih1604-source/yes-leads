@@ -33,7 +33,7 @@ export default async function IncomingPage() {
           <span>→</span>
           <span>חזרה לרשימה</span>
         </Link>
-        <h1>יומן קליטה <span className="count">גרסה 3</span></h1>
+        <h1>יומן קליטה <span className="count">גרסה 4</span></h1>
       </div>
 
       {logs.length === 0 ? (
