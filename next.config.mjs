@@ -1,5 +1,5 @@
-node_modules
-.next
-.env
-.env.local
-*.log
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true,
+};
+export default nextConfig;

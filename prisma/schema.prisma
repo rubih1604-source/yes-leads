@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Lead {
+  id             String   @id @default(cuid())
+  phone          String   @unique
+  firstName      String?
+  lastName       String?
+  status         String   @default("חדש")
+  source         String?
+  intakeAt       DateTime @default(now())
+  doNotContact   Boolean  @default(false)
+  needsMapping   Boolean  @default(false)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  events         LeadEvent[]
+
+  @@index([status])
+  @@index([intakeAt])
+}
+
+model LeadEvent {
+  id         String   @id @default(cuid())
+  leadId     String
+  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  type       String
+  fromStatus String?
+  toStatus   String?
+  actor      String   @default("system")
+  payload    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([leadId, createdAt])
+}
+
+model WebhookLog {
+  id         String   @id @default(cuid())
+  source     String
+  rawPayload Json
+  processed  Boolean  @default(false)
+  error      String?
+  createdAt  DateTime @default(now())
+
+  @@index([source, createdAt])
+}
