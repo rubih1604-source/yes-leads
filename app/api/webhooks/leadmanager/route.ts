@@ -75,7 +75,7 @@ async function handle(request: Request) {
 
   // 1. שומרים גולמי לפני הכל
   const log = await db.webhookLog.create({
-    data: { source: "leadmanager", rawPayload: raw },
+    data: { source: "leadmanager", rawPayload: raw as object },
   });
 
   // 2. בודקים טוקן
