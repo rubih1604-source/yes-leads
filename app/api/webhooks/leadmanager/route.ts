@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { normalizePhone } from "@/lib/phone";
 import { mapLeadManagerPayload } from "@/lib/leadmanager-mapping";
@@ -75,7 +76,7 @@ async function handle(request: Request) {
 
   // 1. שומרים גולמי לפני הכל
   const log = await db.webhookLog.create({
-    data: { source: "leadmanager", rawPayload: raw as object },
+    data: { source: "leadmanager", rawPayload: raw as Prisma.InputJsonObject },
   });
 
   // 2. בודקים טוקן
