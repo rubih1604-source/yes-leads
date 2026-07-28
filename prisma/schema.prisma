@@ -22,6 +22,7 @@ model Lead {
   updatedAt      DateTime @updatedAt
 
   events         LeadEvent[]
+  messages       Message[]
 
   @@index([status])
   @@index([intakeAt])
@@ -50,4 +51,29 @@ model WebhookLog {
   createdAt  DateTime @default(now())
 
   @@index([source, createdAt])
+}
+
+model Template {
+  name        String   @id
+  displayName String?
+  bodyText    String?
+  variables   Int      @default(0)
+  approved    Boolean  @default(true)
+  raw         Json?
+  syncedAt    DateTime @default(now())
+}
+
+model Message {
+  id              String   @id @default(cuid())
+  leadId          String
+  lead            Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  direction       String   @default("out")
+  templateName    String?
+  bodyText        String?
+  texterMessageId String?
+  status          String   @default("sent")
+  error           String?
+  createdAt       DateTime @default(now())
+
+  @@index([leadId, createdAt])
 }

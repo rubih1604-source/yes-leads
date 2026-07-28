@@ -11,6 +11,8 @@ const EVENT_LABELS: Record<string, string> = {
   lead_created: "הליד נכנס למערכת",
   status_changed: "שינוי סטטוס",
   webhook_received: "עדכון מליד מנגר",
+  message_sent: "נשלחה הודעה",
+  message_failed: "שליחת הודעה נכשלה",
 };
 
 function formatDate(d: Date): string {
@@ -33,14 +35,22 @@ export default async function LeadPage({
     where: { id: params.id },
     include: {
       events: { orderBy: { createdAt: "desc" }, take: 100 },
+      messages: { orderBy: { createdAt: "desc" }, take: 50 },
     },
   });
 
   if (!lead) notFound();
 
+  const templates = await db.template.findMany({
+    where: { approved: true },
+    orderBy: { name: "asc" },
+    select: { name: true, displayName: true, bodyText: true },
+  });
+
   const name =
     `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim() ||
     displayPhone(lead.phone);
+  const firstName = (lead.firstName || "").trim().split(/\s+/)[0] || "";
 
   return (
     <div className="app">
@@ -65,8 +75,44 @@ export default async function LeadPage({
           leadId={lead.id}
           phone={lead.phone}
           status={lead.status}
+          firstName={firstName}
+          templates={templates}
+          doNotContact={lead.doNotContact}
         />
       </div>
+
+      {lead.messages.length > 0 && (
+        <>
+          <div className="section-title">הודעות</div>
+          <div className="timeline">
+            {lead.messages.map((m) => (
+              <div
+                className="event"
+                key={m.id}
+                style={{
+                  borderInlineStartColor:
+                    m.status === "failed" ? "#dc2626" : "#16a34a",
+                }}
+              >
+                {m.bodyText && (
+                  <div style={{ fontSize: 14, whiteSpace: "pre-wrap" }}>
+                    {m.bodyText}
+                  </div>
+                )}
+                <div className="when">
+                  {m.status === "failed"
+                    ? `נכשל: ${m.error ?? "שגיאה"}`
+                    : "נשלח"}
+                  {" · "}
+                  {m.templateName}
+                  {" · "}
+                  {formatDate(m.createdAt)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       <div className="section-title">מה קרה עם הליד הזה</div>
       <div className="timeline">
