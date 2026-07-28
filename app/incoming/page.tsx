@@ -3,6 +3,19 @@ import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
+/** תמיד מציג בשעון ישראל, לא בשעון השרת */
+function formatDate(d: Date): string {
+  return d.toLocaleString("he-IL", {
+    timeZone: "Asia/Jerusalem",
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 /**
  * יומן קליטה - מה בדיוק הגיע מליד מנגר.
  * זה המסך שממנו נדע איך למפות את השדות.
@@ -67,7 +80,7 @@ export default async function IncomingPage() {
                 {JSON.stringify(log.rawPayload, null, 2)}
               </pre>
               <div className="when">
-                {log.createdAt.toLocaleString("he-IL")}
+                {formatDate(log.createdAt)}
               </div>
             </div>
           ))}

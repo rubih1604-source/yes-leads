@@ -24,7 +24,7 @@ function timeAgo(iso: string): string {
   if (hours < 24) return `לפני ${hours} שע'`;
   const days = Math.floor(hours / 24);
   if (days < 30) return `לפני ${days} ימים`;
-  return new Date(iso).toLocaleDateString("he-IL");
+  return new Date(iso).toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem" });
 }
 
 export default function LeadList({ leads }: { leads: LeadRow[] }) {

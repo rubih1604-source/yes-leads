@@ -7,45 +7,87 @@ import { isKnownStatus } from "@/lib/statuses";
 export const dynamic = "force-dynamic";
 
 /**
- * קליטת ליד או שינוי סטטוס מליד מנגר.
+ * קליטת ליד מליד מנגר.
+ *
+ * מקבל גם GET וגם POST:
+ *  - GET  -> הנתונים מגיעים בכתובת עצמה (query string)
+ *  - POST -> הנתונים מגיעים בגוף הבקשה, ואם לא, נופלים חזרה לכתובת
  *
  * הכלל: קודם שומרים את מה שהגיע, אחר כך מנסים להבין אותו.
  * גם אם המיפוי נכשל - שום דבר לא הולך לאיבוד.
  */
-export async function POST(request: Request) {
-  let raw: unknown = null;
 
-  try {
-    raw = await request.json();
-  } catch {
-    const text = await request.text().catch(() => "");
-    raw = { _unparsed: text };
+/** שולף את כל הפרמטרים מהכתובת לאובייקט */
+function queryToObject(url: string): Record<string, string> {
+  const params = new URL(url).searchParams;
+  const out: Record<string, string> = {};
+  for (const [key, value] of params.entries()) {
+    if (key === "token") continue; // הטוקן הוא אימות, לא נתון של הליד
+    out[key] = value;
   }
+  return out;
+}
 
-  // 1. שומרים גולמי לפני הכל
-  const log = await db.webhookLog.create({
-    data: { source: "leadmanager", rawPayload: raw as object },
-  });
+/** בודק שהטוקן שהגיע תואם למה שהוגדר */
+function tokenIsValid(request: Request): boolean {
+  const expected = process.env.LEADMANAGER_WEBHOOK_TOKEN;
+  if (!expected) return true; // לא הוגדר טוקן - לא בודקים
 
-  // 2. בודקים טוקן (אם הוגדר)
-  const expectedToken = process.env.LEADMANAGER_WEBHOOK_TOKEN;
-  if (expectedToken) {
-    const url = new URL(request.url);
-    const provided =
-      request.headers.get("x-webhook-token") ||
-      request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
-      url.searchParams.get("token");
+  const url = new URL(request.url);
+  const provided =
+    request.headers.get("x-webhook-token") ||
+    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
+    url.searchParams.get("token");
 
-    if (provided !== expectedToken) {
-      await db.webhookLog.update({
-        where: { id: log.id },
-        data: { error: "טוקן שגוי או חסר" },
-      });
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  return provided === expected;
+}
+
+async function handle(request: Request) {
+  const fromQuery = queryToObject(request.url);
+
+  // גוף הבקשה - קיים רק ב-POST
+  let fromBody: unknown = null;
+  if (request.method !== "GET") {
+    try {
+      fromBody = await request.json();
+    } catch {
+      const text = await request.text().catch(() => "");
+      if (text.trim()) {
+        // ייתכן שזה form-encoded ולא JSON
+        try {
+          const params = new URLSearchParams(text);
+          const obj: Record<string, string> = {};
+          for (const [k, v] of params.entries()) obj[k] = v;
+          fromBody = Object.keys(obj).length ? obj : { _unparsed: text };
+        } catch {
+          fromBody = { _unparsed: text };
+        }
+      }
     }
   }
 
-  // 3. מעבדים - וגם אם נכשל, מחזירים 200 כדי שליד מנגר לא ינסה שוב ושוב
+  // מאחדים: מה שהגיע בגוף גובר, מה שבכתובת משלים
+  const raw: Record<string, unknown> = {
+    ...fromQuery,
+    ...(fromBody && typeof fromBody === "object" ? (fromBody as object) : {}),
+    _method: request.method,
+  };
+
+  // 1. שומרים גולמי לפני הכל
+  const log = await db.webhookLog.create({
+    data: { source: "leadmanager", rawPayload: raw },
+  });
+
+  // 2. בודקים טוקן
+  if (!tokenIsValid(request)) {
+    await db.webhookLog.update({
+      where: { id: log.id },
+      data: { error: "טוקן שגוי או חסר" },
+    });
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  // 3. מעבדים. גם אם נכשל - מחזירים 200 כדי שליד מנגר לא ינסה שוב ושוב
   try {
     const mapped = mapLeadManagerPayload(raw);
     const phone = normalizePhone(mapped.phone);
@@ -53,7 +95,12 @@ export async function POST(request: Request) {
     if (!phone) {
       await db.webhookLog.update({
         where: { id: log.id },
-        data: { error: "לא נמצא מספר טלפון תקין ב-payload" },
+        data: {
+          error:
+            Object.keys(fromQuery).length === 0 && !fromBody
+              ? "הבקשה הגיעה ריקה - לא נשלחו שדות כלל"
+              : "לא נמצא מספר טלפון תקין",
+        },
       });
       return NextResponse.json({ ok: true, warning: "no phone" });
     }
@@ -71,7 +118,6 @@ export async function POST(request: Request) {
           lastName: mapped.lastName,
           status: incomingStatus ?? "חדש",
           source: mapped.source,
-          needsMapping: !incomingStatus && !!mapped.status,
         },
       });
 
@@ -81,7 +127,7 @@ export async function POST(request: Request) {
           type: "lead_created",
           toStatus: lead.status,
           actor: "system",
-          payload: { webhookLogId: log.id, rawStatus: mapped.status },
+          payload: { webhookLogId: log.id },
         },
       });
     } else {
@@ -95,7 +141,6 @@ export async function POST(request: Request) {
           lastName: mapped.lastName ?? existing.lastName,
           source: mapped.source ?? existing.source,
           status: incomingStatus ?? existing.status,
-          needsMapping: !incomingStatus && !!mapped.status,
         },
       });
 
@@ -106,7 +151,7 @@ export async function POST(request: Request) {
           fromStatus: statusChanged ? existing.status : null,
           toStatus: statusChanged ? incomingStatus : null,
           actor: "system",
-          payload: { webhookLogId: log.id, rawStatus: mapped.status },
+          payload: { webhookLogId: log.id },
         },
       });
     }
@@ -126,7 +171,10 @@ export async function POST(request: Request) {
   }
 }
 
-/** בדיקה מהירה שהכתובת חיה */
-export async function GET() {
-  return NextResponse.json({ ok: true, endpoint: "leadmanager webhook" });
+export async function POST(request: Request) {
+  return handle(request);
+}
+
+export async function GET(request: Request) {
+  return handle(request);
 }

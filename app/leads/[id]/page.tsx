@@ -15,6 +15,7 @@ const EVENT_LABELS: Record<string, string> = {
 
 function formatDate(d: Date): string {
   return d.toLocaleString("he-IL", {
+    timeZone: "Asia/Jerusalem",
     day: "2-digit",
     month: "2-digit",
     year: "2-digit",
