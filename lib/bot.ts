@@ -11,11 +11,18 @@
 import { db } from "./db";
 import { classifyMessage, type Classification } from "./classify";
 import { applyStatusChange } from "./rules";
-import { isWithinWorkingHours, shiftToWorkingHours } from "./working-hours";
+import {
+  isWithinWorkingHours,
+  shiftToWorkingHours,
+  nextWorkingPhrase,
+} from "./working-hours";
 import { displayPhone } from "./phone";
 import { searchChatByPhone, extractChatId, sendSessionMessage } from "./texter";
-import { answerFromKnowledge } from "./answer";
+import { matchKnowledge } from "./answer";
 import { emailLeadAlert } from "./email";
+import { shouldBotReply } from "./bot-gate";
+import { getSettings } from "./settings";
+import { STATUSES } from "./statuses";
 
 /** מוצא את מזהה הצ'אט של הליד, ושומר אותו להבא */
 async function resolveChatId(leadId: string, phone: string, known: string | null) {
@@ -71,12 +78,14 @@ async function replyToLead(params: {
   return result.ok;
 }
 
-/** הניסוח משתנה לפי השעה - לא מבטיחים "כמה דקות" בלילה */
-function handoffText(now: Date): string {
-  if (isWithinWorkingHours(now)) {
-    return "תודה! העברתי את הפנייה לנציג, הוא ייצור איתך קשר בדקות הקרובות.";
-  }
-  return "תודה! העברתי את הפנייה לנציג, הוא ייצור איתך קשר ביום העבודה הקרוב.";
+/** בודק אם הסטטוס הוא של עסקה סגורה */
+function isClosedStatus(status: string): boolean {
+  return STATUSES.find((s) => s.name === status)?.won === true;
+}
+
+/** ממלא את מציין המקום {מתי} בניסוח הנכון ליום */
+function fillPlaceholders(text: string, now: Date): string {
+  return text.replace(/\{מתי\}/g, nextWorkingPhrase(now));
 }
 
 export type BotResult = {
@@ -105,15 +114,68 @@ export async function handleInboundMessage(params: {
     };
   }
 
+  // לפני הכל: האם הבוט בכלל אמור לדבר עכשיו?
+  const gate = await shouldBotReply(lead.id);
+
+  if (!gate.allowed) {
+    await db.leadEvent.create({
+      data: {
+        leadId: lead.id,
+        type: "bot_skipped",
+        actor: "bot",
+        payload: { reason: gate.reason },
+      },
+    });
+
+    await db.alert.create({
+      data: {
+        leadId: lead.id,
+        title: "לקוח כתב - הבוט לא ענה",
+        body: `${lead.firstName || displayPhone(lead.phone)}: ${params.text.slice(0, 200)}\n\nהסיבה: ${gate.reason}`,
+      },
+    });
+
+    return {
+      classification: {
+        intent: "unknown",
+        confidence: 0,
+        requestedCallbackAt: null,
+        callbackParseConfident: false,
+        suggestedReply: null,
+        reasoning: gate.reason,
+      },
+      actions: [`skipped:${gate.reason}`],
+    };
+  }
+
   const lastOut = await db.message.findFirst({
     where: { leadId: lead.id, direction: "out" },
     orderBy: { createdAt: "desc" },
   });
 
+  const settings = await getSettings();
+
+  /**
+   * לקוח בסטטוס "נסגר" - ההודעה שלו היא כמעט תמיד שירות.
+   * אבל רק אחרי 24 שעות מרגע הסגירה. ביממה הראשונה
+   * הוא עדיין באמצע התהליך והשיחה עשויה להיות מכירתית.
+   */
+  let closedForService = false;
+  if (isClosedStatus(lead.status)) {
+    const closedEvent = await db.leadEvent.findFirst({
+      where: { leadId: lead.id, type: "status_changed", toStatus: lead.status },
+      orderBy: { createdAt: "desc" },
+    });
+    const changedAt = closedEvent?.createdAt ?? lead.updatedAt;
+    closedForService =
+      Date.now() - changedAt.getTime() > 24 * 60 * 60 * 1000;
+  }
+
   const classification = await classifyMessage({
     text: params.text,
     currentStatus: lead.status,
     lastTemplateSent: lastOut?.bodyText ?? lastOut?.templateName ?? null,
+    isClosedDeal: closedForService,
   });
 
   const now = new Date();
@@ -215,9 +277,14 @@ export async function handleInboundMessage(params: {
       leadId: lead.id,
       phone: lead.phone,
       chatId: lead.chatId,
-      text: dueAt
-        ? "מעולה, רשמתי. נחזור אליך בזמן שביקשת."
-        : "מעולה, רשמתי. נחזור אליך בהקדם.",
+      text: fillPlaceholders(
+        dueAt
+          ? settings.replyCallback
+          : isWithinWorkingHours(now)
+          ? settings.replyInterested
+          : settings.replyAfterHours,
+        now
+      ),
     });
 
     await db.alert.create({
@@ -250,14 +317,30 @@ export async function handleInboundMessage(params: {
       leadId: lead.id,
       phone: lead.phone,
       chatId: lead.chatId,
-      text: handoffText(now),
+      text: fillPlaceholders(
+        isWithinWorkingHours(now)
+          ? settings.replyInterested
+          : settings.replyAfterHours,
+        now
+      ),
     });
+
+    const afterHours = !isWithinWorkingHours(now);
 
     await db.task.create({
       data: {
         leadId: lead.id,
-        title: `ליד חם - להתקשר ל${displayName}`,
-        body: `הלקוח הביע עניין: "${params.text.slice(0, 300)}"`,
+        title: afterHours
+          ? `להתקשר ל${displayName} - ביקש מחוץ לשעות`
+          : `ליד חם - להתקשר ל${displayName}`,
+        body: [
+          `הלקוח הביע עניין: "${params.text.slice(0, 300)}"`,
+          afterHours
+            ? `נשלחה לו הודעה ששאלה מתי ${nextWorkingPhrase(now)} מתאים לו. אם יענה עם שעה - תיפתח משימה נוספת לשעה הזו.`
+            : null,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
         dueAt: isWithinWorkingHours(now) ? now : shiftToWorkingHours(now),
         urgent: true,
       },
@@ -286,22 +369,68 @@ export async function handleInboundMessage(params: {
     return { classification, actions };
   }
 
-  // ---------- שאלה טכנית או שירותית: העוזר עונה ממאגר הידע ----------
+  // ---------- שאלת שירות או טכניקה ----------
   if (
     classification.intent === "technical_question" ||
     classification.intent === "question"
   ) {
-    const answered = await answerFromKnowledge({
-      question: params.text,
-      customerName: lead.firstName,
+    /**
+     * הבוט עונה על שאלת שירות **פעם אחת**.
+     * אם הלקוח כותב שוב - סימן שהוא לא הסתדר, ואז הבוט שותק
+     * ואתה מקבל התראה. זו בדיוק ההתנהגות שביקשת.
+     */
+    const alreadyAnswered = await db.leadEvent.findFirst({
+      where: {
+        leadId: lead.id,
+        type: "bot_answered",
+        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      },
     });
 
-    if (answered.canAnswer && answered.answer) {
+    if (alreadyAnswered) {
+      await db.task.create({
+        data: {
+          leadId: lead.id,
+          title: `${displayName} כתב שוב - כנראה לא הסתדר`,
+          body: [
+            `ההודעה: "${params.text.slice(0, 300)}"`,
+            "",
+            "העוזר כבר שלח לו תשובה קודם והוא חזר. הוא צריך אותך.",
+          ].join("\n"),
+          urgent: true,
+          sourceQuestion: params.text.slice(0, 500),
+        },
+      });
+
+      await db.alert.create({
+        data: {
+          leadId: lead.id,
+          title: "לקוח חזר אחרי תשובת העוזר",
+          body: `${displayName}: ${params.text.slice(0, 200)}`,
+        },
+      });
+
+      await db.leadEvent.create({
+        data: {
+          leadId: lead.id,
+          type: "bot_escalated",
+          actor: "bot",
+          payload: { reason: "הלקוח כתב שוב אחרי תשובה" },
+        },
+      });
+
+      actions.push("escalated:second-message");
+      return { classification, actions };
+    }
+
+    const match = await matchKnowledge({ question: params.text });
+
+    if (match.matched && match.answer) {
       const sent = await replyToLead({
         leadId: lead.id,
         phone: lead.phone,
         chatId: lead.chatId,
-        text: answered.answer,
+        text: match.answer,
       });
 
       await db.leadEvent.create({
@@ -309,7 +438,7 @@ export async function handleInboundMessage(params: {
           leadId: lead.id,
           type: "bot_answered",
           actor: "bot",
-          payload: { usedTopics: answered.usedTopics, sent },
+          payload: { topic: match.topic, sent },
         },
       });
 
@@ -317,22 +446,15 @@ export async function handleInboundMessage(params: {
         data: {
           leadId: lead.id,
           title: "העוזר ענה ללקוח",
-          body: `${displayName} שאל: "${params.text.slice(0, 150)}"\nהעוזר ענה: "${answered.answer.slice(0, 150)}"`,
+          body: `${displayName} שאל: "${params.text.slice(0, 150)}"\nנשלחה התשובה: ${match.topic}`,
         },
       });
 
-      actions.push("reply:knowledge");
+      actions.push(`reply:${match.topic}`);
       return { classification, actions };
     }
 
-    // אין תשובה במאגר - לא ממציאים. מודיעים ללקוח ופותחים משימה.
-    await replyToLead({
-      leadId: lead.id,
-      phone: lead.phone,
-      chatId: lead.chatId,
-      text: "קיבלתי, אני בודק את זה ונחזור אליך עם תשובה בהקדם.",
-    });
-
+    // אין נושא מתאים - לא ממציאים כלום ולא שולחים כלום
     await db.task.create({
       data: {
         leadId: lead.id,
@@ -340,14 +462,23 @@ export async function handleInboundMessage(params: {
         body: [
           `השאלה: "${params.text.slice(0, 300)}"`,
           "",
-          "העוזר לא מצא תשובה במאגר הידע ולא המציא.",
-          "אחרי שתענה - שווה להוסיף את זה למאגר כדי שהוא ידע בפעם הבאה.",
+          "אין נושא מתאים במאגר הידע, אז לא נשלחה תשובה.",
+          "אחרי שתענה - הוסף את זה למאגר בלחיצה, והעוזר יידע בפעם הבאה.",
         ].join("\n"),
         needsReview: true,
+        sourceQuestion: params.text.slice(0, 500),
       },
     });
 
-    actions.push("reply:holding", "task:answer-needed");
+    await db.alert.create({
+      data: {
+        leadId: lead.id,
+        title: "שאלה שהעוזר לא ידע",
+        body: `${displayName}: ${params.text.slice(0, 200)}`,
+      },
+    });
+
+    actions.push("task:answer-needed");
     return { classification, actions };
   }
 

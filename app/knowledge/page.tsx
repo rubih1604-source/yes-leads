@@ -4,7 +4,12 @@ import KnowledgeScreen, { type KnowledgeRow } from "@/components/KnowledgeScreen
 
 export const dynamic = "force-dynamic";
 
-export default async function KnowledgePage() {
+export default async function KnowledgePage({
+  searchParams,
+}: {
+  searchParams?: { q?: string };
+}) {
+  const prefill = searchParams?.q?.trim() || "";
   const items = await db.knowledgeItem.findMany({
     orderBy: { updatedAt: "desc" },
   });
@@ -22,7 +27,7 @@ export default async function KnowledgePage() {
         </h1>
       </div>
 
-      <KnowledgeScreen items={items as KnowledgeRow[]} />
+      <KnowledgeScreen items={items as KnowledgeRow[]} prefill={prefill} />
     </div>
   );
 }

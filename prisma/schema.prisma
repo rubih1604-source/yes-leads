@@ -19,6 +19,8 @@ model Lead {
   needsMapping   Boolean  @default(false)
   lastInboundAt  DateTime?
   chatId         String?
+  botPausedUntil DateTime?
+  botMuted       Boolean  @default(false)
   notes          String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -138,6 +140,7 @@ model Task {
   body        String?
   dueAt       DateTime?
   needsReview Boolean   @default(false)
+  sourceQuestion String?
   urgent      Boolean   @default(false)
   done        Boolean   @default(false)
   doneAt      DateTime?
@@ -155,4 +158,19 @@ model KnowledgeItem {
   updatedAt DateTime @updatedAt
 
   @@index([active])
+}
+
+model Settings {
+  id                   String   @id @default("main")
+  botEnabled           Boolean  @default(true)
+  botOnlyOutsideHours  Boolean  @default(false)
+  botPauseHours        Int      @default(12)
+  replyCooldownMinutes Int      @default(10)
+
+  // הטקסטים שהעוזר שולח - ניתנים לעריכה מהמסך
+  replyInterested      String   @default("היי, אסיים שיחה כמה דק ואתקשר :)")
+  replyAfterHours      String   @default("היי, אני כבר סיימתי לעבוד. {מתי} מתאים לך?\nואם כן באיזה שעה :)")
+  replyCallback        String   @default("מעולה, רשמתי. אחזור אליך בזמן שביקשת :)")
+
+  updatedAt            DateTime @updatedAt
 }

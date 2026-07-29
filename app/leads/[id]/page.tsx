@@ -18,6 +18,9 @@ const EVENT_LABELS: Record<string, string> = {
   alert_created: "נוצרה התראה",
   bot_classified: "העוזר סיווג את התגובה",
   bot_answered: "העוזר ענה ללקוח",
+  bot_skipped: "העוזר לא ענה בכוונה",
+  human_reply: "ענית ללקוח בעצמך",
+  bot_escalated: "העוזר העביר אליך - הלקוח חזר",
 };
 
 function formatDate(d: Date): string {
@@ -53,6 +56,12 @@ export default async function LeadPage({
       actor: { in: ["bot", "system"] },
     },
     orderBy: { createdAt: "desc" },
+  });
+
+  const knowledge = await db.knowledgeItem.findMany({
+    where: { active: true },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, topic: true, answer: true },
   });
 
   const templates = await db.template.findMany({
@@ -94,6 +103,11 @@ export default async function LeadPage({
           templates={templates}
           doNotContact={lead.doNotContact}
           canUndo={Boolean(lastAutoChange?.fromStatus)}
+          botMuted={lead.botMuted}
+          botPausedUntil={
+            lead.botPausedUntil ? lead.botPausedUntil.toISOString() : null
+          }
+          knowledge={knowledge}
         />
       </div>
 

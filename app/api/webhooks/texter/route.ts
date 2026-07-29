@@ -4,6 +4,7 @@ import { normalizePhone, displayPhone } from "@/lib/phone";
 import { mapInboundMessage } from "@/lib/texter-mapping";
 import { cancelPendingJobs } from "@/lib/rules";
 import { handleInboundMessage } from "@/lib/bot";
+import { pauseBotAfterHumanReply } from "@/lib/bot-gate";
 import { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -84,16 +85,79 @@ async function handle(request: Request) {
   try {
     const mapped = mapInboundMessage(raw);
 
-    // הודעה שאנחנו שלחנו - לא מעניינת אותנו
+    const phone = normalizePhone(mapped.phone);
+
+    /**
+     * הודעה יוצאת. שתי אפשרויות:
+     * 1. המערכת שלחה אותה - כבר רשומה אצלנו, אין מה לעשות
+     * 2. **אתה שלחת אותה ידנית** - זה אומר שנכנסת לשיחה,
+     *    ואז הבוט משתתק מול הלקוח הזה.
+     */
     if (mapped.isOutgoing) {
+      if (phone) {
+        const lead = await db.lead.findUnique({ where: { phone } });
+
+        if (lead) {
+          const alreadyOurs = mapped.messageId
+            ? await db.message.findFirst({
+                where: { texterMessageId: mapped.messageId, direction: "out" },
+              })
+            : null;
+
+          // התאמה גם לפי טקסט, למקרה שהמזהה שונה בין השליחה לאירוע
+          const matchedByText =
+            !alreadyOurs && mapped.text
+              ? await db.message.findFirst({
+                  where: {
+                    leadId: lead.id,
+                    direction: "out",
+                    bodyText: mapped.text,
+                    createdAt: { gte: new Date(Date.now() - 10 * 60000) },
+                  },
+                })
+              : null;
+
+          if (!alreadyOurs && !matchedByText) {
+            // אתה ענית ידנית
+            await db.message.create({
+              data: {
+                leadId: lead.id,
+                direction: "out",
+                bodyText: mapped.text,
+                texterMessageId: mapped.messageId,
+                status: "sent",
+                error: null,
+              },
+            });
+
+            const until = await pauseBotAfterHumanReply(lead.id);
+
+            await db.leadEvent.create({
+              data: {
+                leadId: lead.id,
+                type: "human_reply",
+                actor: "user",
+                payload: { pausedUntil: until.toISOString() },
+              },
+            });
+
+            await db.webhookLog.update({
+              where: { id: log.id },
+              data: { processed: true, error: "תשובה ידנית שלך - הבוט הושתק" },
+            });
+
+            return NextResponse.json({ ok: true, humanReply: true });
+          }
+        }
+      }
+
       await db.webhookLog.update({
         where: { id: log.id },
-        data: { processed: true, error: "הודעה יוצאת - דולגה" },
+        data: { processed: true, error: "הודעה יוצאת של המערכת - דולגה" },
       });
       return NextResponse.json({ ok: true, skipped: "outgoing" });
     }
 
-    const phone = normalizePhone(mapped.phone);
     if (!phone) {
       await db.webhookLog.update({
         where: { id: log.id },

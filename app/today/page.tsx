@@ -25,6 +25,7 @@ export default async function TodayPage() {
     needsReview: t.needsReview,
     urgent: t.urgent,
     createdAt: t.createdAt.toISOString(),
+    sourceQuestion: t.sourceQuestion,
   }));
 
   return (

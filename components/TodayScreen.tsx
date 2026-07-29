@@ -13,6 +13,7 @@ export type TaskRow = {
   needsReview: boolean;
   urgent: boolean;
   createdAt: string;
+  sourceQuestion: string | null;
 };
 
 function formatDue(iso: string | null): string {
@@ -95,6 +96,15 @@ export default function TodayScreen({ tasks }: { tasks: TaskRow[] }) {
                   style={{ height: 40, textDecoration: "none" }}
                 >
                   פתח ליד
+                </Link>
+              )}
+              {t.sourceQuestion && (
+                <Link
+                  href={`/knowledge?q=${encodeURIComponent(t.sourceQuestion)}`}
+                  className="btn"
+                  style={{ height: 40, textDecoration: "none" }}
+                >
+                  למד את העוזר
                 </Link>
               )}
               <button

@@ -10,8 +10,14 @@ export type KnowledgeRow = {
   active: boolean;
 };
 
-export default function KnowledgeScreen({ items }: { items: KnowledgeRow[] }) {
-  const [topic, setTopic] = useState("");
+export default function KnowledgeScreen({
+  items,
+  prefill = "",
+}: {
+  items: KnowledgeRow[];
+  prefill?: string;
+}) {
+  const [topic, setTopic] = useState(prefill);
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -73,25 +79,71 @@ export default function KnowledgeScreen({ items }: { items: KnowledgeRow[] }) {
     router.refresh();
   }
 
+  async function seed() {
+    setBusy(true);
+    const res = await fetch("/api/knowledge/seed", { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    setError(res.ok ? "" : "הטעינה נכשלה");
+    if (res.ok && data.created === 0) setError("התשובות המוכנות כבר קיימות");
+    setBusy(false);
+    router.refresh();
+  }
+
   return (
     <>
+      {items.length === 0 && (
+        <div className="card">
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>
+            טען את התשובות המוכנות
+          </div>
+          <div style={{ fontSize: 13, color: "#64748b", marginBottom: 12 }}>
+            ניתוק מהחברה הקודמת, ושירות ותמיכה טכנית — בדיוק כפי שהכתבת אותן.
+          </div>
+          <button className="btn primary" onClick={seed} disabled={busy}>
+            {busy ? "טוען..." : "טען"}
+          </button>
+        </div>
+      )}
+
       <div className="card">
-        <div style={{ fontWeight: 600, marginBottom: 4 }}>הוסף ידע חדש</div>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>
+          {prefill ? "למד את העוזר לענות על זה" : "הוסף ידע חדש"}
+        </div>
+        {prefill && (
+          <div
+            style={{
+              background: "#f8fafc",
+              border: "1px solid #dde3ea",
+              borderRadius: 10,
+              padding: 10,
+              fontSize: 14,
+              marginBottom: 10,
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            השאלה של הלקוח: &quot;{prefill}&quot;
+          </div>
+        )}
         <div style={{ fontSize: 13, color: "#64748b", marginBottom: 12 }}>
-          כל מה שתכתוב כאן - העוזר יידע לענות עליו ללקוחות. מה שלא כתוב כאן,
-          הוא לא ימציא.
+          העוזר שולח את הטקסט <strong>מילה במילה</strong> כפי שתכתוב אותו כאן.
+          הוא לא מנסח מחדש ולא ממציא. מה שלא כתוב כאן — הוא לא עונה עליו.
         </div>
 
         <input
           className="field"
-          placeholder="נושא — למשל: חיבור לנטפליקס"
+          placeholder={
+            prefill
+              ? "תן לזה שם קצר — למשל: חיבור לנטפליקס"
+              : "נושא — למשל: חיבור לנטפליקס"
+          }
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
         />
         <textarea
           className="field"
           style={{ height: 110, padding: 12, resize: "vertical" }}
-          placeholder="התשובה כפי שתרצה שהעוזר יגיד ללקוח"
+          placeholder="התשובה כפי שתרצה שהעוזר יגיד ללקוח, מילה במילה"
+          autoFocus={Boolean(prefill)}
           value={answer}
           onChange={(e) => setAnswer(e.target.value)}
         />
@@ -104,8 +156,8 @@ export default function KnowledgeScreen({ items }: { items: KnowledgeRow[] }) {
       {items.length === 0 ? (
         <div className="empty">
           <strong>מאגר הידע ריק</strong>
-          עד שתוסיף ידע, העוזר יענה ללקוח &quot;אני בודק ונחזור אליך&quot;
-          ויפתח לך משימה. הוא לא ימציא תשובות.
+          עד שתוסיף ידע, העוזר לא ישלח תשובות שירות — הוא רק יפתח לך משימה
+          ויתריע. הוא לא ימציא תשובות.
         </div>
       ) : (
         <div className="timeline">

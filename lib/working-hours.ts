@@ -106,3 +106,51 @@ export function shiftToWorkingHours(date: Date): Date {
 
   return date; // לא אמור לקרות
 }
+
+const DAY_NAMES = [
+  "ראשון",
+  "שני",
+  "שלישי",
+  "רביעי",
+  "חמישי",
+  "שישי",
+  "שבת",
+];
+
+/**
+ * מנסח מתי אתה חוזר לעבוד, בעברית טבעית.
+ *
+ * חמישי בערב  -> "מחר בבוקר"
+ * שישי בערב   -> "ביום ראשון"
+ * שבת         -> "מחר בבוקר"
+ *
+ * זה מונע מצב שבו לקוח מקבל "מחר בבוקר" ביום שישי בערב.
+ */
+export function nextWorkingPhrase(now: Date = new Date()): string {
+  if (isWithinWorkingHours(now)) return "היום";
+
+  const next = shiftToWorkingHours(now);
+  const today = israelParts(now);
+  const target = israelParts(next);
+
+  // אותו יום - נפתח בהמשך היום
+  if (
+    today.year === target.year &&
+    today.month === target.month &&
+    today.day === target.day
+  ) {
+    return "היום";
+  }
+
+  // מחר
+  const tomorrow = israelParts(new Date(now.getTime() + 24 * 60 * 60 * 1000));
+  if (
+    tomorrow.year === target.year &&
+    tomorrow.month === target.month &&
+    tomorrow.day === target.day
+  ) {
+    return "מחר בבוקר";
+  }
+
+  return `ביום ${DAY_NAMES[target.weekday]}`;
+}

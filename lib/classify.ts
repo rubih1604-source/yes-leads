@@ -56,7 +56,8 @@ const SYSTEM_PROMPT = `אתה העוזר האישי של רובי, סוכן מכ
 - other: כל דבר אחר, כולל הודעות לא ברורות, אימוג'י בלבד, או טקסט לא קריא
 
 כללים:
-- היה שמרן. אם אינך בטוח, השתמש ב-other עם confidence נמוך.
+- **היה שמרן. רובי רואה את כל ההודעות ממילא.** אם אינך בטוח - השתמש ב-other עם confidence נמוך, ואז לא תישלח שום תשובה אוטומטית והוא יטפל בעצמו. תשובה שגויה גרועה בהרבה מאי-תשובה.
+- אם ההודעה מכילה כמה דברים יחד, או שהיא מנוסחת בצורה מבלבלת - other.
 - לקוח שכתב "מעוניין", "כן", "בטח", "תתקשר" - זה interested עם confidence גבוה.
 - confidence הוא מספר בין 0 ל-1.
 - requestedCallbackAt: רק אם הלקוח ציין זמן. פורמט ISO 8601 עם אזור זמן +03:00. אם לא ציין זמן - null.
@@ -69,6 +70,7 @@ export async function classifyMessage(params: {
   text: string;
   currentStatus: string;
   lastTemplateSent?: string | null;
+  isClosedDeal?: boolean;
   now?: Date;
 }): Promise<Classification> {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
@@ -81,6 +83,9 @@ export async function classifyMessage(params: {
   const userContent = [
     `הזמן עכשיו בישראל: ${nowIsrael}`,
     `הסטטוס הנוכחי של הליד: ${params.currentStatus}`,
+    params.isClosedDeal
+      ? "שים לב: העסקה עם הלקוח הזה כבר נסגרה. לכן הודעה ממנו היא כמעט תמיד שאלת שירות או טכניקה (technical_question), ולא פנייה מכירתית."
+      : null,
     params.lastTemplateSent
       ? `ההודעה האחרונה שנשלחה ללקוח: ${params.lastTemplateSent}`
       : null,
