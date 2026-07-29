@@ -28,7 +28,13 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem" });
 }
 
-export default function LeadList({ leads }: { leads: LeadRow[] }) {
+export default function LeadList({
+  leads,
+  openTasks = 0,
+}: {
+  leads: LeadRow[];
+  openTasks?: number;
+}) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<string | null>(null);
   const [sheetFor, setSheetFor] = useState<LeadRow | null>(null);
@@ -66,6 +72,9 @@ export default function LeadList({ leads }: { leads: LeadRow[] }) {
           לידים
           <span className="count">{visible.length} מתוך {leads.length}</span>
           <span style={{ float: "left", display: "flex", gap: 12 }}>
+            <Link href="/today" className="count" style={{ color: "#fff", opacity: 0.85 }}>
+              היום{openTasks > 0 ? ` (${openTasks})` : ""}
+            </Link>
             <Link href="/alerts" className="count" style={{ color: "#fff", opacity: 0.85 }}>
               התראות
             </Link>

@@ -16,6 +16,7 @@ const EVENT_LABELS: Record<string, string> = {
   message_failed: "שליחת הודעה נכשלה",
   message_received: "הלקוח ענה",
   alert_created: "נוצרה התראה",
+  bot_classified: "הבוט סיווג את התגובה",
 };
 
 function formatDate(d: Date): string {
@@ -43,6 +44,15 @@ export default async function LeadPage({
   });
 
   if (!lead) notFound();
+
+  const lastAutoChange = await db.leadEvent.findFirst({
+    where: {
+      leadId: lead.id,
+      type: "status_changed",
+      actor: { in: ["bot", "system"] },
+    },
+    orderBy: { createdAt: "desc" },
+  });
 
   const templates = await db.template.findMany({
     where: { approved: true },
@@ -82,6 +92,7 @@ export default async function LeadPage({
           firstName={firstName}
           templates={templates}
           doNotContact={lead.doNotContact}
+          canUndo={Boolean(lastAutoChange?.fromStatus)}
         />
       </div>
 

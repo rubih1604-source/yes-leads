@@ -3,6 +3,7 @@
 import { useState } from "react";
 import StatusSheet from "./StatusSheet";
 import SendTemplateSheet, { type TemplateOption } from "./SendTemplateSheet";
+import { useRouter } from "next/navigation";
 
 export default function LeadCardActions({
   leadId,
@@ -11,6 +12,7 @@ export default function LeadCardActions({
   firstName,
   templates,
   doNotContact,
+  canUndo,
 }: {
   leadId: string;
   phone: string;
@@ -18,9 +20,19 @@ export default function LeadCardActions({
   firstName: string;
   templates: TemplateOption[];
   doNotContact: boolean;
+  canUndo: boolean;
 }) {
   const [statusOpen, setStatusOpen] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
+  const [undoing, setUndoing] = useState(false);
+  const router = useRouter();
+
+  async function undo() {
+    setUndoing(true);
+    await fetch(`/api/leads/${leadId}/undo`, { method: "POST" });
+    setUndoing(false);
+    router.refresh();
+  }
 
   return (
     <>
@@ -42,6 +54,14 @@ export default function LeadCardActions({
           {doNotContact ? "ברשימת אי-פנייה" : "שלח תבנית"}
         </button>
       </div>
+
+      {canUndo && (
+        <div className="actions" style={{ marginTop: 10 }}>
+          <button className="btn" onClick={undo} disabled={undoing}>
+            {undoing ? "מבטל..." : "בטל את השינוי האוטומטי האחרון"}
+          </button>
+        </div>
+      )}
 
       {statusOpen && (
         <StatusSheet

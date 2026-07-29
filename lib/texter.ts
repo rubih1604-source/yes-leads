@@ -218,3 +218,59 @@ export async function sendTemplate(params: {
     body: JSON.stringify(payload),
   });
 }
+
+// ---------- צ'אטים והודעות טקסט חופשי ----------
+
+/**
+ * מחפש צ'אט לפי מספר טלפון ומחזיר את המזהה שלו.
+ * צריך אותו כדי לשלוח הודעת טקסט רגילה (לא תבנית).
+ */
+export async function searchChatByPhone(phone: string) {
+  const query = encodeURIComponent(toTexterPhone(phone));
+  return call<unknown>(`/chats/search?search=${query}`, { method: "GET" });
+}
+
+/** שולף את מזהה הצ'אט מתוך תשובת החיפוש, בכמה מבנים אפשריים */
+export function extractChatId(payload: unknown): string | null {
+  const arrays: unknown[] = [];
+
+  if (Array.isArray(payload)) arrays.push(payload);
+  if (payload && typeof payload === "object") {
+    const obj = payload as Record<string, unknown>;
+    for (const key of ["data", "chats", "items", "results"]) {
+      if (Array.isArray(obj[key])) arrays.push(obj[key]);
+    }
+  }
+
+  for (const arr of arrays) {
+    if (!Array.isArray(arr) || arr.length === 0) continue;
+    const first = arr[0];
+    if (!first || typeof first !== "object") continue;
+    const row = first as Record<string, unknown>;
+    for (const key of ["_id", "id", "chatId", "chat_id"]) {
+      const value = row[key];
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+  }
+
+  return null;
+}
+
+/**
+ * שולח הודעת טקסט חופשי לצ'אט.
+ *
+ * חשוב: עובד רק בתוך חלון 24 השעות מאז שהלקוח כתב.
+ * מחוץ לחלון וואטסאפ חוסמת, ואפשר לשלוח רק תבניות.
+ */
+export async function sendSessionMessage(params: {
+  chatId: string;
+  text: string;
+}) {
+  return call<{ success?: boolean; messages?: unknown[] }>(
+    `/messages/send/${encodeURIComponent(params.chatId)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ type: "text", text: params.text }),
+    }
+  );
+}

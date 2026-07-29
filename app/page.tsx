@@ -19,6 +19,8 @@ export default async function HomePage() {
     },
   });
 
+  const openTasks = await db.task.count({ where: { done: false } });
+
   const rows: LeadRow[] = leads.map((l) => ({
     ...l,
     intakeAt: l.intakeAt.toISOString(),
@@ -28,7 +30,7 @@ export default async function HomePage() {
   return (
     <div className="app">
       <AutoRefresh seconds={15} />
-      <LeadList leads={rows} />
+      <LeadList leads={rows} openTasks={openTasks} />
     </div>
   );
 }

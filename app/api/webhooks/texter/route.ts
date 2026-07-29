@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { normalizePhone, displayPhone } from "@/lib/phone";
 import { mapInboundMessage } from "@/lib/texter-mapping";
 import { cancelPendingJobs } from "@/lib/rules";
+import { handleInboundMessage } from "@/lib/bot";
 import { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -172,12 +173,42 @@ async function handle(request: Request) {
       },
     });
 
+    // אם הסנריו שלח לנו את מזהה הצ'אט - שומרים אותו, חוסך חיפוש בהמשך
+    const chatIdFromPayload =
+      typeof raw.chatId === "string"
+        ? raw.chatId
+        : typeof raw.chat_id === "string"
+        ? raw.chat_id
+        : null;
+    if (chatIdFromPayload && !lead.chatId) {
+      await db.lead
+        .update({ where: { id: lead.id }, data: { chatId: chatIdFromPayload } })
+        .catch(() => null);
+    }
+
     await db.webhookLog.update({
       where: { id: log.id },
       data: { processed: true },
     });
 
-    return NextResponse.json({ ok: true, cancelledJobs: cancelled });
+    // הבוט מסווג ופועל. רץ אחרי שהכל נשמר, כדי שכישלון שלו
+    // לא ימנע מההודעה להישמר ומהרצף להיעצר.
+    let botResult = null;
+    try {
+      botResult = await handleInboundMessage({
+        leadId: lead.id,
+        text: mapped.text ?? "",
+      });
+    } catch {
+      // הבוט נכשל - ההודעה עדיין נשמרה וההתראה נוצרה
+    }
+
+    return NextResponse.json({
+      ok: true,
+      cancelledJobs: cancelled,
+      intent: botResult?.classification.intent ?? null,
+      actions: botResult?.actions ?? [],
+    });
   } catch (err) {
     await db.webhookLog.update({
       where: { id: log.id },

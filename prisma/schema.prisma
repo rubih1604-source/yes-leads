@@ -18,6 +18,7 @@ model Lead {
   doNotContact   Boolean  @default(false)
   needsMapping   Boolean  @default(false)
   lastInboundAt  DateTime?
+  chatId         String?
   notes          String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -26,6 +27,7 @@ model Lead {
   messages       Message[]
   jobs           ScheduledJob[]
   alerts         Alert[]
+  tasks          Task[]
 
   @@index([status])
   @@index([intakeAt])
@@ -126,4 +128,20 @@ model Alert {
   createdAt DateTime @default(now())
 
   @@index([read, createdAt])
+}
+
+model Task {
+  id          String    @id @default(cuid())
+  leadId      String?
+  lead        Lead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  title       String
+  body        String?
+  dueAt       DateTime?
+  needsReview Boolean   @default(false)
+  urgent      Boolean   @default(false)
+  done        Boolean   @default(false)
+  doneAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([done, dueAt])
 }
