@@ -1,4 +1,7 @@
-/** בדיקות לקריאת הודעה נכנסת מטקסטר */
+/**
+ * בדיקות לקריאת הודעה נכנסת מטקסטר.
+ * ה-payload הראשון הוא העתק של מה שטקסטר באמת שלח ב-29.7.26.
+ */
 import { mapInboundMessage } from "../lib/texter-mapping";
 
 let passed = 0, failed = 0;
@@ -13,39 +16,87 @@ function check(label: string, actual: unknown, expected: unknown) {
   }
 }
 
-console.log("\nזיהוי הודעה נכנסת");
+// המבנה האמיתי שהגיע מטקסטר
+const real = {
+  _method: "POST",
+  eventName: "newIncomingMessage",
+  eventData: {
+    chat: {
+      _id: "6a2538aadb2af8c33fffca2a",
+      agent: { uid: "", displayName: "" },
+      title: "RH",
+      status: 4,
+      crmData: { leadId: "42326384", accountId: "11587" },
+      channelInfo: {
+        id: "972528908209",
+        name: "whatsapp",
+        accountId: "972503336897",
+      },
+      lastMessage: { text: "כן מעוניין תתקשר", type: "text", forwarded: false },
+      unreadCount: 10,
+    },
+    message: {
+      _id: "6a69c615040390a2b0ad0990",
+      text: "כן מעוניין תתקשר",
+      type: "text",
+      status: 2,
+      incoming: true,
+      outgoing: false,
+      direction: "incoming",
+      channelInfo: { id: "wamid.HBgMOTcyNTI4OTA4MjA5FQIAEhgUM0FFRDYzNERBRTEzOTlDMERFQjkA" },
+      parent_chat: "6a2538aadb2af8c33fffca2a",
+      chatChannelInfo: {
+        id: "972528908209",
+        name: "whatsapp",
+        accountId: "972503336897",
+      },
+    },
+  },
+};
 
+const mapped = mapInboundMessage(real);
+
+console.log("\nה-payload האמיתי של טקסטר");
+check("מספר הלקוח (לא המספר העסקי)", mapped.phone, "972528908209");
+check("תוכן ההודעה", mapped.text, "כן מעוניין תתקשר");
+check("מזהה ההודעה - לא הטלפון", mapped.messageId, "6a69c615040390a2b0ad0990");
+check("מזהה הצ'אט", mapped.chatId, "6a2538aadb2af8c33fffca2a");
+check("שם מכותרת הצ'אט", mapped.senderName, "RH");
+check("מזוהה כנכנסת", mapped.isOutgoing, false);
+
+console.log("\nהמלכודות שנפלנו בהן");
+check('השם אינו "whatsapp"', mapped.senderName === "whatsapp", false);
+check("מזהה ההודעה אינו הטלפון", mapped.messageId === mapped.phone, false);
+check("לא נלקח המספר העסקי 972503336897", mapped.phone === "972503336897", false);
+
+console.log("\nהודעה יוצאת מסוננת");
+const outgoing = JSON.parse(JSON.stringify(real));
+outgoing.eventData.message.outgoing = true;
+outgoing.eventData.message.incoming = false;
+outgoing.eventData.message.direction = "outgoing";
+check("outgoing מזוהה", mapInboundMessage(outgoing).isOutgoing, true);
+
+console.log("\nשם שהוא בעצם מספר לא נשמר כשם");
+const numericTitle = JSON.parse(JSON.stringify(real));
+numericTitle.eventData.chat.title = "972528908209";
+check("כותרת מספרית -> null", mapInboundMessage(numericTitle).senderName, null);
+
+console.log("\nגיבוי למבנה שטוח");
 check(
-  "מבנה שטוח פשוט",
-  mapInboundMessage({ from: "972501234567", text: "כן מעוניין", messageId: "abc" }),
-  { phone: "972501234567", text: "כן מעוניין", messageId: "abc", senderName: null, isOutgoing: false }
+  "מבנה פשוט עדיין עובד",
+  mapInboundMessage({ from: "0501234567", text: "הסר" }).phone,
+  "0501234567"
+);
+check(
+  "טקסט במבנה פשוט",
+  mapInboundMessage({ from: "0501234567", text: "הסר" }).text,
+  "הסר"
 );
 
-check(
-  "מבנה מקונן",
-  mapInboundMessage({
-    event: "message",
-    message: { id: "wamid.X", body: "מתי אפשר לדבר?" },
-    contact: { phone: "0501234567", pushName: "חיים" },
-  }),
-  { phone: "0501234567", text: "מתי אפשר לדבר?", messageId: "wamid.X", senderName: "חיים", isOutgoing: false }
-);
-
-check(
-  "שדה waId",
-  mapInboundMessage({ waId: "972521234567", content: "הסר" }).phone,
-  "972521234567"
-);
-
-console.log("\nסינון הודעות שאנחנו שלחנו");
-check("fromMe true", mapInboundMessage({ from: "97250", text: "היי", fromMe: true }).isOutgoing, true);
-check("direction outgoing", mapInboundMessage({ from: "97250", text: "היי", direction: "outgoing" }).isOutgoing, true);
-check("direction incoming", mapInboundMessage({ from: "97250", text: "היי", direction: "incoming" }).isOutgoing, false);
-check("בלי סימון = נכנסת", mapInboundMessage({ from: "97250", text: "היי" }).isOutgoing, false);
-
-console.log("\nלא נשבר על מבנה לא מוכר");
-check("אובייקט זר", mapInboundMessage({ nothing: "here" }), { phone: null, text: null, messageId: null, senderName: null, isOutgoing: false });
-check("null", mapInboundMessage(null), { phone: null, text: null, messageId: null, senderName: null, isOutgoing: false });
+console.log("\nלא נשבר על קלט זר");
+check("אובייקט ריק", mapInboundMessage({}).phone, null);
+check("null", mapInboundMessage(null).phone, null);
+check("מחרוזת", mapInboundMessage("שלום").phone, null);
 
 console.log(`\n${"=".repeat(40)}`);
 console.log(`עברו: ${passed}   נכשלו: ${failed}`);

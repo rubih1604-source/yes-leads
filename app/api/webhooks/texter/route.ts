@@ -173,17 +173,12 @@ async function handle(request: Request) {
       },
     });
 
-    // אם הסנריו שלח לנו את מזהה הצ'אט - שומרים אותו, חוסך חיפוש בהמשך
-    const chatIdFromPayload =
-      typeof raw.chatId === "string"
-        ? raw.chatId
-        : typeof raw.chat_id === "string"
-        ? raw.chat_id
-        : null;
-    if (chatIdFromPayload && !lead.chatId) {
+    // הסנריו שולח את מזהה הצ'אט - שומרים אותו וחוסכים חיפוש בכל תשובה
+    if (mapped.chatId && lead.chatId !== mapped.chatId) {
       await db.lead
-        .update({ where: { id: lead.id }, data: { chatId: chatIdFromPayload } })
+        .update({ where: { id: lead.id }, data: { chatId: mapped.chatId } })
         .catch(() => null);
+      lead.chatId = mapped.chatId;
     }
 
     await db.webhookLog.update({
