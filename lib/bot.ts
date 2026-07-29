@@ -15,7 +15,7 @@ import { isWithinWorkingHours, shiftToWorkingHours } from "./working-hours";
 import { displayPhone } from "./phone";
 import { searchChatByPhone, extractChatId, sendSessionMessage } from "./texter";
 import { answerFromKnowledge } from "./answer";
-import { emailTask } from "./email";
+import { emailLeadAlert } from "./email";
 
 /** מוצא את מזהה הצ'אט של הליד, ושומר אותו להבא */
 async function resolveChatId(leadId: string, phone: string, known: string | null) {
@@ -47,7 +47,8 @@ async function replyToLead(params: {
         direction: "out",
         bodyText: params.text,
         status: "failed",
-        error: "לא נמצא צ'אט בטקסטר למספר הזה",
+        error:
+          "לא נמצא מזהה צ'אט. גם החיפוש בטקסטר לא החזיר תוצאה - בדוק שהטוקן כולל הרשאות צ'אטים.",
       },
     });
     return false;
@@ -63,7 +64,7 @@ async function replyToLead(params: {
       status: result.ok ? "sent" : "failed",
       error: result.ok
         ? null
-        : `${result.error ?? "שגיאה"} · ${JSON.stringify(result.raw).slice(0, 300)}`,
+        : `${result.error ?? "שגיאה"} · chatId=${chatId} · ${JSON.stringify(result.raw).slice(0, 250)}`,
     },
   });
 
@@ -227,9 +228,15 @@ export async function handleInboundMessage(params: {
       },
     });
 
-    await emailTask({
-      title: `${displayName} ביקש שתחזור אליו`,
-      body: `${params.text.slice(0, 300)}${dueAt ? `\n\nהזמן שביקש: ${dueAt.toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" })}` : "\n\nלא ציין זמן מדויק - כדאי לבדוק"}`,
+    await emailLeadAlert({
+      headline: "לקוח ביקש שתחזור אליו",
+      customerName: displayName,
+      phone: displayPhone(lead.phone),
+      status: lead.status,
+      message: params.text.slice(0, 400),
+      extra: dueAt
+        ? `הזמן שביקש: ${dueAt.toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" })}`
+        : "לא ציין זמן מדויק - שווה לבדוק את ההודעה",
       leadId: lead.id,
     });
 
@@ -256,9 +263,13 @@ export async function handleInboundMessage(params: {
       },
     });
 
-    await emailTask({
-      title: `להתקשר ל${displayName}`,
-      body: `הלקוח הביע עניין:\n"${params.text.slice(0, 300)}"`,
+    await emailLeadAlert({
+      headline: "לקוח הביע עניין ומחכה לשיחה ממך",
+      customerName: displayName,
+      phone: displayPhone(lead.phone),
+      status: lead.status,
+      message: params.text.slice(0, 400),
+      extra: sent ? "העוזר כבר ענה לו שנציג יחזור אליו." : null,
       leadId: lead.id,
       urgent: true,
     });
@@ -336,12 +347,6 @@ export async function handleInboundMessage(params: {
       },
     });
 
-    await emailTask({
-      title: `שאלה מ${displayName}`,
-      body: `"${params.text.slice(0, 300)}"\n\nהעוזר לא ידע לענות - צריך אותך.`,
-      leadId: lead.id,
-    });
-
     actions.push("reply:holding", "task:answer-needed");
     return { classification, actions };
   }
@@ -361,12 +366,6 @@ export async function handleInboundMessage(params: {
         .join("\n"),
       needsReview: true,
     },
-  });
-
-  await emailTask({
-    title: `הודעה מ${displayName} - צריך את המבט שלך`,
-    body: `"${params.text.slice(0, 300)}"`,
-    leadId: lead.id,
   });
 
   actions.push("task:manual");

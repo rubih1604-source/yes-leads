@@ -42,19 +42,48 @@ export async function sendEmail(params: {
   }
 }
 
-/** מייל על משימה חדשה */
-export async function emailTask(params: {
-  title: string;
-  body?: string | null;
-  leadId?: string | null;
+/**
+ * מייל על ליד שרוצה לדבר איתך.
+ * נשלח רק על מעוניינים ועל מי שביקש שתחזור אליו - לא על כל הודעה.
+ */
+export async function emailLeadAlert(params: {
+  headline: string;
+  customerName: string;
+  phone: string;
+  status: string;
+  message: string;
+  extra?: string | null;
+  leadId: string;
   urgent?: boolean;
 }) {
   const appUrl = process.env.APP_URL?.trim() || "";
-  const link =
-    appUrl && params.leadId ? `\n\nלכרטיס הליד: ${appUrl}/leads/${params.leadId}` : "";
+
+  const lines = [
+    params.headline,
+    "",
+    `שם:     ${params.customerName}`,
+    `טלפון:  ${params.phone}`,
+    `סטטוס:  ${params.status}`,
+    "",
+    "ההודעה שלו:",
+    `"${params.message}"`,
+  ];
+
+  if (params.extra) {
+    lines.push("", params.extra);
+  }
+
+  if (appUrl) {
+    lines.push("", `כרטיס הליד: ${appUrl}/leads/${params.leadId}`);
+    lines.push(`חיוג ישיר: tel:${params.phone}`);
+  }
+
+  lines.push("", "— העוזר של רובי");
 
   return sendEmail({
-    subject: params.urgent ? `🔥 ליד חם - ${params.title}` : params.title,
-    body: `${params.body ?? ""}${link}\n\n— העוזר של רובי`,
+    subject: params.urgent
+      ? `🔥 ליד חם - ${params.customerName} (${params.phone})`
+      : `${params.customerName} ביקש שתחזור אליו`,
+    body: lines.join("\n"),
   });
 }
