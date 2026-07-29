@@ -39,30 +39,36 @@ export async function POST(
   });
 
   const firstName = (lead.firstName || "").trim().split(/\s+/)[0] || "";
-  const variableCount = template?.variables ?? 1;
 
   /**
-   * לא תמיד ברור כמה משתנים יש בתבנית - טקסטר לא תמיד מחזיר את הטקסט.
-   * לכן מנסים פעם אחת עם השם הפרטי, ואם טקסטר מתלונן על הפרמטרים
-   * מנסים שוב בלי. ככה שליחה לא נכשלת בגלל חוסר מידע על התבנית.
+   * כלל אצבע: שולחים את השם הפרטי, אלא אם קראנו את טקסט התבנית
+   * ווידאנו שאין בה משתנים בכלל.
+   *
+   * למה: אם נשלח בלי שם לתבנית שיש בה {{1}}, הלקוח יקבל "היי 1".
+   * זו טעות גרועה בהרבה מלשלוח פרמטר מיותר - כי במקרה השני
+   * טקסטר פשוט יחזיר שגיאה ואנחנו ננסה שוב בלי.
    */
+  const readTemplateText = Boolean(template?.bodyText);
+  const sendName =
+    firstName !== "" && (!readTemplateText || (template?.variables ?? 1) > 0);
+
   let result = await sendTemplate({
     templateName,
     to: lead.phone,
-    body: variableCount > 0 ? [firstName] : undefined,
+    body: sendName ? [firstName] : undefined,
   });
 
-  let attempts = variableCount > 0 ? "עם שם" : "בלי משתנים";
+  let attempts = sendName ? "עם שם" : "בלי משתנים";
 
   if (!result.ok) {
     const retry = await sendTemplate({
       templateName,
       to: lead.phone,
-      body: variableCount > 0 ? undefined : [firstName],
+      body: sendName ? undefined : firstName ? [firstName] : undefined,
     });
     if (retry.ok) {
       result = retry;
-      attempts = variableCount > 0 ? "בלי משתנים (ניסיון שני)" : "עם שם (ניסיון שני)";
+      attempts = sendName ? "בלי משתנים (ניסיון שני)" : "עם שם (ניסיון שני)";
     }
   }
 

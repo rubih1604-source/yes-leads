@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isKnownStatus } from "@/lib/statuses";
 import { isLoggedIn } from "@/lib/auth";
+import { applyStatusChange } from "@/lib/rules";
 
 export const dynamic = "force-dynamic";
 
@@ -28,20 +29,9 @@ export async function POST(
     return NextResponse.json({ ok: true, unchanged: true });
   }
 
-  await db.lead.update({
-    where: { id: lead.id },
-    data: { status },
-  });
-
-  await db.leadEvent.create({
-    data: {
-      leadId: lead.id,
-      type: "status_changed",
-      fromStatus: lead.status,
-      toStatus: status,
-      actor: "user",
-    },
-  });
+  // כל שינוי סטטוס עובר דרך מנוע החוקים:
+  // מבטל מה שהיה מתוזמן ומתזמן מחדש לפי הסטטוס החדש
+  await applyStatusChange({ leadId: lead.id, toStatus: status, actor: "user" });
 
   return NextResponse.json({ ok: true, status });
 }

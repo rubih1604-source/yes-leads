@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { normalizePhone } from "@/lib/phone";
 import { mapLeadManagerPayload } from "@/lib/leadmanager-mapping";
 import { isKnownStatus } from "@/lib/statuses";
+import { scheduleForStatus } from "@/lib/rules";
 
 export const dynamic = "force-dynamic";
 
@@ -134,6 +135,9 @@ async function handle(request: Request) {
           payload: { webhookLogId: log.id },
         },
       });
+
+      // אם יש חוקים לסטטוס שבו הליד נכנס - מתזמנים אותם
+      await scheduleForStatus(lead.id, lead.status);
     } else {
       const statusChanged =
         incomingStatus !== null && incomingStatus !== existing.status;

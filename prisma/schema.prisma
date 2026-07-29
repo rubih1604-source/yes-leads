@@ -23,6 +23,8 @@ model Lead {
 
   events         LeadEvent[]
   messages       Message[]
+  jobs           ScheduledJob[]
+  alerts         Alert[]
 
   @@index([status])
   @@index([intakeAt])
@@ -76,4 +78,51 @@ model Message {
   createdAt       DateTime @default(now())
 
   @@index([leadId, createdAt])
+}
+
+model Rule {
+  id            String   @id @default(cuid())
+  triggerStatus String
+  stepIndex     Int
+  delayMinutes  Int
+  action        String   // send_template | notify | set_status
+  templateName  String?
+  targetStatus  String?
+  note          String?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  @@unique([triggerStatus, stepIndex])
+  @@index([triggerStatus])
+}
+
+model ScheduledJob {
+  id           String   @id @default(cuid())
+  leadId       String
+  lead         Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  ruleId       String
+  stepIndex    Int
+  action       String
+  templateName String?
+  targetStatus String?
+  runAt        DateTime
+  state        String   @default("pending") // pending | done | cancelled | failed
+  attempts     Int      @default(0)
+  lastError    String?
+  createdAt    DateTime @default(now())
+
+  @@unique([leadId, ruleId, stepIndex])
+  @@index([state, runAt])
+}
+
+model Alert {
+  id        String   @id @default(cuid())
+  leadId    String?
+  lead      Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  title     String
+  body      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([read, createdAt])
 }

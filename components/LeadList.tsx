@@ -57,9 +57,17 @@ export default function LeadList({ leads }: { leads: LeadRow[] }) {
         <h1>
           לידים
           <span className="count">{visible.length} מתוך {leads.length}</span>
-          <Link href="/templates" className="count" style={{ float: "left", color: "#fff", opacity: 0.85 }}>
-            תבניות
-          </Link>
+          <span style={{ float: "left", display: "flex", gap: 12 }}>
+            <Link href="/alerts" className="count" style={{ color: "#fff", opacity: 0.85 }}>
+              התראות
+            </Link>
+            <Link href="/rules" className="count" style={{ color: "#fff", opacity: 0.85 }}>
+              חוקים
+            </Link>
+            <Link href="/templates" className="count" style={{ color: "#fff", opacity: 0.85 }}>
+              תבניות
+            </Link>
+          </span>
         </h1>
         <input
           className="search"
