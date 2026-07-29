@@ -14,6 +14,8 @@ const EVENT_LABELS: Record<string, string> = {
   webhook_received: "עדכון מליד מנגר",
   message_sent: "נשלחה הודעה",
   message_failed: "שליחת הודעה נכשלה",
+  message_received: "הלקוח ענה",
+  alert_created: "נוצרה התראה",
 };
 
 function formatDate(d: Date): string {
@@ -85,28 +87,21 @@ export default async function LeadPage({
 
       {lead.messages.length > 0 && (
         <>
-          <div className="section-title">הודעות</div>
-          <div className="timeline">
-            {lead.messages.map((m) => (
+          <div className="section-title">שיחה</div>
+          <div className="chat">
+            {[...lead.messages].reverse().map((m) => (
               <div
-                className="event"
+                className={m.direction === "in" ? "bubble in" : "bubble out"}
                 key={m.id}
-                style={{
-                  borderInlineStartColor:
-                    m.status === "failed" ? "#dc2626" : "#16a34a",
-                }}
               >
-                {m.bodyText && (
-                  <div style={{ fontSize: 14, whiteSpace: "pre-wrap" }}>
-                    {m.bodyText}
-                  </div>
-                )}
-                <div className="when">
-                  {m.status === "failed"
-                    ? `נכשל: ${m.error ?? "שגיאה"}`
+                {m.bodyText && <div className="bubble-text">{m.bodyText}</div>}
+                <div className="bubble-meta">
+                  {m.direction === "in"
+                    ? "הלקוח"
+                    : m.status === "failed"
+                    ? `נכשל: ${m.error?.slice(0, 80) ?? "שגיאה"}`
                     : "נשלח"}
-                  {" · "}
-                  {m.templateName}
+                  {m.templateName ? ` · ${m.templateName}` : ""}
                   {" · "}
                   {formatDate(m.createdAt)}
                 </div>

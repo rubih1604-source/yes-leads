@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const leads = await db.lead.findMany({
-    orderBy: { intakeAt: "desc" },
+    orderBy: [{ lastInboundAt: { sort: "desc", nulls: "last" } }, { intakeAt: "desc" }],
     take: 500,
     select: {
       id: true,
@@ -15,12 +15,14 @@ export default async function HomePage() {
       lastName: true,
       status: true,
       intakeAt: true,
+      lastInboundAt: true,
     },
   });
 
   const rows: LeadRow[] = leads.map((l) => ({
     ...l,
     intakeAt: l.intakeAt.toISOString(),
+    lastInboundAt: l.lastInboundAt ? l.lastInboundAt.toISOString() : null,
   }));
 
   return (

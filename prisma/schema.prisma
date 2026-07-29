@@ -17,6 +17,7 @@ model Lead {
   intakeAt       DateTime @default(now())
   doNotContact   Boolean  @default(false)
   needsMapping   Boolean  @default(false)
+  lastInboundAt  DateTime?
   notes          String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

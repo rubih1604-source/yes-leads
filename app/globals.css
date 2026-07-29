@@ -292,3 +292,61 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* ---------- שיחה ---------- */
+
+.chat {
+  margin: 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bubble {
+  max-width: 85%;
+  border-radius: 14px;
+  padding: 10px 13px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+/* הודעות שלנו - יוצאות, בצד ההתחלה */
+.bubble.out {
+  align-self: flex-start;
+  background: #dcf8c6;
+  border-start-start-radius: 4px;
+}
+
+/* הודעות הלקוח - בולטות, בצד השני */
+.bubble.in {
+  align-self: flex-end;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-start-end-radius: 4px;
+}
+
+.bubble-text {
+  font-size: 15px;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.bubble-meta {
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-top: 4px;
+}
+
+/* סימון ליד שענה וממתין לך */
+.lead.hot {
+  box-shadow: 0 0 0 2px var(--hot), 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.badge-hot {
+  background: var(--hot);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin-inline-start: 6px;
+}
