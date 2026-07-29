@@ -81,6 +81,9 @@ export default function LeadList({
             <Link href="/rules" className="count" style={{ color: "#fff", opacity: 0.85 }}>
               חוקים
             </Link>
+            <Link href="/knowledge" className="count" style={{ color: "#fff", opacity: 0.85 }}>
+              ידע
+            </Link>
             <Link href="/templates" className="count" style={{ color: "#fff", opacity: 0.85 }}>
               תבניות
             </Link>

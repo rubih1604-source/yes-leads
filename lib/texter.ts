@@ -9,6 +9,10 @@
  *  TEXTER_PROJECT_ID   - למשל easypeasy
  *  TEXTER_API_TOKEN    - הטוקן מטקסטר
  *  TEXTER_BASE_URL     - אופציונלי, דורס את הכתובת שנבנית לבד
+ *                        (עד /server/api/v2, בלי סיומת)
+ *
+ *  שים לב: התבניות יושבות תחת /whatsapp/templates, אבל ההודעות
+ *  והצ'אטים יושבים ישירות תחת /messages ו-/chats. בלי זה מקבלים 404.
  */
 
 function baseUrl(): string {
@@ -18,7 +22,7 @@ function baseUrl(): string {
   const projectId = process.env.TEXTER_PROJECT_ID?.trim();
   if (!projectId) throw new Error("חסר TEXTER_PROJECT_ID בהגדרות");
 
-  return `https://${projectId}.texterchat.com/server/api/v2/whatsapp`;
+  return `https://${projectId}.texterchat.com/server/api/v2`;
 }
 
 function authHeader(): string {
@@ -190,7 +194,7 @@ export function parseTemplates(payload: unknown): ParsedTemplate[] {
 }
 
 export async function listTemplates() {
-  return call<unknown>("/templates", { method: "GET" });
+  return call<unknown>("/whatsapp/templates", { method: "GET" });
 }
 
 // ---------- שליחת תבנית ----------
@@ -213,7 +217,7 @@ export async function sendTemplate(params: {
   };
   if (params.body && params.body.length) payload.body = params.body;
 
-  return call<SendResponse>("/templates/send", {
+  return call<SendResponse>("/whatsapp/templates/send", {
     method: "POST",
     body: JSON.stringify(payload),
   });

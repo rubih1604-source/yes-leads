@@ -14,6 +14,8 @@ import { applyStatusChange } from "./rules";
 import { isWithinWorkingHours, shiftToWorkingHours } from "./working-hours";
 import { displayPhone } from "./phone";
 import { searchChatByPhone, extractChatId, sendSessionMessage } from "./texter";
+import { answerFromKnowledge } from "./answer";
+import { emailTask } from "./email";
 
 /** מוצא את מזהה הצ'אט של הליד, ושומר אותו להבא */
 async function resolveChatId(leadId: string, phone: string, known: string | null) {
@@ -225,6 +227,12 @@ export async function handleInboundMessage(params: {
       },
     });
 
+    await emailTask({
+      title: `${displayName} ביקש שתחזור אליו`,
+      body: `${params.text.slice(0, 300)}${dueAt ? `\n\nהזמן שביקש: ${dueAt.toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" })}` : "\n\nלא ציין זמן מדויק - כדאי לבדוק"}`,
+      leadId: lead.id,
+    });
+
     actions.push(dueAt ? "task:scheduled" : "task:needs-review");
     return { classification, actions };
   }
@@ -248,6 +256,13 @@ export async function handleInboundMessage(params: {
       },
     });
 
+    await emailTask({
+      title: `להתקשר ל${displayName}`,
+      body: `הלקוח הביע עניין:\n"${params.text.slice(0, 300)}"`,
+      leadId: lead.id,
+      urgent: true,
+    });
+
     await db.alert.create({
       data: {
         leadId: lead.id,
@@ -260,7 +275,78 @@ export async function handleInboundMessage(params: {
     return { classification, actions };
   }
 
-  // ---------- שאלה או משהו לא ברור: לא נוגעים בסטטוס ----------
+  // ---------- שאלה טכנית או שירותית: העוזר עונה ממאגר הידע ----------
+  if (
+    classification.intent === "technical_question" ||
+    classification.intent === "question"
+  ) {
+    const answered = await answerFromKnowledge({
+      question: params.text,
+      customerName: lead.firstName,
+    });
+
+    if (answered.canAnswer && answered.answer) {
+      const sent = await replyToLead({
+        leadId: lead.id,
+        phone: lead.phone,
+        chatId: lead.chatId,
+        text: answered.answer,
+      });
+
+      await db.leadEvent.create({
+        data: {
+          leadId: lead.id,
+          type: "bot_answered",
+          actor: "bot",
+          payload: { usedTopics: answered.usedTopics, sent },
+        },
+      });
+
+      await db.alert.create({
+        data: {
+          leadId: lead.id,
+          title: "העוזר ענה ללקוח",
+          body: `${displayName} שאל: "${params.text.slice(0, 150)}"\nהעוזר ענה: "${answered.answer.slice(0, 150)}"`,
+        },
+      });
+
+      actions.push("reply:knowledge");
+      return { classification, actions };
+    }
+
+    // אין תשובה במאגר - לא ממציאים. מודיעים ללקוח ופותחים משימה.
+    await replyToLead({
+      leadId: lead.id,
+      phone: lead.phone,
+      chatId: lead.chatId,
+      text: "קיבלתי, אני בודק את זה ונחזור אליך עם תשובה בהקדם.",
+    });
+
+    await db.task.create({
+      data: {
+        leadId: lead.id,
+        title: `שאלה מ${displayName} - צריך תשובה`,
+        body: [
+          `השאלה: "${params.text.slice(0, 300)}"`,
+          "",
+          "העוזר לא מצא תשובה במאגר הידע ולא המציא.",
+          "אחרי שתענה - שווה להוסיף את זה למאגר כדי שהוא ידע בפעם הבאה.",
+        ].join("\n"),
+        needsReview: true,
+      },
+    });
+
+    await emailTask({
+      title: `שאלה מ${displayName}`,
+      body: `"${params.text.slice(0, 300)}"\n\nהעוזר לא ידע לענות - צריך אותך.`,
+      leadId: lead.id,
+    });
+
+    actions.push("reply:holding", "task:answer-needed");
+    return { classification, actions };
+  }
+
+  // ---------- משהו לא ברור: לא נוגעים בסטטוס ----------
   await db.task.create({
     data: {
       leadId: lead.id,
@@ -275,6 +361,12 @@ export async function handleInboundMessage(params: {
         .join("\n"),
       needsReview: true,
     },
+  });
+
+  await emailTask({
+    title: `הודעה מ${displayName} - צריך את המבט שלך`,
+    body: `"${params.text.slice(0, 300)}"`,
+    leadId: lead.id,
   });
 
   actions.push("task:manual");

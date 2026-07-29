@@ -16,7 +16,8 @@ const EVENT_LABELS: Record<string, string> = {
   message_failed: "שליחת הודעה נכשלה",
   message_received: "הלקוח ענה",
   alert_created: "נוצרה התראה",
-  bot_classified: "הבוט סיווג את התגובה",
+  bot_classified: "העוזר סיווג את התגובה",
+  bot_answered: "העוזר ענה ללקוח",
 };
 
 function formatDate(d: Date): string {
