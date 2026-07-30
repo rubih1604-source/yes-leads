@@ -50,3 +50,15 @@ export function displayPhone(phone: string): string {
   }
   return phone;
 }
+
+/**
+ * מחזיר מספר לחיוג בפורמט מקומי: 0501234567
+ *
+ * למה לא הפורמט הבינלאומי: חלק מהחייגנים בישראל חוסמים
+ * מספרים עם +972 ומסרבים לחייג. הפורמט המקומי תמיד עובד.
+ */
+export function dialPhone(phone: string): string {
+  if (phone.startsWith("+972")) return "0" + phone.slice(4);
+  if (phone.startsWith("972")) return "0" + phone.slice(3);
+  return phone.replace(/[^\d+]/g, "");
+}

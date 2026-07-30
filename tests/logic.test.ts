@@ -73,3 +73,20 @@ console.log(`עברו: ${passed}   נכשלו: ${failed}`);
 console.log("=".repeat(40) + "\n");
 
 if (failed > 0) process.exit(1);
+
+// ---- מספר לחיוג ----
+import { dialPhone } from "../lib/phone";
+
+console.log("\nמספר לחיוג (החייגן חוסם +972)");
+{
+  let p2 = 0, f2 = 0;
+  const c = (label: string, a: unknown, e: unknown) => {
+    if (JSON.stringify(a) === JSON.stringify(e)) { p2++; console.log(`  ✓ ${label}`); }
+    else { f2++; console.log(`  ✗ ${label} התקבל ${JSON.stringify(a)} ציפינו ${JSON.stringify(e)}`); }
+  };
+  c("בינלאומי -> מקומי", dialPhone("+972501234567"), "0501234567");
+  c("בלי פלוס -> מקומי", dialPhone("972501234567"), "0501234567");
+  c("כבר מקומי", dialPhone("0501234567"), "0501234567");
+  c("קו נייח", dialPhone("+97231234567"), "031234567");
+  console.log(`  (${p2} עברו, ${f2} נכשלו)`);
+}

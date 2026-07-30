@@ -647,14 +647,15 @@ button {
 
 @media (min-width: 900px) {
   .nav {
-    inset-inline-end: 0;
-    inset-inline-start: auto;
+    /* בעברית הצד ההתחלתי הוא ימין - שם הסרגל יושב */
+    inset-inline-start: 0;
+    inset-inline-end: auto;
     top: 0;
     bottom: 0;
     width: var(--side-w);
     flex-direction: column;
     border-top: none;
-    border-inline-start: 1px solid var(--rule);
+    border-inline-end: 1px solid var(--rule);
     padding: 18px 12px;
     gap: 4px;
   }
@@ -702,7 +703,7 @@ button {
   }
 
   .app {
-    margin-inline-end: var(--side-w);
+    margin-inline-start: var(--side-w);
     max-width: 780px;
     padding-bottom: 40px;
   }

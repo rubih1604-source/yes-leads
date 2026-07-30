@@ -75,7 +75,7 @@ export async function emailLeadAlert(params: {
 
   if (appUrl) {
     lines.push("", `כרטיס הליד: ${appUrl}/leads/${params.leadId}`);
-    lines.push(`חיוג ישיר: tel:${params.phone}`);
+    lines.push(`חיוג ישיר: tel:${params.phone.replace(/\D/g, "")}`);
   }
 
   lines.push("", "— העוזר של רובי");

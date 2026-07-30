@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { statusColor } from "@/lib/statuses";
-import { displayPhone } from "@/lib/phone";
+import { displayPhone, dialPhone } from "@/lib/phone";
 import LeadCardActions from "@/components/LeadCardActions";
 import AutoRefresh from "@/components/AutoRefresh";
 
@@ -96,7 +96,7 @@ export default async function LeadPage({
           />
           <span style={{ color: statusColor(lead.status) }}>{lead.status}</span>
           <span className="sep">·</span>
-          <a href={`tel:${lead.phone}`}>{displayPhone(lead.phone)}</a>
+          <a href={`tel:${dialPhone(lead.phone)}`}>{displayPhone(lead.phone)}</a>
         </div>
       </div>
 
@@ -108,7 +108,7 @@ export default async function LeadPage({
 
         <LeadCardActions
           leadId={lead.id}
-          phone={lead.phone}
+          phone={dialPhone(lead.phone)}
           status={lead.status}
           firstName={firstName}
           templates={templates}
