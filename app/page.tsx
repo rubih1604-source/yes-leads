@@ -1,13 +1,19 @@
 import { db } from "@/lib/db";
 import LeadList, { type LeadRow } from "@/components/LeadList";
 import AutoRefresh from "@/components/AutoRefresh";
+import { getStatuses } from "@/lib/status-store";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
+  const statuses = await getStatuses();
+
   const leads = await db.lead.findMany({
     // סדר קבוע: הליד האחרון שנכנס תמיד למעלה.
     // ההתכתבויות יושבות במסך נפרד ולא משנות את הסדר כאן.
+    // רק לידים אמיתיים. מי שכתב בוואטסאפ בלי להיות ליד
+    // יושב במסך השיחות בלבד.
+    where: { origin: "leadmanager" },
     orderBy: { intakeAt: "desc" },
     take: 500,
     select: {
@@ -17,18 +23,31 @@ export default async function HomePage() {
       lastName: true,
       status: true,
       intakeAt: true,
+      extra: true,
     },
   });
 
-  const rows: LeadRow[] = leads.map((l) => ({
-    ...l,
-    intakeAt: l.intakeAt.toISOString(),
-  }));
+  const rows: LeadRow[] = leads.map((l) => {
+    const extra =
+      l.extra && typeof l.extra === "object" && !Array.isArray(l.extra)
+        ? (l.extra as Record<string, string>)
+        : {};
+
+    return {
+      id: l.id,
+      phone: l.phone,
+      firstName: l.firstName,
+      lastName: l.lastName,
+      status: l.status,
+      intakeAt: l.intakeAt.toISOString(),
+      campaign: extra.fb_campaign || extra.campaign || null,
+    };
+  });
 
   return (
     <div className="app">
       <AutoRefresh seconds={15} />
-      <LeadList leads={rows} />
+      <LeadList leads={rows} statuses={statuses} />
     </div>
   );
 }

@@ -22,7 +22,7 @@ import { matchKnowledge } from "./answer";
 import { emailLeadAlert } from "./email";
 import { shouldBotReply } from "./bot-gate";
 import { getSettings } from "./settings";
-import { STATUSES } from "./statuses";
+import { getWonStatusNames } from "./status-store";
 
 /** מוצא את מזהה הצ'אט של הליד, ושומר אותו להבא */
 async function resolveChatId(leadId: string, phone: string, known: string | null) {
@@ -79,8 +79,9 @@ async function replyToLead(params: {
 }
 
 /** בודק אם הסטטוס הוא של עסקה סגורה */
-function isClosedStatus(status: string): boolean {
-  return STATUSES.find((s) => s.name === status)?.won === true;
+async function isClosedStatus(status: string): Promise<boolean> {
+  const won = await getWonStatusNames();
+  return won.includes(status);
 }
 
 /** ממלא את מציין המקום {מתי} בניסוח הנכון ליום */
@@ -161,7 +162,7 @@ export async function handleInboundMessage(params: {
    * הוא עדיין באמצע התהליך והשיחה עשויה להיות מכירתית.
    */
   let closedForService = false;
-  if (isClosedStatus(lead.status)) {
+  if (await isClosedStatus(lead.status)) {
     const closedEvent = await db.leadEvent.findFirst({
       where: { leadId: lead.id, type: "status_changed", toStatus: lead.status },
       orderBy: { createdAt: "desc" },

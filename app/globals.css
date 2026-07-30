@@ -885,3 +885,55 @@ button {
     font-size: 10px;
   }
 }
+
+/* ---------- סינון לפי קמפיין ---------- */
+
+.campaign-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 60vw;
+}
+.campaign-chip > :first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.campaign-chip .chev {
+  font-size: 11px;
+  opacity: 0.7;
+  flex: 0 0 auto;
+}
+
+.campaign-summary {
+  margin: 0 16px 10px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-inline-start: 4px solid var(--signal);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.campaign-summary-name {
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 8px;
+  word-break: break-word;
+}
+
+.campaign-summary-nums {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-bottom: 12px;
+}
+.campaign-summary-nums strong {
+  font-family: "Rubik", sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-inline-end: 3px;
+}

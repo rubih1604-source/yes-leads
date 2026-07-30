@@ -4,10 +4,13 @@ import RulesScreen, {
   type TemplateChoice,
 } from "@/components/RulesScreen";
 import AutoRefresh from "@/components/AutoRefresh";
+import { getStatuses } from "@/lib/status-store";
 
 export const dynamic = "force-dynamic";
 
 export default async function RulesPage() {
+  const statuses = await getStatuses();
+
   const [rules, templates, pending] = await Promise.all([
     db.rule.findMany({
       orderBy: [{ triggerStatus: "asc" }, { stepIndex: "asc" }],
@@ -32,6 +35,7 @@ export default async function RulesPage() {
       <RulesScreen
         rules={rules as RuleRow[]}
         templates={templates as TemplateChoice[]}
+        statuses={statuses}
       />
     </div>
   );

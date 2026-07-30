@@ -14,6 +14,7 @@ model Lead {
   lastName       String?
   status         String   @default("חדש")
   source         String?
+  origin         String   @default("leadmanager")
   intakeAt       DateTime @default(now())
   doNotContact   Boolean  @default(false)
   needsMapping   Boolean  @default(false)
@@ -33,6 +34,7 @@ model Lead {
   tasks          Task[]
 
   @@index([status])
+  @@index([origin, intakeAt])
   @@index([intakeAt])
 }
 
@@ -145,6 +147,7 @@ model Task {
   urgent      Boolean   @default(false)
   done        Boolean   @default(false)
   doneAt      DateTime?
+  notifiedAt  DateTime?
   createdAt   DateTime  @default(now())
 
   @@index([done, dueAt])
@@ -174,4 +177,17 @@ model Settings {
   replyCallback        String   @default("מעולה, רשמתי. אחזור אליך בזמן שביקשת :)")
 
   updatedAt            DateTime @updatedAt
+}
+
+model Status {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String   @default("#64748b")
+  position  Int      @default(100)
+  terminal  Boolean  @default(false)
+  won       Boolean  @default(false)
+  builtin   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([position])
 }

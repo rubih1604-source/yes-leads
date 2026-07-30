@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isKnownStatus } from "@/lib/statuses";
+import { isKnownStatus } from "@/lib/status-store";
 import { isLoggedIn } from "@/lib/auth";
 import { applyStatusChange } from "@/lib/rules";
 
@@ -16,7 +16,7 @@ export async function POST(
 
   const { status } = await request.json().catch(() => ({ status: "" }));
 
-  if (!status || !isKnownStatus(status)) {
+  if (!status || !(await isKnownStatus(status))) {
     return NextResponse.json({ error: "סטטוס לא מוכר" }, { status: 400 });
   }
 

@@ -169,12 +169,18 @@ async function handle(request: Request) {
     // מוצאים את הליד, ואם אין - יוצרים אחד
     let lead = await db.lead.findUnique({ where: { phone } });
     if (!lead) {
+      /**
+       * מישהו כתב בוואטסאפ בלי שהוא ליד מליד מנגר.
+       * נשמר כדי שהשיחה תופיע במסך השיחות, אבל מסומן
+       * כ-whatsapp ולכן לא ייכנס לרשימת הלידים.
+       */
       lead = await db.lead.create({
         data: {
           phone,
           firstName: mapped.senderName,
           status: "חדש",
           source: "הודעה נכנסת",
+          origin: "whatsapp",
         },
       });
       await db.leadEvent.create({

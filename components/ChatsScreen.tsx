@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { statusColor } from "@/lib/statuses";
+import { statusColor, type StatusDef } from "@/lib/statuses";
 import { displayPhone } from "@/lib/phone";
 
 export type ChatRow = {
@@ -41,7 +41,13 @@ function timeLabel(iso: string): string {
   });
 }
 
-export default function ChatsScreen({ chats }: { chats: ChatRow[] }) {
+export default function ChatsScreen({
+  chats,
+  statuses,
+}: {
+  chats: ChatRow[];
+  statuses: StatusDef[];
+}) {
   const [query, setQuery] = useState("");
   const [waitingOnly, setWaitingOnly] = useState(false);
 
@@ -111,7 +117,7 @@ export default function ChatsScreen({ chats }: { chats: ChatRow[] }) {
             >
               <span
                 className="bar"
-                style={{ background: statusColor(c.status) }}
+                style={{ background: statusColor(c.status, statuses) }}
               />
               <Link href={`/leads/${c.leadId}`} className="body">
                 <div className="name">
@@ -147,7 +153,7 @@ export default function ChatsScreen({ chats }: { chats: ChatRow[] }) {
                   className="meta"
                   style={{ marginTop: 2, fontSize: 12 }}
                 >
-                  <span style={{ color: statusColor(c.status) }}>
+                  <span style={{ color: statusColor(c.status, statuses) }}>
                     {c.status}
                   </span>
                   <span>·</span>

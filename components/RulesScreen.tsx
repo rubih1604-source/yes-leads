@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { statusColor } from "@/lib/statuses";
+import { statusColor, type StatusDef } from "@/lib/statuses";
 
 export type RuleRow = {
   id: string;
@@ -221,9 +221,11 @@ function RuleCard({
 export default function RulesScreen({
   rules,
   templates,
+  statuses,
 }: {
   rules: RuleRow[];
   templates: TemplateChoice[];
+  statuses: StatusDef[];
 }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -261,7 +263,7 @@ export default function RulesScreen({
 
       {Object.entries(byStatus).map(([status, list]) => (
         <div key={status}>
-          <div className="section-title" style={{ color: statusColor(status) }}>
+          <div className="section-title" style={{ color: statusColor(status, statuses) }}>
             {status}
           </div>
           <div className="timeline">
@@ -272,7 +274,7 @@ export default function RulesScreen({
                   key={r.id}
                   rule={r}
                   templates={templates}
-                  color={statusColor(status)}
+                  color={statusColor(status, statuses)}
                   onChanged={() => router.refresh()}
                 />
               ))}

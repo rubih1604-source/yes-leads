@@ -14,7 +14,8 @@
  */
 
 import { db } from "./db";
-import { STATUSES } from "./statuses";
+import { getStatuses } from "./status-store";
+import { startOfIsraelDay } from "./working-hours";
 
 const REPLY_WINDOW_MS = 72 * 60 * 60 * 1000;
 
@@ -60,8 +61,11 @@ export type AssistantStat = {
   skipped: number;
 };
 
+export type Period = "today" | 7 | 30 | 90;
+
 export type DashboardData = {
-  days: number;
+  period: Period;
+  label: string;
   now: Overview;
   previous: Overview;
   templates: TemplateStat[];
@@ -69,10 +73,6 @@ export type DashboardData = {
   speed: SpeedStat;
   assistant: AssistantStat;
 };
-
-const WON_STATUSES = new Set(
-  STATUSES.filter((s) => s.won).map((s) => s.name)
-);
 
 function pct(part: number, whole: number): number {
   if (whole <= 0) return 0;
@@ -88,7 +88,11 @@ function median(values: number[]): number | null {
     : sorted[mid];
 }
 
-async function overviewFor(from: Date, to: Date): Promise<Overview> {
+async function overviewFor(
+  from: Date,
+  to: Date,
+  wonNames: Set<string>
+): Promise<Overview> {
   const leads = await db.lead.findMany({
     where: { intakeAt: { gte: from, lt: to } },
     select: { id: true, status: true },
@@ -112,7 +116,7 @@ async function overviewFor(from: Date, to: Date): Promise<Overview> {
     else repliedSet.add(m.leadId);
   }
 
-  const won = leads.filter((l) => WON_STATUSES.has(l.status)).length;
+  const won = leads.filter((l) => wonNames.has(l.status)).length;
 
   return {
     leads: leads.length,
@@ -124,14 +128,39 @@ async function overviewFor(from: Date, to: Date): Promise<Overview> {
   };
 }
 
-export async function getDashboard(days = 30): Promise<DashboardData> {
+export async function getDashboard(
+  period: Period = 30
+): Promise<DashboardData> {
   const now = new Date();
-  const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-  const prevFrom = new Date(from.getTime() - days * 24 * 60 * 60 * 1000);
+
+  /**
+   * "היום" נמדד מחצות בשעון ישראל, לא 24 שעות אחורה.
+   * ההשוואה היא לאתמול באותן שעות, כדי שיהיה אפשר להשוות
+   * בוקר לבוקר ולא בוקר ליממה שלמה.
+   */
+  let from: Date;
+  let prevFrom: Date;
+  let prevTo: Date;
+
+  if (period === "today") {
+    from = startOfIsraelDay(now);
+    prevFrom = new Date(from.getTime() - 24 * 60 * 60 * 1000);
+    prevTo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  } else {
+    const ms = period * 24 * 60 * 60 * 1000;
+    from = new Date(now.getTime() - ms);
+    prevFrom = new Date(from.getTime() - ms);
+    prevTo = from;
+  }
+
+  const allStatuses = await getStatuses();
+  const wonNames = new Set(
+    allStatuses.filter((s) => s.won).map((s) => s.name)
+  );
 
   const [current, previous] = await Promise.all([
-    overviewFor(from, now),
-    overviewFor(prevFrom, from),
+    overviewFor(from, now, wonNames),
+    overviewFor(prevFrom, prevTo, wonNames),
   ]);
 
   // ---------- ביצועי תבניות ----------
@@ -167,7 +196,7 @@ export async function getDashboard(days = 30): Promise<DashboardData> {
         where: {
           leadId: { in: leadIds },
           type: "status_changed",
-          toStatus: { in: Array.from(WON_STATUSES) },
+          toStatus: { in: Array.from(wonNames) },
         },
         select: { leadId: true, createdAt: true },
       })
@@ -243,7 +272,7 @@ export async function getDashboard(days = 30): Promise<DashboardData> {
       .map((e) => [e.toStatus as string, e._count._all])
   );
 
-  const statuses: StatusStat[] = STATUSES.map((s) => ({
+  const statuses: StatusStat[] = allStatuses.map((s) => ({
     name: s.name,
     color: s.color,
     current: currentByStatus.get(s.name) ?? 0,
@@ -317,7 +346,9 @@ export async function getDashboard(days = 30): Promise<DashboardData> {
   };
 
   return {
-    days,
+    period,
+    label:
+      period === "today" ? "היום, מחצות" : `${period} הימים האחרונים`,
     now: current,
     previous,
     templates,

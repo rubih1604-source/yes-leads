@@ -11,9 +11,11 @@ import { db } from "./db";
 import { sendTemplate } from "./texter";
 import { applyStatusChange } from "./rules";
 import { displayPhone } from "./phone";
+import { sendEmail } from "./email";
 
 export type RunSummary = {
   picked: number;
+  taskReminders: number;
   sent: number;
   notified: number;
   statusChanged: number;
@@ -213,6 +215,7 @@ async function runOne(jobId: string, summary: RunSummary) {
 export async function runDueJobs(limit = 50): Promise<RunSummary> {
   const summary: RunSummary = {
     picked: 0,
+    taskReminders: 0,
     sent: 0,
     notified: 0,
     statusChanged: 0,
@@ -234,5 +237,70 @@ export async function runDueJobs(limit = 50): Promise<RunSummary> {
     await runOne(job.id, summary);
   }
 
+  await sendTaskReminders(summary);
+
   return summary;
+}
+
+/**
+ * תזכורות למשימות שהגיע זמנן.
+ * אתה פותח משימה ל-17:00, ובשעה 17:00 מגיע לך מייל.
+ * כל משימה מקבלת תזכורת אחת בלבד.
+ */
+async function sendTaskReminders(summary: RunSummary) {
+  const appUrl = process.env.APP_URL?.trim() || "";
+
+  const dueTasks = await db.task.findMany({
+    where: {
+      done: false,
+      notifiedAt: null,
+      dueAt: { not: null, lte: new Date() },
+    },
+    include: { lead: true },
+    take: 25,
+  });
+
+  for (const task of dueTasks) {
+    const lines = [task.title];
+
+    if (task.body) lines.push("", task.body);
+
+    if (task.lead) {
+      lines.push(
+        "",
+        `לקוח:  ${task.lead.firstName ?? displayPhone(task.lead.phone)}`,
+        `טלפון: ${displayPhone(task.lead.phone)}`,
+        `סטטוס: ${task.lead.status}`
+      );
+      if (appUrl) {
+        lines.push("", `כרטיס הליד: ${appUrl}/leads/${task.lead.id}`);
+        lines.push(`חיוג ישיר: tel:${displayPhone(task.lead.phone).replace(/\D/g, "")}`);
+      }
+    }
+
+    lines.push("", "— העוזר של רובי");
+
+    await sendEmail({
+      subject: task.urgent ? `🔥 ${task.title}` : `תזכורת: ${task.title}`,
+      body: lines.join("\n"),
+    });
+
+    await db.task
+      .update({ where: { id: task.id }, data: { notifiedAt: new Date() } })
+      .catch(() => null);
+
+    if (task.leadId) {
+      await db.alert
+        .create({
+          data: {
+            leadId: task.leadId,
+            title: "הגיע זמן המשימה",
+            body: task.title,
+          },
+        })
+        .catch(() => null);
+    }
+
+    summary.taskReminders++;
+  }
 }

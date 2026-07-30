@@ -4,6 +4,8 @@ import { useState } from "react";
 import StatusSheet from "./StatusSheet";
 import SendTemplateSheet, { type TemplateOption } from "./SendTemplateSheet";
 import SendKnowledgeSheet, { type KnowledgeOption } from "./SendKnowledgeSheet";
+import type { StatusDef } from "@/lib/statuses";
+import AddTaskSheet from "./AddTaskSheet";
 import { useRouter } from "next/navigation";
 
 export default function LeadCardActions({
@@ -17,6 +19,8 @@ export default function LeadCardActions({
   botMuted,
   botPausedUntil,
   knowledge,
+  statuses,
+  leadName,
 }: {
   leadId: string;
   phone: string;
@@ -28,10 +32,13 @@ export default function LeadCardActions({
   botMuted: boolean;
   botPausedUntil: string | null;
   knowledge: KnowledgeOption[];
+  statuses: StatusDef[];
+  leadName: string;
 }) {
   const [statusOpen, setStatusOpen] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
   const [knowledgeOpen, setKnowledgeOpen] = useState(false);
+  const [taskOpen, setTaskOpen] = useState(false);
   const [undoing, setUndoing] = useState(false);
   const router = useRouter();
 
@@ -81,6 +88,12 @@ export default function LeadCardActions({
           disabled={doNotContact}
         >
           שלח תשובת שירות
+        </button>
+      </div>
+
+      <div className="actions" style={{ marginTop: 10 }}>
+        <button className="btn" onClick={() => setTaskOpen(true)}>
+          פתח משימה עם תזכורת
         </button>
       </div>
 
@@ -141,7 +154,16 @@ export default function LeadCardActions({
         <StatusSheet
           leadId={leadId}
           current={status}
+          statuses={statuses}
           onClose={() => setStatusOpen(false)}
+        />
+      )}
+
+      {taskOpen && (
+        <AddTaskSheet
+          leadId={leadId}
+          leadName={leadName}
+          onClose={() => setTaskOpen(false)}
         />
       )}
 

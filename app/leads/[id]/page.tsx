@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { statusColor } from "@/lib/statuses";
 import { displayPhone, dialPhone } from "@/lib/phone";
 import { FIELD_LABELS, FIELD_ORDER } from "@/lib/leadmanager-mapping";
+import { getStatuses } from "@/lib/status-store";
 import LeadCardActions from "@/components/LeadCardActions";
 import AutoRefresh from "@/components/AutoRefresh";
 
@@ -22,6 +23,7 @@ const EVENT_LABELS: Record<string, string> = {
   bot_skipped: "העוזר לא ענה בכוונה",
   human_reply: "ענית ללקוח בעצמך",
   bot_escalated: "העוזר העביר אליך - הלקוח חזר",
+  task_created: "פתחת משימה",
 };
 
 function formatDate(d: Date): string {
@@ -49,6 +51,8 @@ export default async function LeadPage({
   });
 
   if (!lead) notFound();
+
+  const statuses = await getStatuses();
 
   const lastAutoChange = await db.leadEvent.findFirst({
     where: {
@@ -96,7 +100,7 @@ export default async function LeadPage({
           אתה יודע איפה הליד עומד לפני שקראת מילה. */}
       <div
         className="topbar lead-head"
-        style={{ borderBottomColor: statusColor(lead.status) }}
+        style={{ borderBottomColor: statusColor(lead.status, statuses) }}
       >
         <Link href="/" className="nav-back">
           <span>→</span>
@@ -106,9 +110,9 @@ export default async function LeadPage({
         <div className="lead-head-status">
           <span
             className="dot"
-            style={{ background: statusColor(lead.status) }}
+            style={{ background: statusColor(lead.status, statuses) }}
           />
-          <span style={{ color: statusColor(lead.status) }}>{lead.status}</span>
+          <span style={{ color: statusColor(lead.status, statuses) }}>{lead.status}</span>
           <span className="sep">·</span>
           <a href={`tel:${dialPhone(lead.phone)}`}>{displayPhone(lead.phone)}</a>
         </div>
@@ -133,6 +137,8 @@ export default async function LeadPage({
             lead.botPausedUntil ? lead.botPausedUntil.toISOString() : null
           }
           knowledge={knowledge}
+          statuses={statuses}
+          leadName={name}
         />
       </div>
 
@@ -214,7 +220,7 @@ export default async function LeadPage({
             key={e.id}
             style={{
               borderInlineStartColor: e.toStatus
-                ? statusColor(e.toStatus)
+                ? statusColor(e.toStatus, statuses)
                 : "#dde3ea",
             }}
           >

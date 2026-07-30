@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import ChatsScreen, { type ChatRow } from "@/components/ChatsScreen";
 import AutoRefresh from "@/components/AutoRefresh";
 import { displayPhone } from "@/lib/phone";
+import { getStatuses } from "@/lib/status-store";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,8 @@ export default async function ChatsPage() {
    * תיבת ההתכתבויות: מסודרת לפי ההודעה האחרונה, כמו וואטסאפ.
    * לוקחים את ההודעות האחרונות ומקבצים לפי ליד.
    */
+  const statuses = await getStatuses();
+
   const recent = await db.message.findMany({
     orderBy: { createdAt: "desc" },
     take: 600,
@@ -57,7 +60,7 @@ export default async function ChatsPage() {
   return (
     <div className="app">
       <AutoRefresh seconds={15} />
-      <ChatsScreen chats={chats} />
+      <ChatsScreen chats={chats} statuses={statuses} />
     </div>
   );
 }

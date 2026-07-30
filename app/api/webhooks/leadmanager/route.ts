@@ -7,7 +7,7 @@ import {
   extractExtraFields,
   looksLikeExistingCustomer,
 } from "@/lib/leadmanager-mapping";
-import { isKnownStatus } from "@/lib/statuses";
+import { isKnownStatus } from "@/lib/status-store";
 import { scheduleForStatus } from "@/lib/rules";
 
 export const dynamic = "force-dynamic";
@@ -115,7 +115,9 @@ async function handle(request: Request) {
     }
 
     const incomingStatus =
-      mapped.status && isKnownStatus(mapped.status) ? mapped.status : null;
+      mapped.status && (await isKnownStatus(mapped.status))
+        ? mapped.status
+        : null;
 
     const extra = extractExtraFields(raw);
 
@@ -175,6 +177,8 @@ async function handle(request: Request) {
           lastName: mapped.lastName ?? existing.lastName,
           source: mapped.source ?? existing.source,
           status: incomingStatus ?? existing.status,
+          // אם הוא נוצר קודם מהודעת וואטסאפ - עכשיו הוא ליד אמיתי
+          origin: "leadmanager",
           extra: Object.keys(extra).length
             ? ({
                 ...(typeof existing.extra === "object" && existing.extra

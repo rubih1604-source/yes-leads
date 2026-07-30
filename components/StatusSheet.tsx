@@ -2,15 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { STATUSES } from "@/lib/statuses";
+import type { StatusDef } from "@/lib/statuses";
 
 export default function StatusSheet({
   leadId,
   current,
+  statuses,
   onClose,
 }: {
   leadId: string;
   current: string;
+  statuses: StatusDef[];
   onClose: () => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
@@ -51,7 +53,7 @@ export default function StatusSheet({
       <div className="sheet">
         <h3>בחר סטטוס</h3>
         {error && <div className="error" style={{ margin: "0 6px 8px" }}>{error}</div>}
-        {STATUSES.map((s) => (
+        {statuses.map((s) => (
           <button
             key={s.name}
             className="status-option"

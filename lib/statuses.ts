@@ -5,15 +5,18 @@
  */
 
 export type StatusDef = {
+  id?: string;
   name: string;
   color: string;
+  position?: number;
+  builtin?: boolean;
   /** סטטוס סופי - לא ממשיכים לטפל בליד */
   terminal?: boolean;
   /** סטטוס של סגירת עסקה - נספר בדשבורד כהמרה */
   won?: boolean;
 };
 
-export const STATUSES: StatusDef[] = [
+export const DEFAULT_STATUSES: StatusDef[] = [
   { name: "חדש",                      color: "#2563eb" },
   { name: "אין מענה",                 color: "#f59e0b" },
   { name: "קיבל הצעה/פולואפ",         color: "#7c3aed" },
@@ -29,12 +32,18 @@ export const STATUSES: StatusDef[] = [
   { name: "נסגר דאבל סטינג",          color: "#059669", terminal: true, won: true },
 ];
 
-export const STATUS_NAMES = STATUSES.map((s) => s.name);
 
-export function statusColor(name: string): string {
-  return STATUSES.find((s) => s.name === name)?.color ?? "#94a3b8";
+
+/**
+ * צבע לפי שם. אפשר להעביר רשימה מעודכנת מהמערכת,
+ * ואם לא - נופלים לרשימת ברירת המחדל.
+ */
+export function statusColor(name: string, list?: StatusDef[]): string {
+  const source = list && list.length ? list : DEFAULT_STATUSES;
+  return source.find((s) => s.name === name)?.color ?? "#94a3b8";
 }
 
-export function isKnownStatus(name: string): boolean {
-  return STATUS_NAMES.includes(name);
+export function isWonStatus(name: string, list?: StatusDef[]): boolean {
+  const source = list && list.length ? list : DEFAULT_STATUSES;
+  return source.find((s) => s.name === name)?.won === true;
 }
