@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { normalizePhone } from "@/lib/phone";
-import { mapLeadManagerPayload } from "@/lib/leadmanager-mapping";
+import {
+  mapLeadManagerPayload,
+  extractExtraFields,
+  looksLikeExistingCustomer,
+} from "@/lib/leadmanager-mapping";
 import { isKnownStatus } from "@/lib/statuses";
 import { scheduleForStatus } from "@/lib/rules";
 
@@ -113,6 +117,15 @@ async function handle(request: Request) {
     const incomingStatus =
       mapped.status && isKnownStatus(mapped.status) ? mapped.status : null;
 
+    const extra = extractExtraFields(raw);
+
+    /**
+     * חוק אוטומטי: אם בשאלת הספק הלקוח סימן yes או סטינג -
+     * הוא כבר לקוח שלנו. נכנס ישר ל"לקוח קיים" במקום "חדש",
+     * כדי שלא יקבל פנייה מכירתית מיותרת.
+     */
+    const alreadyCustomer = looksLikeExistingCustomer(extra);
+
     const existing = await db.lead.findUnique({ where: { phone } });
 
     if (!existing) {
@@ -121,10 +134,23 @@ async function handle(request: Request) {
           phone,
           firstName: mapped.firstName,
           lastName: mapped.lastName,
-          status: incomingStatus ?? "חדש",
+          status: incomingStatus ?? (alreadyCustomer ? "לקוח קיים" : "חדש"),
           source: mapped.source,
+          extra: Object.keys(extra).length
+            ? (extra as Prisma.InputJsonObject)
+            : undefined,
         },
       });
+
+      if (alreadyCustomer && !incomingStatus) {
+        await db.alert.create({
+          data: {
+            leadId: lead.id,
+            title: "ליד נכנס כלקוח קיים",
+            body: `${mapped.firstName ?? phone} סימן בטופס ספק "${extra.supplier_question}" - הועבר אוטומטית ל"לקוח קיים".`,
+          },
+        });
+      }
 
       await db.leadEvent.create({
         data: {
@@ -149,6 +175,14 @@ async function handle(request: Request) {
           lastName: mapped.lastName ?? existing.lastName,
           source: mapped.source ?? existing.source,
           status: incomingStatus ?? existing.status,
+          extra: Object.keys(extra).length
+            ? ({
+                ...(typeof existing.extra === "object" && existing.extra
+                  ? (existing.extra as Record<string, string>)
+                  : {}),
+                ...extra,
+              } as Prisma.InputJsonObject)
+            : undefined,
         },
       });
 

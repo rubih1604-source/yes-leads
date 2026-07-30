@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { statusColor } from "@/lib/statuses";
 import { displayPhone, dialPhone } from "@/lib/phone";
+import { FIELD_LABELS, FIELD_ORDER } from "@/lib/leadmanager-mapping";
 import LeadCardActions from "@/components/LeadCardActions";
 import AutoRefresh from "@/components/AutoRefresh";
 
@@ -73,6 +74,19 @@ export default async function LeadPage({
   const name =
     `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim() ||
     displayPhone(lead.phone);
+
+  // פרטי הקמפיין והטופס, לפי סדר חשיבות
+  const extra =
+    lead.extra && typeof lead.extra === "object" && !Array.isArray(lead.extra)
+      ? (lead.extra as Record<string, string>)
+      : {};
+
+  const detailKeys = [
+    ...FIELD_ORDER.filter((k) => extra[k]),
+    ...Object.keys(extra).filter(
+      (k) => !FIELD_ORDER.includes(k) && extra[k]
+    ),
+  ];
   const firstName = (lead.firstName || "").trim().split(/\s+/)[0] || "";
 
   return (
@@ -121,6 +135,30 @@ export default async function LeadPage({
           knowledge={knowledge}
         />
       </div>
+
+      {detailKeys.length > 0 && (
+        <>
+          <div className="section-title">מאיפה הגיע</div>
+          <div className="card">
+            {detailKeys.map((key) => (
+              <div className="stat-row" key={key}>
+                <span>{FIELD_LABELS[key] ?? key}</span>
+                <strong
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 600,
+                    textAlign: "start",
+                    maxWidth: "62%",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {extra[key]}
+                </strong>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {lead.messages.length > 0 && (
         <>

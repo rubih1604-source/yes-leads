@@ -760,3 +760,128 @@ button {
   color: var(--ink-2);
   font-weight: 500;
 }
+
+/* ---------- ביצועים ---------- */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  padding: 4px 16px 0;
+}
+
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 14px;
+  box-shadow: var(--shadow);
+}
+
+.stat-num {
+  font-family: "Rubik", sans-serif;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.stat-label {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-top: 2px;
+}
+
+.delta {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.delta.up { color: var(--go); }
+.delta.down { color: var(--stop); }
+.delta.flat { color: var(--ink-3); }
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: 14.5px;
+}
+.stat-row:last-child { border-bottom: none; }
+.stat-row strong {
+  font-family: "Rubik", sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.bars {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 4px;
+}
+
+.bar-track {
+  flex: 1;
+  height: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  background: var(--signal);
+  border-radius: 999px;
+}
+
+.bar-num {
+  font-family: "Rubik", sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  min-width: 46px;
+  text-align: start;
+}
+
+.insight {
+  margin-top: 12px;
+  padding: 11px 13px;
+  background: var(--surface-2);
+  border-inline-start: 3px solid var(--warn);
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+.insight-card {
+  border-inline-start: 3px solid var(--signal);
+  font-size: 14.5px;
+  line-height: 1.7;
+}
+
+@media (min-width: 560px) {
+  .stat-grid { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* חמישה יעדים בסרגל — התאמת צפיפות בנייד */
+@media (max-width: 899px) {
+  .nav-item {
+    font-size: 10.5px;
+    gap: 2px;
+  }
+  .nav-item .glyph {
+    font-size: 18px;
+  }
+  .nav-badge {
+    inset-inline-start: calc(50% + 4px);
+    min-width: 16px;
+    height: 16px;
+    font-size: 10px;
+  }
+}

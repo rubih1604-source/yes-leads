@@ -13,6 +13,7 @@ import { usePathname } from "next/navigation";
  */
 
 const TABS = [
+  { href: "/dashboard", label: "ביצועים", glyph: "◱" },
   { href: "/today", label: "היום", glyph: "◎" },
   { href: "/", label: "לידים", glyph: "▤" },
   { href: "/chats", label: "שיחות", glyph: "✉" },
