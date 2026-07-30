@@ -17,7 +17,6 @@ export default async function HomePage() {
       lastName: true,
       status: true,
       intakeAt: true,
-      lastInboundAt: true,
     },
   });
 
@@ -40,7 +39,6 @@ export default async function HomePage() {
   const rows: LeadRow[] = leads.map((l) => ({
     ...l,
     intakeAt: l.intakeAt.toISOString(),
-    lastInboundAt: l.lastInboundAt ? l.lastInboundAt.toISOString() : null,
   }));
 
   return (

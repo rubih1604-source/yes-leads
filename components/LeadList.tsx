@@ -13,7 +13,6 @@ export type LeadRow = {
   lastName: string | null;
   status: string;
   intakeAt: string;
-  lastInboundAt: string | null;
 };
 
 function timeAgo(iso: string): string {
@@ -44,9 +43,7 @@ export default function LeadList({
   const visible = useMemo(() => {
     const q = query.trim();
     return leads.filter((lead) => {
-      if (filter === "__replied__") {
-        if (!lead.lastInboundAt) return false;
-      } else if (filter && lead.status !== filter) return false;
+      if (filter && lead.status !== filter) return false;
       if (!q) return true;
       const name = `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim();
       const digits = q.replace(/\D/g, "");
@@ -56,11 +53,6 @@ export default function LeadList({
       );
     });
   }, [leads, query, filter]);
-
-  const repliedCount = useMemo(
-    () => leads.filter((l) => l.lastInboundAt).length,
-    [leads]
-  );
 
   const usedStatuses = useMemo(() => {
     const set = new Set(leads.map((l) => l.status));
@@ -114,13 +106,6 @@ export default function LeadList({
         >
           הכל
         </button>
-        <button
-          className="chip"
-          data-active={filter === "__replied__"}
-          onClick={() => setFilter(filter === "__replied__" ? null : "__replied__")}
-        >
-          ענו {repliedCount > 0 ? `(${repliedCount})` : ""}
-        </button>
         {usedStatuses.map((s) => (
           <button
             key={s}
@@ -155,19 +140,13 @@ export default function LeadList({
               `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim() ||
               displayPhone(lead.phone);
             return (
-              <div
-                className={lead.lastInboundAt ? "lead hot" : "lead"}
-                key={lead.id}
-              >
+              <div className="lead" key={lead.id}>
                 <span
                   className="bar"
                   style={{ background: statusColor(lead.status) }}
                 />
                 <Link href={`/leads/${lead.id}`} className="body">
-                  <div className="name">
-                    {name}
-                    {lead.lastInboundAt && <span className="badge-hot">ענה</span>}
-                  </div>
+                  <div className="name">{name}</div>
                   <div className="meta">
                     <span
                       className="status-text"

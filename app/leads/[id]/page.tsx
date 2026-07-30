@@ -113,7 +113,24 @@ export default async function LeadPage({
 
       {lead.messages.length > 0 && (
         <>
-          <div className="section-title">שיחה</div>
+          <div className="section-title">שיחה עם הלקוח</div>
+
+          {lead.messages[0]?.direction === "in" && (
+            <div
+              style={{
+                margin: "0 16px 10px",
+                padding: "10px 14px",
+                background: "#dcfce7",
+                border: "1px solid #16a34a",
+                borderRadius: 12,
+                fontSize: 14,
+                fontWeight: 600,
+                color: "#14532d",
+              }}
+            >
+              הלקוח ענה וממתין לתשובה ממך
+            </div>
+          )}
           <div className="chat">
             {[...lead.messages].reverse().map((m) => (
               <div
