@@ -20,20 +20,29 @@ import { isWithinWorkingHours } from "./working-hours";
 export type GateDecision = {
   allowed: boolean;
   reason: string;
+  /**
+   * מצב "רק שירות": העוזר יענה על שאלות שירות וטכניקה,
+   * אבל **לא** יגיב לפניות מכירתיות - אלה מחכות להחלטה שלך.
+   */
+  serviceOnly: boolean;
 };
 
 export async function shouldBotReply(leadId: string): Promise<GateDecision> {
   const settings = await getSettings();
 
   if (!settings.botEnabled) {
-    return { allowed: false, reason: "הבוט כבוי בהגדרות" };
+    return { allowed: false, reason: "הבוט כבוי בהגדרות", serviceOnly: false };
   }
 
   const lead = await db.lead.findUnique({ where: { id: leadId } });
-  if (!lead) return { allowed: false, reason: "הליד לא נמצא" };
+  if (!lead) return { allowed: false, reason: "הליד לא נמצא", serviceOnly: false };
 
   if (lead.botMuted) {
-    return { allowed: false, reason: "הבוט מושתק מול הלקוח הזה" };
+    return {
+      allowed: false,
+      reason: "הבוט מושתק מול הלקוח הזה",
+      serviceOnly: false,
+    };
   }
 
   const now = new Date();
@@ -46,15 +55,20 @@ export async function shouldBotReply(leadId: string): Promise<GateDecision> {
       hour: "2-digit",
       minute: "2-digit",
     });
-    return { allowed: false, reason: `אתה בשיחה עם הלקוח - הבוט שותק עד ${until}` };
-  }
-
-  if (settings.botOnlyOutsideHours && isWithinWorkingHours(now)) {
     return {
       allowed: false,
-      reason: "שעות פעילות - בחרת שהבוט יענה רק מחוץ להן",
+      reason: `אתה בשיחה עם הלקוח - הבוט שותק עד ${until}`,
+      serviceOnly: false,
     };
   }
+
+  /**
+   * "לענות רק מחוץ לשעות" **אינו** השתקה מלאה.
+   * בשעות העבודה העוזר עדיין עונה על שאלות שירות - זה חוסך לך זמן
+   * ולא מסכן כלום. אבל פנייה מכירתית ("מעוניין להצטרף") לא מקבלת
+   * תשובה אוטומטית: אתה רואה אותה ומחליט בעצמך.
+   */
+  const serviceOnly = settings.botOnlyOutsideHours && isWithinWorkingHours(now);
 
   /**
    * הכלל שביקשת: אחרי שהעוזר כבר ענה וסיווג פעם אחת -
@@ -73,6 +87,7 @@ export async function shouldBotReply(leadId: string): Promise<GateDecision> {
     return {
       allowed: false,
       reason: "העוזר כבר טיפל בלקוח הזה, ואתה בשעות עבודה - ההודעה מחכה לך",
+      serviceOnly: false,
     };
   }
 
@@ -94,10 +109,11 @@ export async function shouldBotReply(leadId: string): Promise<GateDecision> {
     return {
       allowed: false,
       reason: `הבוט כבר ענה בדקות האחרונות (המתנה של ${settings.replyCooldownMinutes} דקות)`,
+      serviceOnly: false,
     };
   }
 
-  return { allowed: true, reason: "" };
+  return { allowed: true, reason: "", serviceOnly };
 }
 
 /**

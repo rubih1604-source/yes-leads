@@ -56,12 +56,12 @@ export default function SettingsScreen({ settings }: { settings: SettingsRow }) 
 
       <div className="card">
         <div style={{ fontWeight: 600, marginBottom: 4 }}>
-          לענות רק מחוץ לשעות הפעילות
+          פניות מכירה — רק מחוץ לשעות
         </div>
         <div style={{ fontSize: 13, color: "#64748b", marginBottom: 14 }}>
           {settings.botOnlyOutsideHours
-            ? "מופעל - בשעות העבודה אתה עונה, בערבים ובשבת הבוט מכסה"
-            : "כבוי - הבוט עונה תמיד (וזז הצידה אוטומטית כשאתה נכנס לשיחה)"}
+            ? "מופעל — בשעות העבודה לקוח שכותב \"מעוניין\" לא מקבל תשובה אוטומטית, אתה רואה ומחליט. שאלות שירות נענות תמיד."
+            : "כבוי — העוזר עונה גם על פניות מכירה בשעות העבודה (וזז הצידה כשאתה נכנס לשיחה)"}
         </div>
         <button
           className="btn"

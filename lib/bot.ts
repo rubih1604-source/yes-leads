@@ -273,19 +273,21 @@ export async function handleInboundMessage(params: {
       },
     });
 
-    await replyToLead({
-      leadId: lead.id,
-      phone: lead.phone,
-      chatId: lead.chatId,
-      text: fillPlaceholders(
-        dueAt
-          ? settings.replyCallback
-          : isWithinWorkingHours(now)
-          ? settings.replyInterested
-          : settings.replyAfterHours,
-        now
-      ),
-    });
+    if (!gate.serviceOnly) {
+      await replyToLead({
+        leadId: lead.id,
+        phone: lead.phone,
+        chatId: lead.chatId,
+        text: fillPlaceholders(
+          dueAt
+            ? settings.replyCallback
+            : isWithinWorkingHours(now)
+            ? settings.replyInterested
+            : settings.replyAfterHours,
+          now
+        ),
+      });
+    }
 
     await db.alert.create({
       data: {
@@ -313,29 +315,39 @@ export async function handleInboundMessage(params: {
 
   // ---------- מביע עניין ----------
   if (classification.intent === "interested" && classification.confidence >= 0.7) {
-    const sent = await replyToLead({
-      leadId: lead.id,
-      phone: lead.phone,
-      chatId: lead.chatId,
-      text: fillPlaceholders(
-        isWithinWorkingHours(now)
-          ? settings.replyInterested
-          : settings.replyAfterHours,
-        now
-      ),
-    });
+    /**
+     * במצב "רק שירות" לא שולחים תשובה מכירתית.
+     * הלקוח אמר שהוא מעוניין - אתה רואה ומחליט מה לענות.
+     */
+    const sent = gate.serviceOnly
+      ? false
+      : await replyToLead({
+          leadId: lead.id,
+          phone: lead.phone,
+          chatId: lead.chatId,
+          text: fillPlaceholders(
+            isWithinWorkingHours(now)
+              ? settings.replyInterested
+              : settings.replyAfterHours,
+            now
+          ),
+        });
 
     const afterHours = !isWithinWorkingHours(now);
 
     await db.task.create({
       data: {
         leadId: lead.id,
-        title: afterHours
+        title: gate.serviceOnly
+          ? `ליד חם - ${displayName} מחכה לתשובה ממך`
+          : afterHours
           ? `להתקשר ל${displayName} - ביקש מחוץ לשעות`
           : `ליד חם - להתקשר ל${displayName}`,
         body: [
           `הלקוח הביע עניין: "${params.text.slice(0, 300)}"`,
-          afterHours
+          gate.serviceOnly
+            ? "לא נשלחה תשובה אוטומטית - בחרת שפניות מכירתיות מחכות להחלטה שלך."
+            : afterHours
             ? `נשלחה לו הודעה ששאלה מתי ${nextWorkingPhrase(now)} מתאים לו. אם יענה עם שעה - תיפתח משימה נוספת לשעה הזו.`
             : null,
         ]
@@ -352,7 +364,11 @@ export async function handleInboundMessage(params: {
       phone: displayPhone(lead.phone),
       status: lead.status,
       message: params.text.slice(0, 400),
-      extra: sent ? "העוזר כבר ענה לו שנציג יחזור אליו." : null,
+      extra: gate.serviceOnly
+        ? "לא נשלחה תשובה אוטומטית - אתה מחליט מה לענות."
+        : sent
+        ? "העוזר כבר ענה לו."
+        : null,
       leadId: lead.id,
       urgent: true,
     });
