@@ -5,6 +5,16 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "לידים",
   description: "מערכת ניהול לידים",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "לידים",
+    statusBarStyle: "default",
+  },
+  icons: {
+    icon: "/icon-192.png",
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export const viewport: Viewport = {

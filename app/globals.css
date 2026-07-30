@@ -984,3 +984,21 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ---------- סינון תקופה ברשימת הלידים ---------- */
+
+.filters.periods {
+  padding-bottom: 0;
+  gap: 6px;
+}
+
+.period-chip {
+  padding: 7px 14px;
+  font-size: 13.5px;
+  border-radius: var(--radius-sm);
+}
+
+.period-chip[data-active="true"] {
+  background: var(--signal);
+  border-color: var(--signal);
+}

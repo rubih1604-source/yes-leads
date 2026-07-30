@@ -17,6 +17,27 @@ export type LeadRow = {
   supplier: string | null;
 };
 
+/** מרגע מתי לספור, לפי התקופה שנבחרה */
+function periodStart(period: string): number | null {
+  const now = new Date();
+
+  if (period === "today") {
+    const d = new Date(now);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }
+
+  if (period === "week") {
+    return now.getTime() - 7 * 24 * 60 * 60 * 1000;
+  }
+
+  if (period === "month") {
+    return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  }
+
+  return null;
+}
+
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
@@ -41,10 +62,17 @@ export default function LeadList({
   const [sheetFor, setSheetFor] = useState<LeadRow | null>(null);
   const [campaign, setCampaign] = useState<string | null>(null);
   const [campaignOpen, setCampaignOpen] = useState(false);
+  const [period, setPeriod] = useState<"all" | "today" | "week" | "month">(
+    "all"
+  );
 
   const visible = useMemo(() => {
     const q = query.trim();
+    const since = periodStart(period);
+
     return leads.filter((lead) => {
+      if (since !== null && new Date(lead.intakeAt).getTime() < since)
+        return false;
       if (campaign && lead.campaign !== campaign) return false;
       if (filter && lead.status !== filter) return false;
       if (!q) return true;
@@ -55,7 +83,7 @@ export default function LeadList({
         (digits.length >= 3 && lead.phone.includes(digits))
       );
     });
-  }, [leads, query, filter, campaign]);
+  }, [leads, query, filter, campaign, period]);
 
   /** הקמפיינים שיש בפועל, לפי כמות לידים */
   const campaigns = useMemo(() => {
@@ -107,6 +135,26 @@ export default function LeadList({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
+      </div>
+
+      <div className="filters periods">
+        {(
+          [
+            { key: "all", label: "הכל" },
+            { key: "today", label: "היום" },
+            { key: "week", label: "7 ימים" },
+            { key: "month", label: "החודש" },
+          ] as const
+        ).map((opt) => (
+          <button
+            key={opt.key}
+            className="chip period-chip"
+            data-active={period === opt.key}
+            onClick={() => setPeriod(opt.key)}
+          >
+            {opt.label}
+          </button>
+        ))}
       </div>
 
       <div className="filters">

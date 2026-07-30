@@ -50,7 +50,7 @@ export function israelParts(date: Date): IsraelParts {
 }
 
 /** בונה תאריך אמיתי משעה מסוימת בשעון ישראל */
-function fromIsrael(
+export function fromIsrael(
   year: number,
   month: number,
   day: number,
@@ -153,4 +153,10 @@ export function nextWorkingPhrase(now: Date = new Date()): string {
   }
 
   return `ביום ${DAY_NAMES[target.weekday]}`;
+}
+
+/** תחילת היום הנוכחי בשעון ישראל */
+export function startOfIsraelDay(date: Date = new Date()): Date {
+  const p = israelParts(date);
+  return fromIsrael(p.year, p.month, p.day, 0);
 }

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getDashboard } from "@/lib/stats";
+import { getDashboard, type Period } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
 
@@ -27,8 +27,17 @@ export default async function DashboardPage({
 }: {
   searchParams?: { days?: string };
 }) {
-  const days = Number(searchParams?.days) === 7 ? 7 : Number(searchParams?.days) === 90 ? 90 : 30;
-  const d = await getDashboard(days);
+  const raw = searchParams?.days;
+  const period: Period =
+    raw === "today"
+      ? "today"
+      : raw === "7"
+      ? 7
+      : raw === "90"
+      ? 90
+      : 30;
+
+  const d = await getDashboard(period);
 
   const best = d.templates.filter((t) => t.sent >= 5).sort((a, b) => b.replyRate - a.replyRate)[0];
   const worst = d.templates.filter((t) => t.sent >= 5).sort((a, b) => a.replyRate - b.replyRate)[0];
@@ -38,19 +47,26 @@ export default async function DashboardPage({
       <div className="topbar">
         <h1>
           ביצועים
-          <span className="count">{days} ימים אחרונים</span>
+          <span className="count">{d.label}</span>
         </h1>
       </div>
 
       <div className="filters">
-        {[7, 30, 90].map((n) => (
+        {(
+          [
+            { key: "today", label: "היום" },
+            { key: "7", label: "7 ימים" },
+            { key: "30", label: "30 ימים" },
+            { key: "90", label: "90 ימים" },
+          ] as const
+        ).map((opt) => (
           <Link
-            key={n}
-            href={`/dashboard?days=${n}`}
+            key={opt.key}
+            href={`/dashboard?days=${opt.key}`}
             className="chip"
-            data-active={days === n}
+            data-active={String(period) === opt.key}
           >
-            {n} ימים
+            {opt.label}
           </Link>
         ))}
       </div>
@@ -80,6 +96,13 @@ export default async function DashboardPage({
       </div>
 
       {/* ---- מהירות מגע ראשון ---- */}
+      {period === "today" && (
+        <div className="card insight-card" style={{ marginTop: 4 }}>
+          ההשוואה היא לאתמול באותן שעות, לא ליום שלם — ככה בוקר מושווה
+          לבוקר.
+        </div>
+      )}
+
       <div className="section-title">מהירות מגע ראשון</div>
       <div className="card">
         <div className="stat-row">
