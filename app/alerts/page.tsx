@@ -26,10 +26,6 @@ export default async function AlertsPage() {
     <div className="app">
       <AutoRefresh seconds={20} />
       <div className="topbar">
-        <Link href="/" className="nav-back">
-          <span>→</span>
-          <span>חזרה לרשימה</span>
-        </Link>
         <h1>
           התראות
           <span className="count">{alerts.length}</span>

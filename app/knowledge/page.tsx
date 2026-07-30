@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { db } from "@/lib/db";
 import KnowledgeScreen, { type KnowledgeRow } from "@/components/KnowledgeScreen";
 
@@ -17,10 +16,6 @@ export default async function KnowledgePage({
   return (
     <div className="app">
       <div className="topbar">
-        <Link href="/" className="nav-back">
-          <span>→</span>
-          <span>חזרה לרשימה</span>
-        </Link>
         <h1>
           מאגר הידע
           <span className="count">{items.length} נושאים</span>

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { db } from "@/lib/db";
 import RulesScreen, {
   type RuleRow,
@@ -24,10 +23,6 @@ export default async function RulesPage() {
     <div className="app">
       <AutoRefresh seconds={30} />
       <div className="topbar">
-        <Link href="/" className="nav-back">
-          <span>→</span>
-          <span>חזרה לרשימה</span>
-        </Link>
         <h1>
           חוקים
           <span className="count">{pending} משימות ממתינות</span>

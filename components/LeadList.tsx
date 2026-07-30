@@ -27,15 +27,7 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem" });
 }
 
-export default function LeadList({
-  leads,
-  openTasks = 0,
-  waitingReply = 0,
-}: {
-  leads: LeadRow[];
-  openTasks?: number;
-  waitingReply?: number;
-}) {
+export default function LeadList({ leads }: { leads: LeadRow[] }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<string | null>(null);
   const [sheetFor, setSheetFor] = useState<LeadRow | null>(null);
@@ -64,29 +56,10 @@ export default function LeadList({
       <div className="topbar">
         <h1>
           לידים
-          <span className="count">{visible.length} מתוך {leads.length}</span>
-          <span style={{ float: "left", display: "flex", gap: 12 }}>
-            <Link href="/today" className="count" style={{ color: "#fff", opacity: 0.85 }}>
-              היום{openTasks > 0 ? ` (${openTasks})` : ""}
-            </Link>
-            <Link href="/chats" className="count" style={{ color: "#fff", opacity: 0.85 }}>
-              שיחות{waitingReply > 0 ? ` (${waitingReply})` : ""}
-            </Link>
-            <Link href="/alerts" className="count" style={{ color: "#fff", opacity: 0.85 }}>
-              התראות
-            </Link>
-            <Link href="/rules" className="count" style={{ color: "#fff", opacity: 0.85 }}>
-              חוקים
-            </Link>
-            <Link href="/knowledge" className="count" style={{ color: "#fff", opacity: 0.85 }}>
-              ידע
-            </Link>
-            <Link href="/settings" className="count" style={{ color: "#fff", opacity: 0.85 }}>
-              הגדרות
-            </Link>
-            <Link href="/templates" className="count" style={{ color: "#fff", opacity: 0.85 }}>
-              תבניות
-            </Link>
+          <span className="count">
+            {visible.length === leads.length
+              ? `${leads.length}`
+              : `${visible.length} מתוך ${leads.length}`}
           </span>
         </h1>
         <input

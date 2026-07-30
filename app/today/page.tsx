@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { db } from "@/lib/db";
 import TodayScreen, { type TaskRow } from "@/components/TodayScreen";
 import AutoRefresh from "@/components/AutoRefresh";
@@ -32,10 +31,6 @@ export default async function TodayPage() {
     <div className="app">
       <AutoRefresh seconds={20} />
       <div className="topbar">
-        <Link href="/" className="nav-back">
-          <span>→</span>
-          <span>חזרה לרשימה</span>
-        </Link>
         <h1>
           היום
           <span className="count">{rows.length} משימות</span>

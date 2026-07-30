@@ -67,10 +67,6 @@ export default function ChatsScreen({ chats }: { chats: ChatRow[] }) {
   return (
     <>
       <div className="topbar">
-        <Link href="/" className="nav-back">
-          <span>→</span>
-          <span>חזרה לרשימה</span>
-        </Link>
         <h1>
           שיחות
           <span className="count">{visible.length}</span>

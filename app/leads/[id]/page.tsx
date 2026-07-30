@@ -78,21 +78,32 @@ export default async function LeadPage({
   return (
     <div className="app">
       <AutoRefresh seconds={20} />
-      <div className="topbar">
+      {/* החתימה: צבע הסטטוס מציף את הכותרת.
+          אתה יודע איפה הליד עומד לפני שקראת מילה. */}
+      <div
+        className="topbar lead-head"
+        style={{ borderBottomColor: statusColor(lead.status) }}
+      >
         <Link href="/" className="nav-back">
           <span>→</span>
-          <span>חזרה לרשימה</span>
+          <span>לידים</span>
         </Link>
         <h1>{name}</h1>
+        <div className="lead-head-status">
+          <span
+            className="dot"
+            style={{ background: statusColor(lead.status) }}
+          />
+          <span style={{ color: statusColor(lead.status) }}>{lead.status}</span>
+          <span className="sep">·</span>
+          <a href={`tel:${lead.phone}`}>{displayPhone(lead.phone)}</a>
+        </div>
       </div>
 
       <div className="card">
-        <h2 style={{ color: statusColor(lead.status) }}>{lead.status}</h2>
-        <div className="sub">
-          {displayPhone(lead.phone)}
-          {lead.source ? ` · ${lead.source}` : ""}
-          <br />
+        <div className="sub" style={{ marginBottom: 14 }}>
           נכנס {formatDate(lead.intakeAt)}
+          {lead.source ? ` · ${lead.source}` : ""}
         </div>
 
         <LeadCardActions

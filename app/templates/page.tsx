@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { db } from "@/lib/db";
 import SyncTemplatesButton from "@/components/SyncTemplatesButton";
 
@@ -20,10 +19,6 @@ export default async function TemplatesPage() {
   return (
     <div className="app">
       <div className="topbar">
-        <Link href="/" className="nav-back">
-          <span>→</span>
-          <span>חזרה לרשימה</span>
-        </Link>
         <h1>
           תבניות
           <span className="count">{templates.length}</span>
