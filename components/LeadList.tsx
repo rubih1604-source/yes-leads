@@ -31,9 +31,11 @@ function timeAgo(iso: string): string {
 export default function LeadList({
   leads,
   openTasks = 0,
+  waitingReply = 0,
 }: {
   leads: LeadRow[];
   openTasks?: number;
+  waitingReply?: number;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<string | null>(null);
@@ -74,6 +76,9 @@ export default function LeadList({
           <span style={{ float: "left", display: "flex", gap: 12 }}>
             <Link href="/today" className="count" style={{ color: "#fff", opacity: 0.85 }}>
               היום{openTasks > 0 ? ` (${openTasks})` : ""}
+            </Link>
+            <Link href="/chats" className="count" style={{ color: "#fff", opacity: 0.85 }}>
+              שיחות{waitingReply > 0 ? ` (${waitingReply})` : ""}
             </Link>
             <Link href="/alerts" className="count" style={{ color: "#fff", opacity: 0.85 }}>
               התראות
