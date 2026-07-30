@@ -43,3 +43,24 @@ export async function PATCH(
 
   return NextResponse.json({ ok: true, rule: updated });
 }
+
+/** מחיקת חוק */
+export async function DELETE(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  if (!isLoggedIn()) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  // מבטלים משימות ממתינות של החוק כדי שלא ירוצו אחרי המחיקה
+  await db.scheduledJob
+    .updateMany({
+      where: { ruleId: params.id, state: "pending" },
+      data: { state: "cancelled", lastError: "החוק נמחק" },
+    })
+    .catch(() => null);
+
+  await db.rule.delete({ where: { id: params.id } });
+  return NextResponse.json({ ok: true });
+}

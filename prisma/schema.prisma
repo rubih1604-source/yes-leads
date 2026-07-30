@@ -174,6 +174,7 @@ model Settings {
   // הטקסטים שהעוזר שולח - ניתנים לעריכה מהמסך
   replyInterested      String   @default("היי, אסיים שיחה כמה דק ואתקשר :)")
   replyAfterHours      String   @default("היי, אני כבר סיימתי לעבוד. {מתי} מתאים לך?\nואם כן באיזה שעה :)")
+  lastRunAt            DateTime?
   replyCallback        String   @default("מעולה, רשמתי. אחזור אליך בזמן שביקשת :)")
 
   updatedAt            DateTime @updatedAt

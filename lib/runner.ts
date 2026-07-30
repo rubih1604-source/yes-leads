@@ -239,6 +239,15 @@ export async function runDueJobs(limit = 50): Promise<RunSummary> {
 
   await sendTaskReminders(summary);
 
+  // חותמת ריצה - ככה רואים במסך החוקים אם המנוע חי
+  await db.settings
+    .upsert({
+      where: { id: "main" },
+      create: { id: "main", lastRunAt: new Date() },
+      update: { lastRunAt: new Date() },
+    })
+    .catch(() => null);
+
   return summary;
 }
 

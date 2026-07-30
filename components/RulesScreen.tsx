@@ -43,6 +43,175 @@ function toMinutes(amount: number, unit: string): number {
   return amount;
 }
 
+
+function AddRule({
+  statuses,
+  templates,
+  onDone,
+}: {
+  statuses: StatusDef[];
+  templates: TemplateChoice[];
+  onDone: () => void;
+}) {
+  const [triggerStatus, setTriggerStatus] = useState("");
+  const [action, setAction] = useState("send_template");
+  const [templateName, setTemplateName] = useState("");
+  const [targetStatus, setTargetStatus] = useState("");
+  const [amount, setAmount] = useState("5");
+  const [unit, setUnit] = useState("minutes");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function save() {
+    setBusy(true);
+    setError("");
+
+    const res = await fetch("/api/rules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        triggerStatus,
+        action,
+        templateName,
+        targetStatus,
+        delayMinutes: toMinutes(Number(amount), unit),
+        note,
+      }),
+    });
+
+    if (res.ok) {
+      onDone();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setError(data.error || "השמירה נכשלה");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>חוק חדש</div>
+      <div style={{ fontSize: 13, color: "#475467", marginBottom: 14 }}>
+        כשליד עובר לסטטוס מסוים — מה יקרה, ואחרי כמה זמן.
+      </div>
+
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+        כשהליד עובר לסטטוס
+      </div>
+      <select
+        className="field"
+        value={triggerStatus}
+        onChange={(e) => setTriggerStatus(e.target.value)}
+      >
+        <option value="">— בחר סטטוס —</option>
+        {statuses.map((s) => (
+          <option key={s.name} value={s.name}>
+            {s.name}
+          </option>
+        ))}
+      </select>
+
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+        אחרי כמה זמן
+      </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        <input
+          className="field"
+          type="number"
+          min={0}
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          style={{ marginBottom: 0, flex: 1 }}
+        />
+        <select
+          className="field"
+          value={unit}
+          onChange={(e) => setUnit(e.target.value)}
+          style={{ marginBottom: 0, flex: 1 }}
+        >
+          <option value="minutes">דקות</option>
+          <option value="hours">שעות</option>
+          <option value="days">ימים</option>
+        </select>
+      </div>
+
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+        מה יקרה
+      </div>
+      <select
+        className="field"
+        value={action}
+        onChange={(e) => setAction(e.target.value)}
+      >
+        <option value="send_template">שלח תבנית ללקוח</option>
+        <option value="notify">התרע לי</option>
+        <option value="set_status">העבר לסטטוס אחר</option>
+      </select>
+
+      {action === "send_template" && (
+        <>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+            איזו תבנית
+          </div>
+          <select
+            className="field"
+            value={templateName}
+            onChange={(e) => setTemplateName(e.target.value)}
+          >
+            <option value="">— בחר תבנית —</option>
+            {templates.map((t) => (
+              <option key={t.name} value={t.name}>
+                {t.displayName || t.name}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
+
+      {action === "set_status" && (
+        <>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+            לאיזה סטטוס
+          </div>
+          <select
+            className="field"
+            value={targetStatus}
+            onChange={(e) => setTargetStatus(e.target.value)}
+          >
+            <option value="">— בחר סטטוס —</option>
+            {statuses
+              .filter((s) => s.name !== triggerStatus)
+              .map((s) => (
+                <option key={s.name} value={s.name}>
+                  {s.name}
+                </option>
+              ))}
+          </select>
+        </>
+      )}
+
+      <input
+        className="field"
+        placeholder="הערה לעצמך (לא חובה)"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
+
+      {error && <div className="error">{error}</div>}
+
+      <div className="actions">
+        <button className="btn" onClick={onDone} disabled={busy}>
+          ביטול
+        </button>
+        <button className="btn primary" onClick={save} disabled={busy}>
+          {busy ? "שומר..." : "צור חוק"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function RuleCard({
   rule,
   templates,
@@ -54,6 +223,7 @@ function RuleCard({
   color: string;
   onChanged: () => void;
 }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const initial = splitDelay(rule.delayMinutes);
   const [editing, setEditing] = useState(false);
   const [amount, setAmount] = useState(String(initial.amount));
@@ -211,6 +381,30 @@ function RuleCard({
             >
               {rule.active ? "כבה" : "הדלק"}
             </button>
+            {confirmDelete ? (
+              <button
+                className="btn"
+                style={{ height: 40, color: "#b42318", fontWeight: 700 }}
+                onClick={async () => {
+                  setBusy(true);
+                  await fetch(`/api/rules/${rule.id}`, { method: "DELETE" });
+                  setBusy(false);
+                  onChanged();
+                }}
+                disabled={busy}
+              >
+                בטוח?
+              </button>
+            ) : (
+              <button
+                className="btn"
+                style={{ height: 40, color: "#b42318" }}
+                onClick={() => setConfirmDelete(true)}
+                disabled={busy}
+              >
+                מחק
+              </button>
+            )}
           </>
         )}
       </div>
@@ -229,6 +423,7 @@ export default function RulesScreen({
 }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [adding, setAdding] = useState(false);
   const router = useRouter();
 
   async function seed() {
@@ -247,12 +442,32 @@ export default function RulesScreen({
 
   return (
     <>
-      <div className="card">
-        <button className="btn primary" onClick={seed} disabled={busy}>
-          {busy ? "טוען..." : "טען חוקי ברירת מחדל"}
-        </button>
-        {message && <div style={{ marginTop: 10, fontSize: 14 }}>{message}</div>}
-      </div>
+      {adding ? (
+        <AddRule
+          statuses={statuses}
+          templates={templates}
+          onDone={() => {
+            setAdding(false);
+            router.refresh();
+          }}
+        />
+      ) : (
+        <div className="card">
+          <div className="actions">
+            <button className="btn primary" onClick={() => setAdding(true)}>
+              הוסף חוק
+            </button>
+            {rules.length === 0 && (
+              <button className="btn" onClick={seed} disabled={busy}>
+                {busy ? "טוען..." : "טען ברירת מחדל"}
+              </button>
+            )}
+          </div>
+          {message && (
+            <div style={{ marginTop: 10, fontSize: 14 }}>{message}</div>
+          )}
+        </div>
+      )}
 
       {rules.length === 0 && (
         <div className="empty">

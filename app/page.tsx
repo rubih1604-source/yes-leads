@@ -41,6 +41,7 @@ export default async function HomePage() {
       status: l.status,
       intakeAt: l.intakeAt.toISOString(),
       campaign: extra.fb_campaign || extra.campaign || null,
+      supplier: extra.supplier_question || null,
     };
   });
 

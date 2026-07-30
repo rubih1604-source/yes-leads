@@ -51,6 +51,12 @@ export default async function MorePage() {
           desc: `כל מה שקרה בלי שהיית מולו · ${alerts}`,
         },
         {
+          href: "/jobs",
+          glyph: "⧗",
+          label: "מה המנוע עשה",
+          desc: "כל שליחה מתוזמנת - מה רץ, מה בוטל ולמה",
+        },
+        {
           href: "/incoming",
           glyph: "↓",
           label: "יומן קליטה",

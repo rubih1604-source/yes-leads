@@ -16,6 +16,7 @@ export default async function RulesPage() {
       orderBy: [{ triggerStatus: "asc" }, { stepIndex: "asc" }],
     }),
     db.template.findMany({
+      where: { approved: true },
       orderBy: { name: "asc" },
       select: { name: true, displayName: true },
     }),

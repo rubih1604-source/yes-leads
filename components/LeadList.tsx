@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { statusColor, type StatusDef } from "@/lib/statuses";
-import { displayPhone } from "@/lib/phone";
+import { displayPhone, dialPhone } from "@/lib/phone";
 import StatusSheet from "./StatusSheet";
 
 export type LeadRow = {
@@ -14,6 +14,7 @@ export type LeadRow = {
   status: string;
   intakeAt: string;
   campaign: string | null;
+  supplier: string | null;
 };
 
 function timeAgo(iso: string): string {
@@ -202,14 +203,28 @@ export default function LeadList({
                     <span>·</span>
                     <span>{timeAgo(lead.intakeAt)}</span>
                   </div>
+                  {lead.supplier && (
+                    <div className="supplier-tag">ספק: {lead.supplier}</div>
+                  )}
                 </Link>
-                <button
-                  className="go"
-                  aria-label="שנה סטטוס"
-                  onClick={() => setSheetFor(lead)}
-                >
-                  ⇄
-                </button>
+
+                <div className="row-actions">
+                  <a
+                    className="row-btn call"
+                    href={`tel:${dialPhone(lead.phone)}`}
+                    aria-label="התקשר"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    ✆
+                  </a>
+                  <button
+                    className="row-btn"
+                    aria-label="שנה סטטוס"
+                    onClick={() => setSheetFor(lead)}
+                  >
+                    ⇄
+                  </button>
+                </div>
               </div>
             );
           })}
