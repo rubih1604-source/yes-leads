@@ -13,6 +13,7 @@ model Lead {
   firstName      String?
   lastName       String?
   status         String   @default("חדש")
+  subStatus      String?
   source         String?
   origin         String   @default("leadmanager")
   intakeAt       DateTime @default(now())
@@ -35,6 +36,7 @@ model Lead {
 
   @@index([status])
   @@index([origin, intakeAt])
+  @@index([subStatus])
   @@index([intakeAt])
 }
 
@@ -108,8 +110,8 @@ model ScheduledJob {
   id           String   @id @default(cuid())
   leadId       String
   lead         Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  ruleId       String
-  stepIndex    Int
+  ruleId       String?
+  stepIndex    Int      @default(0)
   action       String
   templateName String?
   targetStatus String?
@@ -117,6 +119,7 @@ model ScheduledJob {
   state        String   @default("pending") // pending | done | cancelled | failed
   attempts     Int      @default(0)
   lastError    String?
+  note         String?
   createdAt    DateTime @default(now())
 
   @@unique([leadId, ruleId, stepIndex])
@@ -170,6 +173,13 @@ model Settings {
   botOnlyOutsideHours  Boolean  @default(false)
   botPauseHours        Int      @default(12)
   replyCooldownMinutes Int      @default(10)
+  liveChatMinutes      Int      @default(30)
+  onlyAfterTemplate    Boolean  @default(false)
+
+  // הבוט נכנס לפעולה רק כשאתה לא בעבודה
+  offDutyUntil          DateTime?
+  afterHoursGrace       Int      @default(60)
+  requireTemplateFirst  Boolean  @default(true)
 
   // הטקסטים שהעוזר שולח - ניתנים לעריכה מהמסך
   replyInterested      String   @default("היי, אסיים שיחה כמה דק ואתקשר :)")
@@ -191,4 +201,44 @@ model Status {
   createdAt DateTime @default(now())
 
   @@index([position])
+}
+
+model SubStatus {
+  id         String   @id @default(cuid())
+  statusName String
+  name       String
+  position   Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@unique([statusName, name])
+  @@index([statusName, position])
+}
+
+model Offer {
+  id        String   @id @default(cuid())
+  title     String
+  price     String?
+  decoders  String?
+  streaming String?
+  sports    String?
+  freeText  String?
+  targets   Json?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sends     OfferSend[]
+
+  @@index([active, createdAt])
+}
+
+model OfferSend {
+  id           String   @id @default(cuid())
+  offerId      String
+  offer        Offer    @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  templateName String
+  total        Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@index([offerId])
 }

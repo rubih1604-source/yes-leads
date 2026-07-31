@@ -38,6 +38,7 @@ export default function Nav({
         "/more",
         "/alerts",
         "/jobs",
+        "/offers",
         "/rules",
         "/templates",
         "/knowledge",

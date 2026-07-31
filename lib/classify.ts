@@ -24,6 +24,8 @@ export type Classification = {
   confidence: number;
   requestedCallbackAt: string | null;
   callbackParseConfident: boolean;
+  requestedDate: string | null;
+  requestedDayPart: "morning" | "noon" | "afternoon" | "evening" | null;
   suggestedReply: string | null;
   reasoning: string | null;
 };
@@ -33,6 +35,8 @@ const FALLBACK: Classification = {
   confidence: 0,
   requestedCallbackAt: null,
   callbackParseConfident: false,
+  requestedDate: null,
+  requestedDayPart: null,
   suggestedReply: null,
   reasoning: "הסיווג לא זמין",
 };
@@ -60,8 +64,15 @@ const SYSTEM_PROMPT = `אתה העוזר האישי של רובי, סוכן מכ
 - אם ההודעה מכילה כמה דברים יחד, או שהיא מנוסחת בצורה מבלבלת - other.
 - לקוח שכתב "מעוניין", "כן", "בטח", "תתקשר" - זה interested עם confidence גבוה.
 - confidence הוא מספר בין 0 ל-1.
-- requestedCallbackAt: רק אם הלקוח ציין זמן. פורמט ISO 8601 עם אזור זמן +03:00. אם לא ציין זמן - null.
-- callbackParseConfident: true רק אם הזמן שחילצת חד משמעי. "מחר בערב" אינו חד משמעי.
+- requestedCallbackAt: רק אם הלקוח ציין **שעה מדויקת**. פורמט ISO 8601 עם אזור זמן +03:00. אחרת null.
+- callbackParseConfident: true רק אם השעה חד משמעית.
+- requestedDate: אם הלקוח ציין **יום** (מחר, יום שני, ה-5 לחודש) - התאריך בפורמט YYYY-MM-DD. אחרת null.
+- requestedDayPart: אם הלקוח ציין **חלק מהיום** - אחד מ: morning (בוקר), noon (צהריים), afternoon (אחרי הצהריים), evening (ערב). אחרת null.
+
+**חשוב:** מלא את שלושת השדות האלה בכל פעם שיש בהודעה רמז לזמן, גם אם הכוונה כללית.
+"יום שני בבוקר" -> requestedDate של יום שני הקרוב, requestedDayPart: "morning", requestedCallbackAt: null.
+"תתקשר מחר ב-10" -> requestedCallbackAt עם השעה, confident: true.
+"אחרי הצהריים" -> requestedDayPart: "afternoon", requestedDate: null.
 - suggestedReply: משפט קצר בעברית טבעית שהסוכן יכול לשלוח. בלי סימני קריאה מוגזמים.
 
 החזר JSON בלבד, בלי טקסט לפני או אחרי, בלי סימני קוד.`;
@@ -92,7 +103,7 @@ export async function classifyMessage(params: {
     "",
     `הודעת הלקוח: "${params.text.trim()}"`,
     "",
-    'החזר JSON במבנה: {"intent":"...","confidence":0.0,"requestedCallbackAt":null,"callbackParseConfident":false,"suggestedReply":"...","reasoning":"..."}',
+    'החזר JSON במבנה: {"intent":"...","confidence":0.0,"requestedCallbackAt":null,"callbackParseConfident":false,"requestedDate":null,"requestedDayPart":null,"suggestedReply":"...","reasoning":"..."}',
   ]
     .filter(Boolean)
     .join("\n");
@@ -162,6 +173,13 @@ export async function classifyMessage(params: {
         typeof parsed.requestedCallbackAt === "string"
           ? parsed.requestedCallbackAt
           : null,
+      requestedDate:
+        typeof parsed.requestedDate === "string" ? parsed.requestedDate : null,
+      requestedDayPart: ["morning", "noon", "afternoon", "evening"].includes(
+        parsed.requestedDayPart as string
+      )
+        ? (parsed.requestedDayPart as Classification["requestedDayPart"])
+        : null,
       callbackParseConfident: parsed.callbackParseConfident === true,
       suggestedReply:
         typeof parsed.suggestedReply === "string" ? parsed.suggestedReply : null,

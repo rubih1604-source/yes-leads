@@ -116,6 +116,12 @@ export default async function JobsPage() {
                 </Link>
               )}
 
+              {job.note && (
+                <div style={{ fontSize: 13, color: "#475467", marginTop: 2 }}>
+                  {job.note}
+                </div>
+              )}
+
               <div className="when">
                 אמורה לרוץ {formatDate(job.runAt)}
                 {job.lastError ? ` · ${job.lastError}` : ""}

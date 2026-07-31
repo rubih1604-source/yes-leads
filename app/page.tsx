@@ -2,11 +2,15 @@ import { db } from "@/lib/db";
 import LeadList, { type LeadRow } from "@/components/LeadList";
 import AutoRefresh from "@/components/AutoRefresh";
 import { getStatuses } from "@/lib/status-store";
+import { getSubStatusMap } from "@/lib/substatus";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const statuses = await getStatuses();
+  const [statuses, subStatuses] = await Promise.all([
+    getStatuses(),
+    getSubStatusMap(),
+  ]);
 
   const leads = await db.lead.findMany({
     // סדר קבוע: הליד האחרון שנכנס תמיד למעלה.
@@ -22,6 +26,7 @@ export default async function HomePage() {
       firstName: true,
       lastName: true,
       status: true,
+      subStatus: true,
       intakeAt: true,
       extra: true,
     },
@@ -39,6 +44,7 @@ export default async function HomePage() {
       firstName: l.firstName,
       lastName: l.lastName,
       status: l.status,
+      subStatus: l.subStatus,
       intakeAt: l.intakeAt.toISOString(),
       campaign: extra.fb_campaign || extra.campaign || null,
       supplier: extra.supplier_question || null,
@@ -48,7 +54,7 @@ export default async function HomePage() {
   return (
     <div className="app">
       <AutoRefresh seconds={15} />
-      <LeadList leads={rows} statuses={statuses} />
+      <LeadList leads={rows} statuses={statuses} subStatuses={subStatuses} />
     </div>
   );
 }

@@ -8,6 +8,10 @@ export type SettingsRow = {
   botOnlyOutsideHours: boolean;
   botPauseHours: number;
   replyCooldownMinutes: number;
+  liveChatMinutes: number;
+  onlyAfterTemplate: boolean;
+  afterHoursGrace: number;
+  requireTemplateFirst: boolean;
   replyInterested: string;
   replyAfterHours: string;
   replyCallback: string;
@@ -19,6 +23,8 @@ export default function SettingsScreen({ settings }: { settings: SettingsRow }) 
   const [tInterested, setTInterested] = useState(settings.replyInterested);
   const [tAfterHours, setTAfterHours] = useState(settings.replyAfterHours);
   const [tCallback, setTCallback] = useState(settings.replyCallback);
+  const [live, setLive] = useState(String(settings.liveChatMinutes));
+  const [grace, setGrace] = useState(String(settings.afterHoursGrace));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const router = useRouter();
@@ -38,6 +44,10 @@ export default function SettingsScreen({ settings }: { settings: SettingsRow }) 
 
   return (
     <>
+      <div className="section-title" style={{ marginTop: 8 }}>
+        המתג הראשי
+      </div>
+
       <div className="card">
         <div style={{ fontWeight: 600, marginBottom: 4 }}>העוזר האוטומטי</div>
         <div style={{ fontSize: 13, color: "#64748b", marginBottom: 14 }}>
@@ -53,6 +63,8 @@ export default function SettingsScreen({ settings }: { settings: SettingsRow }) 
           {settings.botEnabled ? "כבה את הבוט" : "הדלק את הבוט"}
         </button>
       </div>
+
+      <div className="section-title">מתי הוא מדבר</div>
 
       <div className="card">
         <div style={{ fontWeight: 600, marginBottom: 4 }}>
@@ -135,6 +147,108 @@ export default function SettingsScreen({ settings }: { settings: SettingsRow }) 
 
       <div className="card">
         <div style={{ fontWeight: 600, marginBottom: 4 }}>
+          חלון חסד אחרי סוף יום העבודה
+        </div>
+        <div style={{ fontSize: 13, color: "#475467", marginBottom: 14 }}>
+          יום העבודה לא נגמר בדיוק בשנייה. במשך הזמן הזה אחרי הסגירה
+          המערכת עדיין מניחה שאתה זמין, והבוט לא נכנס לפעולה.
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            className="field"
+            type="number"
+            min={0}
+            max={600}
+            value={grace}
+            onChange={(e) => setGrace(e.target.value)}
+            style={{ marginBottom: 0, flex: 1 }}
+          />
+          <span style={{ fontSize: 14 }}>דקות</span>
+          <button
+            className="btn primary"
+            style={{ flex: 1, height: 50 }}
+            onClick={() => patch({ afterHoursGrace: Number(grace) })}
+            disabled={busy}
+          >
+            שמור
+          </button>
+        </div>
+      </div>
+
+      <div className="card">
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>
+          לענות רק ללקוחות שפנינו אליהם
+        </div>
+        <div style={{ fontSize: 13, color: "#475467", marginBottom: 14 }}>
+          {settings.requireTemplateFirst
+            ? "מופעל — אם לא שלחנו לליד תבנית, הבוט לא נוגע בשיחה. היא שלך."
+            : "כבוי — הבוט עשוי לענות גם בשיחות שפתחת בעצמך"}
+        </div>
+        <button
+          className="btn"
+          onClick={() =>
+            patch({ requireTemplateFirst: !settings.requireTemplateFirst })
+          }
+          disabled={busy}
+        >
+          {settings.requireTemplateFirst ? "בטל" : "הפעל"}
+        </button>
+      </div>
+
+      <div className="card">
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>
+          לענות רק על תגובה לתבנית
+        </div>
+        <div style={{ fontSize: 13, color: "#475467", marginBottom: 14 }}>
+          {settings.onlyAfterTemplate
+            ? "מופעל — הבוט נכנס לפעולה רק כשהלקוח עונה לתבנית אוטומטית שהמערכת שלחה. לקוח שכותב מיוזמתו מגיע אליך בלבד."
+            : "כבוי — הבוט מגיב לכל הודעה נכנסת."}
+        </div>
+        <button
+          className="btn"
+          onClick={() =>
+            patch({ onlyAfterTemplate: !settings.onlyAfterTemplate })
+          }
+          disabled={busy}
+        >
+          {settings.onlyAfterTemplate ? "בטל" : "הפעל"}
+        </button>
+      </div>
+
+      <div className="card">
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>
+          זיהוי שיחה חיה
+        </div>
+        <div style={{ fontSize: 13, color: "#475467", marginBottom: 14 }}>
+          אם הלקוח שלח שתי הודעות או יותר בפרק הזמן הזה — הבוט מניח שאתה
+          באמצע שיחה איתו, ולא מתערב. אתה עדיין מקבל התראה.
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            className="field"
+            type="number"
+            min={0}
+            max={600}
+            value={live}
+            onChange={(e) => setLive(e.target.value)}
+            style={{ marginBottom: 0, flex: 1 }}
+          />
+          <span style={{ fontSize: 14 }}>דקות</span>
+          <button
+            className="btn primary"
+            style={{ flex: 1, height: 50 }}
+            onClick={() => patch({ liveChatMinutes: Number(live) })}
+            disabled={busy}
+          >
+            שמור
+          </button>
+        </div>
+      </div>
+
+      <div className="section-title">מה הוא אומר</div>
+
+      <div className="card">
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>
           מה העוזר עונה ללקוח
         </div>
         <div style={{ fontSize: 13, color: "#64748b", marginBottom: 14 }}>
@@ -186,8 +300,45 @@ export default function SettingsScreen({ settings }: { settings: SettingsRow }) 
         </button>
       </div>
 
+      <div className="section-title">שאר החוקיות</div>
+
+      <div className="hub" style={{ padding: "0 16px" }}>
+        <a href="/rules" className="hub-item">
+          <span className="glyph" aria-hidden="true">⚙</span>
+          <span>
+            <span className="label">חוקים</span>
+            <span className="desc" style={{ display: "block" }}>
+              איזו תבנית נשלחת בכל סטטוס, ואחרי כמה זמן
+            </span>
+          </span>
+          <span className="chev" aria-hidden="true">‹</span>
+        </a>
+
+        <a href="/knowledge" className="hub-item">
+          <span className="glyph" aria-hidden="true">◈</span>
+          <span>
+            <span className="label">מאגר הידע</span>
+            <span className="desc" style={{ display: "block" }}>
+              תשובות השירות שהוא שולח, מילה במילה
+            </span>
+          </span>
+          <span className="chev" aria-hidden="true">‹</span>
+        </a>
+
+        <a href="/templates" className="hub-item">
+          <span className="glyph" aria-hidden="true">◫</span>
+          <span>
+            <span className="label">תבניות</span>
+            <span className="desc" style={{ display: "block" }}>
+              התבניות המאושרות שמסונכרנות מטקסטר
+            </span>
+          </span>
+          <span className="chev" aria-hidden="true">‹</span>
+        </a>
+      </div>
+
       {message && (
-        <div style={{ margin: "0 16px", fontSize: 14 }}>{message}</div>
+        <div style={{ margin: "16px", fontSize: 14 }}>{message}</div>
       )}
     </>
   );

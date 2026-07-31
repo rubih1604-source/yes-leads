@@ -50,3 +50,30 @@ check("ערך ריק לא נשמר", extra.price, undefined);
 console.log(`\n${"=".repeat(40)}`);
 console.log(`עברו: ${passed}   נכשלו: ${failed}`);
 console.log("=".repeat(40) + "\n");
+
+// ---- קהל היעד של מבצע ----
+import { readTargets, hasAnyTarget } from "../lib/offer-targets";
+
+console.log("\nקהל היעד של מבצע");
+{
+  let p2 = 0, f2 = 0;
+  const c = (label: string, a: unknown, e: unknown) => {
+    if (JSON.stringify(a) === JSON.stringify(e)) { p2++; console.log(`  ✓ ${label}`); }
+    else { f2++; console.log(`  ✗ ${label} התקבל ${JSON.stringify(a)} ציפינו ${JSON.stringify(e)}`); }
+  };
+
+  c("מבנה מסודר", readTargets({ statuses: ["אין מענה"], subStatuses: ["חשוב ללקוח ספורט"] }),
+    { statuses: ["אין מענה"], subStatuses: ["חשוב ללקוח ספורט"] });
+
+  c("מבנה ישן - מערך שטוח", readTargets(["חשוב ללקוח ספורט"]),
+    { statuses: [], subStatuses: ["חשוב ללקוח ספורט"] });
+
+  c("ריק", readTargets(null), { statuses: [], subStatuses: [] });
+  c("ערכים לא תקינים מסוננים", readTargets({ statuses: [1, "", "אין מענה"] }),
+    { statuses: ["אין מענה"], subStatuses: [] });
+
+  c("יש יעד", hasAnyTarget({ statuses: ["אין מענה"], subStatuses: [] }), true);
+  c("אין יעד", hasAnyTarget({ statuses: [], subStatuses: [] }), false);
+
+  console.log(`  (${p2} עברו, ${f2} נכשלו)`);
+}

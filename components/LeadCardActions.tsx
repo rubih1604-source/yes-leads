@@ -21,6 +21,8 @@ export default function LeadCardActions({
   knowledge,
   statuses,
   leadName,
+  currentSub,
+  subStatuses,
 }: {
   leadId: string;
   phone: string;
@@ -34,6 +36,8 @@ export default function LeadCardActions({
   knowledge: KnowledgeOption[];
   statuses: StatusDef[];
   leadName: string;
+  currentSub: string | null;
+  subStatuses: Record<string, string[]>;
 }) {
   const [statusOpen, setStatusOpen] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
@@ -154,7 +158,9 @@ export default function LeadCardActions({
         <StatusSheet
           leadId={leadId}
           current={status}
+          currentSub={currentSub}
           statuses={statuses}
+          subStatuses={subStatuses}
           onClose={() => setStatusOpen(false)}
         />
       )}

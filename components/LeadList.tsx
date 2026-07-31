@@ -15,6 +15,7 @@ export type LeadRow = {
   intakeAt: string;
   campaign: string | null;
   supplier: string | null;
+  subStatus: string | null;
 };
 
 /** מרגע מתי לספור, לפי התקופה שנבחרה */
@@ -38,6 +39,18 @@ function periodStart(period: string): number | null {
   return null;
 }
 
+/** חותמת הכניסה המדויקת - תאריך ושעה */
+function intakeStamp(iso: string): string {
+  return new Date(iso).toLocaleString("he-IL", {
+    timeZone: "Asia/Jerusalem",
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
@@ -53,9 +66,11 @@ function timeAgo(iso: string): string {
 export default function LeadList({
   leads,
   statuses,
+  subStatuses = {},
 }: {
   leads: LeadRow[];
   statuses: StatusDef[];
+  subStatuses?: Record<string, string[]>;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<string | null>(null);
@@ -249,10 +264,22 @@ export default function LeadList({
                       {lead.status}
                     </span>
                     <span>·</span>
-                    <span>{timeAgo(lead.intakeAt)}</span>
+                    <span>{intakeStamp(lead.intakeAt)}</span>
                   </div>
-                  {lead.supplier && (
-                    <div className="supplier-tag">ספק: {lead.supplier}</div>
+                  {(lead.supplier || lead.subStatus) && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {lead.subStatus && (
+                        <div
+                          className="supplier-tag"
+                          style={{ borderColor: "#1b4d8f", color: "#1b4d8f" }}
+                        >
+                          {lead.subStatus}
+                        </div>
+                      )}
+                      {lead.supplier && (
+                        <div className="supplier-tag">ספק: {lead.supplier}</div>
+                      )}
+                    </div>
                   )}
                 </Link>
 
@@ -324,7 +351,9 @@ export default function LeadList({
         <StatusSheet
           leadId={sheetFor.id}
           current={sheetFor.status}
+          currentSub={sheetFor.subStatus}
           statuses={statuses}
+          subStatuses={subStatuses}
           onClose={() => setSheetFor(null)}
         />
       )}

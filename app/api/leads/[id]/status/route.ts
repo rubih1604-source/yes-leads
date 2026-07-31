@@ -31,6 +31,14 @@ export async function POST(
 
   // כל שינוי סטטוס עובר דרך מנוע החוקים:
   // מבטל מה שהיה מתוזמן ומתזמן מחדש לפי הסטטוס החדש
+  // תת-הסטטוס נשמר גם כשהסטטוס לא משתנה
+  await db.lead
+    .update({
+      where: { id: params.id },
+      data: { subStatus: typeof subStatus === "string" && subStatus ? subStatus : null },
+    })
+    .catch(() => null);
+
   await applyStatusChange({ leadId: lead.id, toStatus: status, actor: "user" });
 
   return NextResponse.json({ ok: true, status });

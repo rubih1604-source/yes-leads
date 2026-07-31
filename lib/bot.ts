@@ -21,6 +21,7 @@ import { searchChatByPhone, extractChatId, sendSessionMessage } from "./texter";
 import { matchKnowledge } from "./answer";
 import { emailLeadAlert } from "./email";
 import { shouldBotReply } from "./bot-gate";
+import { resolveCallbackTime } from "./callback-time";
 import { getSettings } from "./settings";
 import { getWonStatusNames } from "./status-store";
 
@@ -108,6 +109,8 @@ export async function handleInboundMessage(params: {
         confidence: 0,
         requestedCallbackAt: null,
         callbackParseConfident: false,
+        requestedDate: null,
+        requestedDayPart: null,
         suggestedReply: null,
         reasoning: "הליד לא נמצא",
       },
@@ -142,6 +145,8 @@ export async function handleInboundMessage(params: {
         confidence: 0,
         requestedCallbackAt: null,
         callbackParseConfident: false,
+        requestedDate: null,
+        requestedDayPart: null,
         suggestedReply: null,
         reasoning: gate.reason,
       },
@@ -181,6 +186,19 @@ export async function handleInboundMessage(params: {
 
   const now = new Date();
   const displayName = lead.firstName || displayPhone(lead.phone);
+
+  /**
+   * כל חותמת זמן בהודעה הופכת למשימה עם שעה - גם אם היא כללית.
+   * "יום שני בבוקר" נקבע ל-09:30, "אחרי הצהריים" ל-17:00.
+   * עדיף משימה שאתה מזיז מאשר לקוח שנשכח.
+   */
+  const requested = resolveCallbackTime({
+    isoDateTime: classification.requestedCallbackAt,
+    confident: classification.callbackParseConfident,
+    date: classification.requestedDate,
+    dayPart: classification.requestedDayPart,
+    now,
+  });
 
   await db.leadEvent.create({
     data: {
@@ -255,19 +273,19 @@ export async function handleInboundMessage(params: {
 
   // ---------- מבקש שיחזרו אליו בזמן מסוים ----------
   if (classification.intent === "callback_request") {
-    let dueAt: Date | null = null;
-    if (classification.requestedCallbackAt && classification.callbackParseConfident) {
-      const parsed = new Date(classification.requestedCallbackAt);
-      if (!Number.isNaN(parsed.getTime())) dueAt = parsed;
-    }
+    const dueAt = requested?.at ?? null;
 
     await db.task.create({
       data: {
         leadId: lead.id,
         title: `להתקשר ל${displayName}`,
-        body: dueAt
-          ? `הלקוח ביקש שתחזור אליו. ההודעה שלו: "${params.text.slice(0, 300)}"`
-          : `הלקוח ביקש שתחזור אליו אבל לא הצלחתי לקבוע מתי בדיוק. ההודעה שלו: "${params.text.slice(0, 300)}"`,
+        body: [
+          `ההודעה שלו: "${params.text.slice(0, 300)}"`,
+          requested ? "" : null,
+          requested ? requested.note : "לא הצלחתי לקבוע מתי בדיוק - כדאי שתקבע.",
+        ]
+          .filter((x) => x !== null)
+          .join("\n"),
         dueAt,
         needsReview: dueAt === null,
         urgent: false,
@@ -354,8 +372,10 @@ export async function handleInboundMessage(params: {
         ]
           .filter(Boolean)
           .join("\n\n"),
-        dueAt: isWithinWorkingHours(now) ? now : shiftToWorkingHours(now),
-        urgent: true,
+        dueAt:
+          requested?.at ??
+          (isWithinWorkingHours(now) ? now : shiftToWorkingHours(now)),
+        urgent: !requested,
       },
     });
 
@@ -500,6 +520,19 @@ export async function handleInboundMessage(params: {
   }
 
   // ---------- משהו לא ברור: לא נוגעים בסטטוס ----------
+  if (requested) {
+    await db.task.create({
+      data: {
+        leadId: lead.id,
+        title: `להתקשר ל${displayName}`,
+        body: [`ההודעה: "${params.text.slice(0, 300)}"`, "", requested.note]
+          .join("\n"),
+        dueAt: requested.at,
+      },
+    });
+    actions.push("task:from-time");
+  }
+
   await db.task.create({
     data: {
       leadId: lead.id,

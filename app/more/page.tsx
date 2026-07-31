@@ -16,6 +16,12 @@ export default async function MorePage() {
       title: "העוזר האוטומטי",
       items: [
         {
+          href: "/offers",
+          glyph: "★",
+          label: "מבצעים",
+          desc: "הגדר מבצע, סמן למי הוא מתאים, ושלח דיוור",
+        },
+        {
           href: "/rules",
           glyph: "⚙",
           label: "חוקים",

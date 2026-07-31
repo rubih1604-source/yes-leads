@@ -15,7 +15,10 @@
 
 import { db } from "./db";
 import { getSettings } from "./settings";
-import { isWithinWorkingHours } from "./working-hours";
+import {
+  isWithinWorkingHours,
+  minutesSinceWorkingClose,
+} from "./working-hours";
 
 export type GateDecision = {
   allowed: boolean;
@@ -63,12 +66,101 @@ export async function shouldBotReply(leadId: string): Promise<GateDecision> {
   }
 
   /**
-   * "לענות רק מחוץ לשעות" **אינו** השתקה מלאה.
-   * בשעות העבודה העוזר עדיין עונה על שאלות שירות - זה חוסך לך זמן
-   * ולא מסכן כלום. אבל פנייה מכירתית ("מעוניין להצטרף") לא מקבלת
-   * תשובה אוטומטית: אתה רואה אותה ומחליט בעצמך.
+   * ============================================================
+   *  מתי אתה "בעבודה"
+   * ============================================================
+   *
+   *  הבוט קיים בשביל הזמן שאתה לא זמין. לכן:
+   *
+   *  - בשעות העבודה אתה בעבודה
+   *  - גם בחלון החסד אחרי הסגירה (ברירת מחדל שעה) - כי יום עבודה
+   *    לא נגמר בדיוק ב-18:30
+   *  - אלא אם לחצת "סיימתי להיום", ואז הבוט נכנס לפעולה מיד
    */
-  const serviceOnly = settings.botOnlyOutsideHours && isWithinWorkingHours(now);
+  const sinceClose = minutesSinceWorkingClose(now);
+  const inGrace =
+    sinceClose !== null && sinceClose < settings.afterHoursGrace;
+
+  const offDuty = Boolean(
+    settings.offDutyUntil && settings.offDutyUntil.getTime() > now.getTime()
+  );
+
+  const atWork = !offDuty && (isWithinWorkingHours(now) || inGrace);
+
+  /**
+   * בשעות שאתה בעבודה, פנייה מכירתית מחכה לך.
+   * שאלת שירות עדיין נענית - היא מידע קבוע ולא מסכנת כלום.
+   */
+  const serviceOnly = settings.botOnlyOutsideHours && atWork;
+
+  /**
+   * הבוט עונה רק ללקוחות שאנחנו פנינו אליהם.
+   * אם לא שלחנו לליד הזה שום תבנית, השיחה הזו שלך - לא שלו.
+   */
+  if (settings.requireTemplateFirst) {
+    const weMessaged = await db.message.count({
+      where: { leadId, direction: "out", templateName: { not: null } },
+    });
+
+    if (weMessaged === 0) {
+      return {
+        allowed: false,
+        reason: "לא שלחנו ללקוח הזה תבנית - השיחה הזו שלך",
+        serviceOnly: false,
+      };
+    }
+  }
+
+  /**
+   * הכלל שהגדרת: הבוט נכנס לפעולה **רק** כשהלקוח עונה
+   * לתבנית אוטומטית שהמערכת שלחה.
+   *
+   * לקוח שכותב מיוזמתו - באמצע שיחה איתך, או סתם - לא מקבל
+   * תשובה אוטומטית. רק התראה אליך.
+   */
+  if (settings.onlyAfterTemplate) {
+    const lastOut = await db.message.findFirst({
+      where: { leadId, direction: "out", status: "sent" },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!lastOut?.templateName) {
+      return {
+        allowed: false,
+        reason: lastOut
+          ? "ההודעה האחרונה שיצאה ללקוח לא הייתה תבנית אוטומטית"
+          : "לא נשלחה ללקוח תבנית אוטומטית שאפשר לענות עליה",
+        serviceOnly: false,
+      };
+    }
+  }
+
+  /**
+   * זיהוי שיחה חיה.
+   *
+   * לקוח ששולח כמה הודעות בפרק זמן קצר נמצא באמצע שיחה,
+   * ובדרך כלל אתה זה שמדבר איתו. הבוט לא מתערב לשיחה
+   * שכבר מתנהלת - הוא רק מתריע לך.
+   *
+   * זו רשת ביטחון למקרה שטקסטר לא מדווח לנו על ההודעות
+   * שאתה שולח. כשהסנריו יכלול גם הודעות יוצאות, ההשתקה
+   * תהיה מדויקת עוד יותר.
+   */
+  const liveWindow = new Date(
+    now.getTime() - settings.liveChatMinutes * 60000
+  );
+
+  const recentInbound = await db.message.count({
+    where: { leadId, direction: "in", createdAt: { gte: liveWindow } },
+  });
+
+  if (recentInbound >= 2) {
+    return {
+      allowed: false,
+      reason: `הלקוח שלח ${recentInbound} הודעות ב-${settings.liveChatMinutes} הדקות האחרונות - נראה שאתה באמצע שיחה איתו`,
+      serviceOnly: false,
+    };
+  }
 
   /**
    * הכלל שביקשת: אחרי שהעוזר כבר ענה וסיווג פעם אחת -

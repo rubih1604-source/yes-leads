@@ -13,12 +13,31 @@ export async function PATCH(request: Request) {
   const data: Record<string, unknown> = {};
 
   if (typeof body.botEnabled === "boolean") data.botEnabled = body.botEnabled;
+  if (typeof body.onlyAfterTemplate === "boolean")
+    data.onlyAfterTemplate = body.onlyAfterTemplate;
+
   if (typeof body.botOnlyOutsideHours === "boolean")
     data.botOnlyOutsideHours = body.botOnlyOutsideHours;
 
   if (body.botPauseHours !== undefined) {
     const n = Number(body.botPauseHours);
     if (Number.isFinite(n) && n >= 0 && n <= 168) data.botPauseHours = Math.round(n);
+  }
+
+  if (typeof body.requireTemplateFirst === "boolean") {
+    data.requireTemplateFirst = body.requireTemplateFirst;
+  }
+
+  if (body.afterHoursGrace !== undefined) {
+    const n = Number(body.afterHoursGrace);
+    if (Number.isFinite(n) && n >= 0 && n <= 600)
+      data.afterHoursGrace = Math.round(n);
+  }
+
+  if (body.liveChatMinutes !== undefined) {
+    const n = Number(body.liveChatMinutes);
+    if (Number.isFinite(n) && n >= 0 && n <= 600)
+      data.liveChatMinutes = Math.round(n);
   }
 
   if (body.replyCooldownMinutes !== undefined) {
