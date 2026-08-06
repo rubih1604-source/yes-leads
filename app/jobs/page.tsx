@@ -52,7 +52,8 @@ export default async function JobsPage() {
   ]);
 
   const lastRun = settings?.lastRunAt ?? null;
-  const stale = !lastRun || Date.now() - lastRun.getTime() > 12 * 60 * 1000;
+  // המנוע רץ כל דקה. שלוש דקות בלי סימן חיים = משהו לא בסדר.
+  const stale = !lastRun || Date.now() - lastRun.getTime() > 3 * 60 * 1000;
 
   return (
     <div className="app">
@@ -74,7 +75,7 @@ export default async function JobsPage() {
         </div>
         {stale && (
           <div className="insight">
-            המנוע אמור לרוץ כל 5 דקות. אם הוא לא רץ, שליחות מתוזמנות לא
+            המנוע אמור לרוץ כל דקה. אם הוא לא רץ, שליחות מתוזמנות לא
             יצאו. נסה לפרוס מחדש ברנדר, ואם זה חוזר — תגיד לי.
           </div>
         )}

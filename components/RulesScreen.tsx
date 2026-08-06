@@ -94,6 +94,7 @@ function AddRule({
       <div style={{ fontWeight: 600, marginBottom: 4 }}>חוק חדש</div>
       <div style={{ fontSize: 13, color: "#475467", marginBottom: 14 }}>
         כשליד עובר לסטטוס מסוים — מה יקרה, ואחרי כמה זמן.
+        השליחה מדויקת עד כדי דקה, ונדחית אוטומטית לשעות הפעילות.
       </div>
 
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
