@@ -26,6 +26,7 @@ export default function StatusesEditor({
   const [color, setColor] = useState(PALETTE[0]);
   const [won, setWon] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [rates, setRates] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const router = useRouter();
 
@@ -50,6 +51,17 @@ export default function StatusesEditor({
       setError(data.error || "ההוספה נכשלה");
     }
     setBusy(false);
+  }
+
+  async function saveCommission(id: string, value: string) {
+    setBusy(true);
+    await fetch(`/api/statuses/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ commission: Number(value) || 0 }),
+    });
+    setBusy(false);
+    router.refresh();
   }
 
   async function remove(id?: string) {
@@ -97,11 +109,47 @@ export default function StatusesEditor({
                   סגירה
                 </span>
               )}
+              {s.won && s.id && (
+                <span
+                  style={{
+                    marginInlineStart: "auto",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <input
+                    className="field"
+                    type="number"
+                    min={0}
+                    placeholder="עמלה"
+                    value={rates[s.id] ?? String(s.commission ?? 0)}
+                    onChange={(e) =>
+                      setRates((p) => ({ ...p, [s.id!]: e.target.value }))
+                    }
+                    style={{
+                      marginBottom: 0,
+                      width: 90,
+                      minHeight: 36,
+                      fontSize: 14,
+                    }}
+                  />
+                  <button
+                    className="btn"
+                    style={{ height: 36, flex: "0 0 auto", fontSize: 13 }}
+                    onClick={() =>
+                      saveCommission(s.id!, rates[s.id!] ?? String(s.commission ?? 0))
+                    }
+                    disabled={busy}
+                  >
+                    ₪
+                  </button>
+                </span>
+              )}
               {!s.builtin && (
                 <button
                   className="btn"
                   style={{
-                    marginInlineStart: "auto",
                     height: 32,
                     flex: "0 0 auto",
                     fontSize: 13,

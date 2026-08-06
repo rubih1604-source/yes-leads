@@ -21,6 +21,11 @@ export async function PATCH(
   }
   if (typeof body.won === "boolean") data.won = body.won;
 
+  if (body.commission !== undefined) {
+    const n = Number(body.commission);
+    if (Number.isFinite(n) && n >= 0 && n <= 100000) data.commission = n;
+  }
+
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: "לא נשלח מה לעדכן" }, { status: 400 });
   }

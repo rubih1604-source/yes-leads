@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { getDashboard, type Period } from "@/lib/stats";
+import { getRevenue } from "@/lib/revenue";
+import RevenueBar from "@/components/RevenueBar";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +39,10 @@ export default async function DashboardPage({
       ? 90
       : 30;
 
-  const d = await getDashboard(period);
+  const [d, revenue] = await Promise.all([
+    getDashboard(period),
+    getRevenue(period === "today" ? "today" : "month"),
+  ]);
 
   const best = d.templates.filter((t) => t.sent >= 5).sort((a, b) => b.replyRate - a.replyRate)[0];
   const worst = d.templates.filter((t) => t.sent >= 5).sort((a, b) => a.replyRate - b.replyRate)[0];
@@ -70,6 +75,25 @@ export default async function DashboardPage({
           </Link>
         ))}
       </div>
+
+      <RevenueBar data={revenue} />
+
+      {revenue.breakdown.length > 0 && (
+        <>
+          <div className="section-title">מאיפה הכסף</div>
+          <div className="card">
+            {revenue.breakdown.map((row) => (
+              <div className="stat-row" key={row.label}>
+                <span>
+                  {row.label}
+                  <span style={{ color: "#98a2b3" }}> · {row.count}</span>
+                </span>
+                <strong>₪{row.total.toLocaleString("he-IL")}</strong>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {/* ---- ארבעת המספרים ---- */}
       <div className="stat-grid">

@@ -16,6 +16,7 @@ export type LeadRow = {
   campaign: string | null;
   supplier: string | null;
   subStatus: string | null;
+  duplicateOf: string | null;
 };
 
 /** מרגע מתי לספור, לפי התקופה שנבחרה */
@@ -67,11 +68,49 @@ export default function LeadList({
   leads,
   statuses,
   subStatuses = {},
+  templates = [],
 }: {
   leads: LeadRow[];
   statuses: StatusDef[];
   subStatuses?: Record<string, string[]>;
+  templates?: Array<{ name: string; displayName: string | null }>;
 }) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkTemplate, setBulkTemplate] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkMessage, setBulkMessage] = useState("");
+  const [bulkConfirm, setBulkConfirm] = useState(false);
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function bulkSend() {
+    setBulkBusy(true);
+    setBulkMessage("");
+    const res = await fetch("/api/leads/bulk-send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        leadIds: Array.from(selected),
+        templateName: bulkTemplate,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setBulkMessage(
+      res.ok
+        ? `${data.scheduled} הודעות נכנסו לתור ויֵצאו בקצב מבוקר`
+        : data.error || "הדיוור נכשל"
+    );
+    if (res.ok) setSelected(new Set());
+    setBulkConfirm(false);
+    setBulkBusy(false);
+  }
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<string | null>(null);
   const [sheetFor, setSheetFor] = useState<LeadRow | null>(null);
@@ -127,9 +166,19 @@ export default function LeadList({
     };
   }, [leads, campaign, statuses]);
 
+  /**
+   * מציגים כל סטטוס שיש בו לידים - כולל "לקוח קיים".
+   * הסדר לפי הסדר שהגדרת בהגדרות, ולידו כמה לידים יש בו,
+   * כדי שתדע לאן ללחוץ בלי לנחש.
+   */
   const usedStatuses = useMemo(() => {
-    const set = new Set(leads.map((l) => l.status));
-    return statuses.map((s) => s.name).filter((s) => set.has(s));
+    const counts = new Map<string, number>();
+    for (const lead of leads) {
+      counts.set(lead.status, (counts.get(lead.status) ?? 0) + 1);
+    }
+    return statuses
+      .map((s) => ({ name: s.name, count: counts.get(s.name) ?? 0 }))
+      .filter((s) => s.count > 0);
   }, [leads, statuses]);
 
   return (
@@ -192,17 +241,100 @@ export default function LeadList({
         >
           הכל
         </button>
-        {usedStatuses.map((s) => (
+        {usedStatuses.map((st) => (
           <button
-            key={s}
+            key={st.name}
             className="chip"
-            data-active={filter === s}
-            onClick={() => setFilter(filter === s ? null : s)}
+            data-active={filter === st.name}
+            onClick={() => setFilter(filter === st.name ? null : st.name)}
           >
-            {s}
+            {st.name}
+            <span style={{ opacity: 0.55, marginInlineStart: 5 }}>
+              {st.count}
+            </span>
           </button>
         ))}
       </div>
+
+      {selected.size > 0 && (
+        <div className="bulk-bar">
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <strong style={{ fontSize: 17 }}>{selected.size} נבחרו</strong>
+            <button
+              className="btn"
+              style={{
+                marginInlineStart: "auto",
+                height: 34,
+                flex: "0 0 auto",
+                fontSize: 13,
+              }}
+              onClick={() => setSelected(new Set())}
+            >
+              נקה
+            </button>
+          </div>
+
+          <select
+            value={bulkTemplate}
+            onChange={(e) => setBulkTemplate(e.target.value)}
+          >
+            <option value="">— בחר תבנית לשליחה —</option>
+            {templates.map((t) => (
+              <option key={t.name} value={t.name}>
+                {t.displayName || t.name}
+              </option>
+            ))}
+          </select>
+
+          {bulkConfirm ? (
+            <div className="actions">
+              <button className="btn" onClick={() => setBulkConfirm(false)}>
+                ביטול
+              </button>
+              <button
+                className="btn"
+                style={{ background: "#b54708", color: "#fff", border: "none" }}
+                onClick={bulkSend}
+                disabled={bulkBusy}
+              >
+                {bulkBusy ? "שולח..." : `כן, שלח ל-${selected.size}`}
+              </button>
+            </div>
+          ) : (
+            <button
+              className="btn"
+              onClick={() => setBulkConfirm(true)}
+              disabled={!bulkTemplate}
+            >
+              שלח דיוור ל-{selected.size} לידים
+            </button>
+          )}
+
+          {bulkMessage && (
+            <div style={{ marginTop: 8, fontSize: 13.5 }}>{bulkMessage}</div>
+          )}
+        </div>
+      )}
+
+      {visible.length > 0 && templates.length > 0 && (
+        <div style={{ margin: "0 16px 8px" }}>
+          <button
+            className="btn"
+            style={{ height: 40, fontSize: 14 }}
+            onClick={() =>
+              setSelected(
+                selected.size === visible.length
+                  ? new Set()
+                  : new Set(visible.map((l) => l.id))
+              )
+            }
+          >
+            {selected.size === visible.length
+              ? "בטל בחירת הכל"
+              : `בחר את כל ${visible.length} המוצגים`}
+          </button>
+        </div>
+      )}
 
       {campaignSummary && (
         <div className="campaign-summary">
@@ -254,8 +386,21 @@ export default function LeadList({
                   className="bar"
                   style={{ background: statusColor(lead.status, statuses) }}
                 />
+                {templates.length > 0 && (
+                  <button
+                    className="lead-check"
+                    data-on={selected.has(lead.id)}
+                    aria-label="בחר ליד"
+                    onClick={() => toggleOne(lead.id)}
+                  >
+                    {selected.has(lead.id) ? "☑" : "☐"}
+                  </button>
+                )}
                 <Link href={`/leads/${lead.id}`} className="body">
-                  <div className="name">{name}</div>
+                  <div className="name">
+                    {name}
+                    {lead.duplicateOf && <span className="dup-tag">כפול</span>}
+                  </div>
                   <div className="meta">
                     <span
                       className="status-text"

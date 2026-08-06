@@ -3,7 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export default function MaintenanceCard({ count }: { count: number }) {
+export default function MaintenanceCard({
+  count,
+  duplicates = 0,
+}: {
+  count: number;
+  duplicates?: number;
+}) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const router = useRouter();
@@ -23,7 +29,16 @@ export default function MaintenanceCard({ count }: { count: number }) {
     router.refresh();
   }
 
-  if (count === 0 && !message) return null;
+  async function markDuplicates() {
+    setBusy(true);
+    const res = await fetch("/api/maintenance/duplicates", { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    setMessage(res.ok ? `${data.marked} לידים סומנו ככפולים` : "הפעולה נכשלה");
+    setBusy(false);
+    router.refresh();
+  }
+
+  if (count === 0 && duplicates === 0 && !message) return null;
 
   return (
     <div className="card">
@@ -46,6 +61,21 @@ export default function MaintenanceCard({ count }: { count: number }) {
         <button className="btn primary" onClick={run} disabled={busy}>
           {busy ? "מעביר..." : `העבר ${count} לשיחות בלבד`}
         </button>
+      )}
+
+      {duplicates > 0 && (
+        <>
+          <div style={{ fontWeight: 600, margin: "18px 0 4px" }}>
+            לידים כפולים
+          </div>
+          <div style={{ fontSize: 13, color: "#475467", marginBottom: 12 }}>
+            <strong>{duplicates}</strong> לידים נראים כמו כפילות של ליד קיים
+            (אותו שם מלא). הם יסומנו בתגית &quot;כפול&quot; ברשימה — לא יימחקו.
+          </div>
+          <button className="btn" onClick={markDuplicates} disabled={busy}>
+            {busy ? "מסמן..." : `סמן ${duplicates} ככפולים`}
+          </button>
+        </>
       )}
 
       {message && (

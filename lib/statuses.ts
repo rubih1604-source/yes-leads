@@ -10,6 +10,7 @@ export type StatusDef = {
   color: string;
   position?: number;
   builtin?: boolean;
+  commission?: number;
   /** סטטוס סופי - לא ממשיכים לטפל בליד */
   terminal?: boolean;
   /** סטטוס של סגירת עסקה - נספר בדשבורד כהמרה */

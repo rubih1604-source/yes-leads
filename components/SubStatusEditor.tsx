@@ -8,6 +8,7 @@ export type SubStatusRow = {
   id: string;
   statusName: string;
   name: string;
+  commission?: number;
 };
 
 export default function SubStatusEditor({
@@ -20,6 +21,7 @@ export default function SubStatusEditor({
   const [statusName, setStatusName] = useState("");
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [rates, setRates] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const router = useRouter();
 
@@ -57,6 +59,17 @@ export default function SubStatusEditor({
     if (!res.ok) setError(data.error || "הטעינה נכשלה");
     else if (data.created === 0)
       setError('צריך קודם ליצור סטטוס בשם "מחכה למבצע"');
+    setBusy(false);
+    router.refresh();
+  }
+
+  async function saveCommission(id: string, value: string) {
+    setBusy(true);
+    await fetch(`/api/substatuses/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ commission: Number(value) || 0 }),
+    });
     setBusy(false);
     router.refresh();
   }
@@ -110,10 +123,36 @@ export default function SubStatusEditor({
                   }}
                 >
                   <span style={{ fontSize: 14 }}>{row.name}</span>
+                  <input
+                    className="field"
+                    type="number"
+                    min={0}
+                    placeholder="עמלה"
+                    value={rates[row.id] ?? String(row.commission ?? 0)}
+                    onChange={(e) =>
+                      setRates((p) => ({ ...p, [row.id]: e.target.value }))
+                    }
+                    style={{
+                      marginBottom: 0,
+                      marginInlineStart: "auto",
+                      width: 80,
+                      minHeight: 34,
+                      fontSize: 13,
+                    }}
+                  />
+                  <button
+                    className="btn"
+                    style={{ height: 34, flex: "0 0 auto", fontSize: 13 }}
+                    onClick={() =>
+                      saveCommission(row.id, rates[row.id] ?? String(row.commission ?? 0))
+                    }
+                    disabled={busy}
+                  >
+                    ₪
+                  </button>
                   <button
                     className="btn"
                     style={{
-                      marginInlineStart: "auto",
                       height: 30,
                       flex: "0 0 auto",
                       fontSize: 13,

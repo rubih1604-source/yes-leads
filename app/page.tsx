@@ -3,13 +3,21 @@ import LeadList, { type LeadRow } from "@/components/LeadList";
 import AutoRefresh from "@/components/AutoRefresh";
 import { getStatuses } from "@/lib/status-store";
 import { getSubStatusMap } from "@/lib/substatus";
+import { getRevenue } from "@/lib/revenue";
+import RevenueBar from "@/components/RevenueBar";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [statuses, subStatuses] = await Promise.all([
+  const [statuses, subStatuses, revenue, templates] = await Promise.all([
     getStatuses(),
     getSubStatusMap(),
+    getRevenue("month"),
+    db.template.findMany({
+      where: { approved: true },
+      orderBy: { name: "asc" },
+      select: { name: true, displayName: true },
+    }),
   ]);
 
   const leads = await db.lead.findMany({
@@ -27,6 +35,7 @@ export default async function HomePage() {
       lastName: true,
       status: true,
       subStatus: true,
+      duplicateOf: true,
       intakeAt: true,
       extra: true,
     },
@@ -45,6 +54,7 @@ export default async function HomePage() {
       lastName: l.lastName,
       status: l.status,
       subStatus: l.subStatus,
+      duplicateOf: l.duplicateOf,
       intakeAt: l.intakeAt.toISOString(),
       campaign: extra.fb_campaign || extra.campaign || null,
       supplier: extra.supplier_question || null,
@@ -54,7 +64,13 @@ export default async function HomePage() {
   return (
     <div className="app">
       <AutoRefresh seconds={15} />
-      <LeadList leads={rows} statuses={statuses} subStatuses={subStatuses} />
+      <RevenueBar data={revenue} />
+      <LeadList
+        leads={rows}
+        statuses={statuses}
+        subStatuses={subStatuses}
+        templates={templates}
+      />
     </div>
   );
 }

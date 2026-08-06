@@ -10,6 +10,7 @@ export type SettingsRow = {
   replyCooldownMinutes: number;
   liveChatMinutes: number;
   onlyAfterTemplate: boolean;
+  revenueTarget: number;
   afterHoursGrace: number;
   requireTemplateFirst: boolean;
   replyInterested: string;
@@ -24,6 +25,7 @@ export default function SettingsScreen({ settings }: { settings: SettingsRow }) 
   const [tAfterHours, setTAfterHours] = useState(settings.replyAfterHours);
   const [tCallback, setTCallback] = useState(settings.replyCallback);
   const [live, setLive] = useState(String(settings.liveChatMinutes));
+  const [target, setTarget] = useState(String(settings.revenueTarget));
   const [grace, setGrace] = useState(String(settings.afterHoursGrace));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -45,8 +47,39 @@ export default function SettingsScreen({ settings }: { settings: SettingsRow }) 
   return (
     <>
       <div className="section-title" style={{ marginTop: 8 }}>
-        המתג הראשי
+        יעד הכנסות
       </div>
+
+      <div className="card">
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>
+          היעד החודשי שלך
+        </div>
+        <div style={{ fontSize: 13, color: "#475467", marginBottom: 14 }}>
+          הציר בראש מסך הלידים יתמלא לפי העמלות שהגדרת על סטטוסי הסגירה.
+          0 = בלי יעד.
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            className="field"
+            type="number"
+            min={0}
+            value={target}
+            onChange={(e) => setTarget(e.target.value)}
+            style={{ marginBottom: 0, flex: 1 }}
+          />
+          <span style={{ fontSize: 14 }}>₪</span>
+          <button
+            className="btn primary"
+            style={{ flex: 1, height: 50 }}
+            onClick={() => patch({ revenueTarget: Number(target) })}
+            disabled={busy}
+          >
+            שמור
+          </button>
+        </div>
+      </div>
+
+      <div className="section-title">המתג הראשי</div>
 
       <div className="card">
         <div style={{ fontWeight: 600, marginBottom: 4 }}>העוזר האוטומטי</div>

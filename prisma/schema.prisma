@@ -14,6 +14,7 @@ model Lead {
   lastName       String?
   status         String   @default("חדש")
   subStatus      String?
+  duplicateOf    String?
   source         String?
   origin         String   @default("leadmanager")
   intakeAt       DateTime @default(now())
@@ -185,6 +186,7 @@ model Settings {
   replyInterested      String   @default("היי, אסיים שיחה כמה דק ואתקשר :)")
   replyAfterHours      String   @default("היי, אני כבר סיימתי לעבוד. {מתי} מתאים לך?\nואם כן באיזה שעה :)")
   lastRunAt            DateTime?
+  revenueTarget        Float     @default(0)
   replyCallback        String   @default("מעולה, רשמתי. אחזור אליך בזמן שביקשת :)")
 
   updatedAt            DateTime @updatedAt
@@ -198,6 +200,7 @@ model Status {
   terminal  Boolean  @default(false)
   won       Boolean  @default(false)
   builtin   Boolean  @default(false)
+  commission Float   @default(0)
   createdAt DateTime @default(now())
 
   @@index([position])
@@ -208,6 +211,7 @@ model SubStatus {
   statusName String
   name       String
   position   Int      @default(0)
+  commission Float    @default(0)
   createdAt  DateTime @default(now())
 
   @@unique([statusName, name])
@@ -241,4 +245,17 @@ model OfferSend {
   createdAt    DateTime @default(now())
 
   @@index([offerId])
+}
+
+model ImportRun {
+  id        String   @id @default(cuid())
+  fileName  String?
+  rows      Int      @default(0)
+  matched   Int      @default(0)
+  updated   Int      @default(0)
+  skipped   Int      @default(0)
+  report    Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }

@@ -34,6 +34,11 @@ export async function PATCH(request: Request) {
       data.afterHoursGrace = Math.round(n);
   }
 
+  if (body.revenueTarget !== undefined) {
+    const n = Number(body.revenueTarget);
+    if (Number.isFinite(n) && n >= 0 && n <= 10000000) data.revenueTarget = n;
+  }
+
   if (body.liveChatMinutes !== undefined) {
     const n = Number(body.liveChatMinutes);
     if (Number.isFinite(n) && n >= 0 && n <= 600)

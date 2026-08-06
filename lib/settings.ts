@@ -6,6 +6,7 @@ export type AppSettings = {
   botPauseHours: number;
   replyCooldownMinutes: number;
   liveChatMinutes: number;
+  revenueTarget: number;
   onlyAfterTemplate: boolean;
   offDutyUntil: Date | null;
   afterHoursGrace: number;
@@ -21,6 +22,7 @@ const DEFAULTS: AppSettings = {
   botPauseHours: 2,
   replyCooldownMinutes: 10,
   liveChatMinutes: 30,
+  revenueTarget: 0,
   onlyAfterTemplate: false,
   offDutyUntil: null,
   afterHoursGrace: 60,
@@ -43,6 +45,7 @@ export async function getSettings(): Promise<AppSettings> {
       botPauseHours: row.botPauseHours,
       replyCooldownMinutes: row.replyCooldownMinutes,
       liveChatMinutes: row.liveChatMinutes,
+      revenueTarget: row.revenueTarget,
       onlyAfterTemplate: row.onlyAfterTemplate,
       offDutyUntil: row.offDutyUntil,
       afterHoursGrace: row.afterHoursGrace,

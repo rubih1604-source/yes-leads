@@ -19,6 +19,27 @@ export default async function SettingsPage() {
     getSubStatuses(),
   ]);
 
+  // כמה לידים נראים ככפילות ועדיין לא סומנו
+  const dupCandidates = await db.lead
+    .findMany({
+      where: { origin: "leadmanager", duplicateOf: null },
+      orderBy: { intakeAt: "asc" },
+      select: { firstName: true, lastName: true },
+    })
+    .catch(() => []);
+
+  const seenNames = new Set<string>();
+  let duplicates = 0;
+  for (const l of dupCandidates) {
+    const n = `${l.firstName ?? ""} ${l.lastName ?? ""}`
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+    if (n.split(" ").length < 2) continue;
+    if (seenNames.has(n)) duplicates++;
+    else seenNames.add(n);
+  }
+
   return (
     <div className="app">
       <div className="topbar">
@@ -26,7 +47,7 @@ export default async function SettingsPage() {
       </div>
 
       <SettingsScreen settings={settings as SettingsRow} />
-      <MaintenanceCard count={whatsappLeads} />
+      <MaintenanceCard count={whatsappLeads} duplicates={duplicates} />
       <StatusesEditor statuses={statuses} />
       <SubStatusEditor
         statuses={statuses}

@@ -52,6 +52,7 @@ export async function getStatuses(force = false): Promise<StatusDef[]> {
       terminal: r.terminal,
       won: r.won,
       builtin: r.builtin,
+      commission: r.commission,
     }));
 
     cache = { at: Date.now(), list };

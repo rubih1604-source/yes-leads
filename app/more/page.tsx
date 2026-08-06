@@ -16,6 +16,12 @@ export default async function MorePage() {
       title: "העוזר האוטומטי",
       items: [
         {
+          href: "/import",
+          glyph: "⇪",
+          label: "טעינת דוח מכירות",
+          desc: "העלה CSV והמערכת תעדכן סטטוסים לפי הצלבה",
+        },
+        {
           href: "/offers",
           glyph: "★",
           label: "מבצעים",

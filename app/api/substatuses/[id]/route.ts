@@ -4,6 +4,29 @@ import { isLoggedIn } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
+export async function PATCH(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  if (!isLoggedIn()) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const n = Number(body.commission);
+
+  if (!Number.isFinite(n) || n < 0 || n > 100000) {
+    return NextResponse.json({ error: "סכום לא תקין" }, { status: 400 });
+  }
+
+  await db.subStatus.update({
+    where: { id: params.id },
+    data: { commission: n },
+  });
+
+  return NextResponse.json({ ok: true });
+}
+
 export async function DELETE(
   request: Request,
   { params }: { params: { id: string } }
