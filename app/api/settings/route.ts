@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { readRowFields } from "@/lib/row-fields";
 import { isLoggedIn } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,10 @@ export async function PATCH(request: Request) {
     const n = Number(body.afterHoursGrace);
     if (Number.isFinite(n) && n >= 0 && n <= 600)
       data.afterHoursGrace = Math.round(n);
+  }
+
+  if (body.leadRowFields !== undefined) {
+    data.leadRowFields = readRowFields(body.leadRowFields);
   }
 
   if (body.revenueTarget !== undefined) {

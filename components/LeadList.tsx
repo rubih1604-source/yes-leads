@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { statusColor, type StatusDef } from "@/lib/statuses";
+import { DEFAULT_ROW_FIELDS, type RowFieldKey } from "@/lib/row-fields";
 import { displayPhone, dialPhone } from "@/lib/phone";
 import StatusSheet from "./StatusSheet";
 
@@ -17,6 +18,11 @@ export type LeadRow = {
   supplier: string | null;
   subStatus: string | null;
   duplicateOf: string | null;
+  source: string | null;
+  package: string | null;
+  price: string | null;
+  email: string | null;
+  address: string | null;
 };
 
 /** מרגע מתי לספור, לפי התקופה שנבחרה */
@@ -69,11 +75,13 @@ export default function LeadList({
   statuses,
   subStatuses = {},
   templates = [],
+  rowFields = DEFAULT_ROW_FIELDS,
 }: {
   leads: LeadRow[];
   statuses: StatusDef[];
   subStatuses?: Record<string, string[]>;
   templates?: Array<{ name: string; displayName: string | null }>;
+  rowFields?: RowFieldKey[];
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkTemplate, setBulkTemplate] = useState("");
@@ -180,6 +188,43 @@ export default function LeadList({
       .map((s) => ({ name: s.name, count: counts.get(s.name) ?? 0 }))
       .filter((s) => s.count > 0);
   }, [leads, statuses]);
+
+  /** מה מוצג בשורה הראשית, לפי מה שבחרת בהגדרות */
+  function inlineFor(lead: LeadRow) {
+    const out: Array<{ key: string; text: string }> = [];
+    for (const key of rowFields) {
+      if (key === "status") out.push({ key, text: lead.status });
+      else if (key === "phone")
+        out.push({ key, text: displayPhone(lead.phone) });
+      else if (key === "intakeAt")
+        out.push({ key, text: intakeStamp(lead.intakeAt) });
+      else if (key === "price" && lead.price)
+        out.push({ key, text: `₪${lead.price}` });
+    }
+    return out;
+  }
+
+  /** מה מוצג כתגית מתחת לשורה */
+  function tagsFor(lead: LeadRow) {
+    const out: Array<{ key: string; text: string }> = [];
+    for (const key of rowFields) {
+      if (key === "subStatus" && lead.subStatus)
+        out.push({ key, text: lead.subStatus });
+      else if (key === "supplier" && lead.supplier)
+        out.push({ key, text: `ספק: ${lead.supplier}` });
+      else if (key === "campaign" && lead.campaign)
+        out.push({ key, text: lead.campaign });
+      else if (key === "source" && lead.source)
+        out.push({ key, text: lead.source });
+      else if (key === "package" && lead.package)
+        out.push({ key, text: lead.package });
+      else if (key === "email" && lead.email)
+        out.push({ key, text: lead.email });
+      else if (key === "address" && lead.address)
+        out.push({ key, text: lead.address });
+    }
+    return out;
+  }
 
   return (
     <>
@@ -401,29 +446,41 @@ export default function LeadList({
                     {name}
                     {lead.duplicateOf && <span className="dup-tag">כפול</span>}
                   </div>
-                  <div className="meta">
-                    <span
-                      className="status-text"
-                      style={{ color: statusColor(lead.status, statuses) }}
-                    >
-                      {lead.status}
-                    </span>
-                    <span>·</span>
-                    <span>{intakeStamp(lead.intakeAt)}</span>
-                  </div>
-                  {(lead.supplier || lead.subStatus) && (
+                  {inlineFor(lead).length > 0 && (
+                    <div className="meta">
+                      {inlineFor(lead).map((part, i) => (
+                        <span key={part.key} style={{ display: "contents" }}>
+                          {i > 0 && <span>·</span>}
+                          <span
+                            className={part.key === "status" ? "status-text" : ""}
+                            style={
+                              part.key === "status"
+                                ? { color: statusColor(lead.status, statuses) }
+                                : undefined
+                            }
+                          >
+                            {part.text}
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {tagsFor(lead).length > 0 && (
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {lead.subStatus && (
+                      {tagsFor(lead).map((tag) => (
                         <div
+                          key={tag.key}
                           className="supplier-tag"
-                          style={{ borderColor: "#1b4d8f", color: "#1b4d8f" }}
+                          style={
+                            tag.key === "subStatus"
+                              ? { borderColor: "#1b4d8f", color: "#1b4d8f" }
+                              : undefined
+                          }
                         >
-                          {lead.subStatus}
+                          {tag.text}
                         </div>
-                      )}
-                      {lead.supplier && (
-                        <div className="supplier-tag">ספק: {lead.supplier}</div>
-                      )}
+                      ))}
                     </div>
                   )}
                 </Link>

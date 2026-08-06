@@ -4,6 +4,7 @@ import StatusesEditor from "@/components/StatusesEditor";
 import SubStatusEditor, { type SubStatusRow } from "@/components/SubStatusEditor";
 import { getSubStatuses } from "@/lib/substatus";
 import MaintenanceCard from "@/components/MaintenanceCard";
+import RowFieldsEditor from "@/components/RowFieldsEditor";
 import { db } from "@/lib/db";
 import { getStatuses } from "@/lib/status-store";
 
@@ -47,6 +48,9 @@ export default async function SettingsPage() {
       </div>
 
       <SettingsScreen settings={settings as SettingsRow} />
+      <div className="section-title">תצוגה</div>
+      <RowFieldsEditor current={settings.leadRowFields} />
+
       <MaintenanceCard count={whatsappLeads} duplicates={duplicates} />
       <StatusesEditor statuses={statuses} />
       <SubStatusEditor

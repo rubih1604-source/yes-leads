@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { readRowFields, type RowFieldKey } from "./row-fields";
 
 export type AppSettings = {
   botEnabled: boolean;
@@ -7,6 +8,7 @@ export type AppSettings = {
   replyCooldownMinutes: number;
   liveChatMinutes: number;
   revenueTarget: number;
+  leadRowFields: RowFieldKey[];
   onlyAfterTemplate: boolean;
   offDutyUntil: Date | null;
   afterHoursGrace: number;
@@ -23,6 +25,7 @@ const DEFAULTS: AppSettings = {
   replyCooldownMinutes: 10,
   liveChatMinutes: 30,
   revenueTarget: 0,
+  leadRowFields: readRowFields(null),
   onlyAfterTemplate: false,
   offDutyUntil: null,
   afterHoursGrace: 60,
@@ -46,6 +49,7 @@ export async function getSettings(): Promise<AppSettings> {
       replyCooldownMinutes: row.replyCooldownMinutes,
       liveChatMinutes: row.liveChatMinutes,
       revenueTarget: row.revenueTarget,
+      leadRowFields: readRowFields(row.leadRowFields),
       onlyAfterTemplate: row.onlyAfterTemplate,
       offDutyUntil: row.offDutyUntil,
       afterHoursGrace: row.afterHoursGrace,

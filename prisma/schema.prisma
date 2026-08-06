@@ -187,6 +187,7 @@ model Settings {
   replyAfterHours      String   @default("היי, אני כבר סיימתי לעבוד. {מתי} מתאים לך?\nואם כן באיזה שעה :)")
   lastRunAt            DateTime?
   revenueTarget        Float     @default(0)
+  leadRowFields        Json?
   replyCallback        String   @default("מעולה, רשמתי. אחזור אליך בזמן שביקשת :)")
 
   updatedAt            DateTime @updatedAt

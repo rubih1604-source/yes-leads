@@ -4,12 +4,13 @@ import AutoRefresh from "@/components/AutoRefresh";
 import { getStatuses } from "@/lib/status-store";
 import { getSubStatusMap } from "@/lib/substatus";
 import { getRevenue } from "@/lib/revenue";
+import { getSettings } from "@/lib/settings";
 import RevenueBar from "@/components/RevenueBar";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [statuses, subStatuses, revenue, templates] = await Promise.all([
+  const [statuses, subStatuses, revenue, templates, settings] = await Promise.all([
     getStatuses(),
     getSubStatusMap(),
     getRevenue("month"),
@@ -18,6 +19,7 @@ export default async function HomePage() {
       orderBy: { name: "asc" },
       select: { name: true, displayName: true },
     }),
+    getSettings(),
   ]);
 
   const leads = await db.lead.findMany({
@@ -34,6 +36,7 @@ export default async function HomePage() {
       firstName: true,
       lastName: true,
       status: true,
+      source: true,
       subStatus: true,
       duplicateOf: true,
       intakeAt: true,
@@ -58,6 +61,11 @@ export default async function HomePage() {
       intakeAt: l.intakeAt.toISOString(),
       campaign: extra.fb_campaign || extra.campaign || null,
       supplier: extra.supplier_question || null,
+      source: l.source,
+      package: extra.package || null,
+      price: extra.price || null,
+      email: extra.email || null,
+      address: extra.address || null,
     };
   });
 
@@ -70,6 +78,7 @@ export default async function HomePage() {
         statuses={statuses}
         subStatuses={subStatuses}
         templates={templates}
+        rowFields={settings.leadRowFields}
       />
     </div>
   );
