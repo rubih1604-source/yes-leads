@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { statusColor, type StatusDef } from "@/lib/statuses";
 import { displayPhone, dialPhone } from "@/lib/phone";
 import { DEFAULT_ROW_FIELDS, type RowFieldKey } from "@/lib/row-fields";
@@ -25,6 +25,66 @@ export type LeadRow = {
   email: string | null;
   address: string | null;
 };
+
+const SAVE_KEY = "leads:filters";
+const SCROLL_KEY = "leads:scroll";
+
+type SavedFilters = {
+  status: string | null;
+  campaign: string | null;
+  period: "all" | "today" | "week" | "month";
+  q: string;
+};
+
+const EMPTY_FILTERS: SavedFilters = {
+  status: null,
+  campaign: null,
+  period: "all",
+  q: "",
+};
+
+/**
+ * קורא את הסינון השמור.
+ * הכתובת גוברת - אם הגעת מקישור מסונן, הוא מה שקובע.
+ */
+function readSaved(params: URLSearchParams): SavedFilters {
+  const fromUrl: SavedFilters = {
+    status: params.get("status"),
+    campaign: params.get("campaign"),
+    period:
+      (params.get("period") as SavedFilters["period"]) ?? "all",
+    q: params.get("q") ?? "",
+  };
+
+  const urlHasSomething =
+    fromUrl.status !== null ||
+    fromUrl.campaign !== null ||
+    fromUrl.period !== "all" ||
+    fromUrl.q !== "";
+
+  if (urlHasSomething) return fromUrl;
+
+  if (typeof window === "undefined") return { ...EMPTY_FILTERS };
+
+  try {
+    const raw = sessionStorage.getItem(SAVE_KEY);
+    if (!raw) return { ...EMPTY_FILTERS };
+
+    const parsed = JSON.parse(raw) as Partial<SavedFilters>;
+    return {
+      status: typeof parsed.status === "string" ? parsed.status : null,
+      campaign: typeof parsed.campaign === "string" ? parsed.campaign : null,
+      period: ["all", "today", "week", "month"].includes(
+        parsed.period as string
+      )
+        ? (parsed.period as SavedFilters["period"])
+        : "all",
+      q: typeof parsed.q === "string" ? parsed.q : "",
+    };
+  } catch {
+    return { ...EMPTY_FILTERS };
+  }
+}
 
 /** מרגע מתי לספור, לפי התקופה שנבחרה */
 function periodStart(period: string): number | null {
@@ -79,15 +139,20 @@ export default function LeadList({
    * ואפשר גם לשמור קישור למסך מסונן או לשלוח אותו לעצמך.
    */
   const params = useSearchParams();
-  const router = useRouter();
 
-  const [query, setQuery] = useState(params.get("q") ?? "");
-  const [filter, setFilter] = useState<string | null>(params.get("status"));
-  const [campaign, setCampaign] = useState<string | null>(
-    params.get("campaign")
-  );
+  /**
+   * קודם קוראים מהכתובת. אם היא ריקה - מהזיכרון של הדפדפן.
+   *
+   * שני המקומות נחוצים: הכתובת מאפשרת לשמור סימנייה ולשתף,
+   * והזיכרון שורד גם חזרה שמנקה את הכתובת.
+   */
+  const initial = readSaved(params);
+
+  const [query, setQuery] = useState(initial.q);
+  const [filter, setFilter] = useState<string | null>(initial.status);
+  const [campaign, setCampaign] = useState<string | null>(initial.campaign);
   const [period, setPeriod] = useState<"all" | "today" | "week" | "month">(
-    (params.get("period") as "all" | "today" | "week" | "month") ?? "all"
+    initial.period
   );
 
   const [campaignOpen, setCampaignOpen] = useState(false);
@@ -99,22 +164,83 @@ export default function LeadList({
   const [bulkMessage, setBulkMessage] = useState("");
   const [bulkConfirm, setBulkConfirm] = useState(false);
 
-  // כל שינוי בסינון נכתב לכתובת, בלי להוסיף רשומה להיסטוריה
+  /**
+   * שומרים את הסינון בשני מקומות, בלי לערב את הראוטר של Next.
+   *
+   * history.replaceState משנה רק את הכתובת בשורת הדפדפן -
+   * בלי ניווט, בלי טעינה מחדש, ובלי לאפס את המסך.
+   * זו הייתה הבעיה קודם: router.replace גרם לניווט שאיפס הכל.
+   */
   useEffect(() => {
+    const state = {
+      status: filter,
+      campaign,
+      period,
+      q: query.trim(),
+    };
+
+    try {
+      sessionStorage.setItem(SAVE_KEY, JSON.stringify(state));
+    } catch {
+      // גלישה פרטית חוסמת לפעמים - הכתובת עדיין תעבוד
+    }
+
     const next = new URLSearchParams();
-    if (filter) next.set("status", filter);
-    if (campaign) next.set("campaign", campaign);
-    if (period !== "all") next.set("period", period);
-    if (query.trim()) next.set("q", query.trim());
+    if (state.status) next.set("status", state.status);
+    if (state.campaign) next.set("campaign", state.campaign);
+    if (state.period !== "all") next.set("period", state.period);
+    if (state.q) next.set("q", state.q);
 
     const qs = next.toString();
-    const target = qs ? `/?${qs}` : "/";
-    const currentUrl = `${window.location.pathname}${window.location.search}`;
+    const target = qs ? `?${qs}` : window.location.pathname;
 
-    if (target !== currentUrl) {
-      router.replace(target, { scroll: false });
+    if (`${window.location.search}` !== (qs ? `?${qs}` : "")) {
+      window.history.replaceState(null, "", target);
     }
-  }, [filter, campaign, period, query, router]);
+  }, [filter, campaign, period, query]);
+
+  /** שומר את מיקום הגלילה, כדי לחזור בדיוק לאותו מקום ברשימה */
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    function onScroll() {
+      if (timer) return;
+      timer = setTimeout(() => {
+        try {
+          sessionStorage.setItem(SCROLL_KEY, String(window.scrollY));
+        } catch {
+          // לא קריטי
+        }
+        timer = null;
+      }, 250);
+    }
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
+  /** מחזיר את הגלילה למקום שהיית בו, אחרי שהרשימה כבר מצוירת */
+  useEffect(() => {
+    let saved = 0;
+    try {
+      saved = Number(sessionStorage.getItem(SCROLL_KEY)) || 0;
+    } catch {
+      return;
+    }
+
+    if (saved <= 0) return;
+
+    const id = requestAnimationFrame(() => {
+      window.scrollTo({ top: saved, behavior: "auto" });
+    });
+
+    return () => cancelAnimationFrame(id);
+    // רץ פעם אחת בטעינה בלבד
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const anyFilter =
     filter !== null || campaign !== null || period !== "all" || query !== "";
@@ -124,6 +250,13 @@ export default function LeadList({
     setCampaign(null);
     setPeriod("all");
     setQuery("");
+    try {
+      sessionStorage.removeItem(SAVE_KEY);
+      sessionStorage.removeItem(SCROLL_KEY);
+    } catch {
+      // לא קריטי
+    }
+    window.scrollTo({ top: 0, behavior: "auto" });
   }
 
   function toggleOne(id: string) {

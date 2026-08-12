@@ -7,23 +7,24 @@ import { FIELD_LABELS, FIELD_ORDER } from "@/lib/leadmanager-mapping";
 import { getStatuses } from "@/lib/status-store";
 import { getSubStatusMap } from "@/lib/substatus";
 import LeadCardActions from "@/components/LeadCardActions";
+import LeadTasks from "@/components/LeadTasks";
 import AutoRefresh from "@/components/AutoRefresh";
+import type { TemplateOption } from "@/components/SendTemplateSheet";
+import type { KnowledgeOption } from "@/components/SendKnowledgeSheet";
 
 export const dynamic = "force-dynamic";
 
 const EVENT_LABELS: Record<string, string> = {
-  lead_created: "הליד נכנס למערכת",
+  lead_created: "הליד נכנס",
   status_changed: "שינוי סטטוס",
-  webhook_received: "עדכון מליד מנגר",
   message_sent: "נשלחה הודעה",
-  message_failed: "שליחת הודעה נכשלה",
-  message_received: "הלקוח ענה",
+  message_failed: "שליחה נכשלה",
   alert_created: "נוצרה התראה",
   bot_classified: "העוזר סיווג את התגובה",
   bot_answered: "העוזר ענה ללקוח",
   bot_skipped: "העוזר לא ענה בכוונה",
-  human_reply: "ענית ללקוח בעצמך",
   bot_escalated: "העוזר העביר אליך - הלקוח חזר",
+  human_reply: "ענית ללקוח בעצמך",
   task_created: "פתחת משימה",
 };
 
@@ -46,8 +47,8 @@ export default async function LeadPage({
   const lead = await db.lead.findUnique({
     where: { id: params.id },
     include: {
-      events: { orderBy: { createdAt: "desc" }, take: 100 },
-      messages: { orderBy: { createdAt: "desc" }, take: 50 },
+      messages: { orderBy: { createdAt: "desc" }, take: 60 },
+      events: { orderBy: { createdAt: "desc" }, take: 40 },
     },
   });
 
@@ -76,7 +77,6 @@ export default async function LeadPage({
   const templates = await db.template.findMany({
     where: { approved: true },
     orderBy: { name: "asc" },
-    select: { name: true, displayName: true, bodyText: true },
   });
 
   const name =
@@ -91,15 +91,13 @@ export default async function LeadPage({
 
   const detailKeys = [
     ...FIELD_ORDER.filter((k) => extra[k]),
-    ...Object.keys(extra).filter(
-      (k) => !FIELD_ORDER.includes(k) && extra[k]
-    ),
+    ...Object.keys(extra).filter((k) => !FIELD_ORDER.includes(k) && extra[k]),
   ];
-  const firstName = (lead.firstName || "").trim().split(/\s+/)[0] || "";
 
   return (
     <div className="app">
       <AutoRefresh seconds={20} />
+
       {/* החתימה: צבע הסטטוס מציף את הכותרת.
           אתה יודע איפה הליד עומד לפני שקראת מילה. */}
       <div
@@ -110,7 +108,9 @@ export default async function LeadPage({
           <span>→</span>
           <span>לידים</span>
         </Link>
+
         <h1>{name}</h1>
+
         <div className="lead-head-status">
           <span
             className="dot"
@@ -121,7 +121,9 @@ export default async function LeadPage({
             {lead.subStatus ? ` · ${lead.subStatus}` : ""}
           </span>
           <span className="sep">·</span>
-          <a href={`tel:${dialPhone(lead.phone)}`}>{displayPhone(lead.phone)}</a>
+          <a href={`tel:${dialPhone(lead.phone)}`}>
+            {displayPhone(lead.phone)}
+          </a>
         </div>
       </div>
 
@@ -129,27 +131,30 @@ export default async function LeadPage({
         <div className="sub" style={{ marginBottom: 14 }}>
           נכנס {formatDate(lead.intakeAt)}
           {lead.source ? ` · ${lead.source}` : ""}
+          {lead.duplicateOf ? " · ליד כפול" : ""}
         </div>
 
         <LeadCardActions
           leadId={lead.id}
-          phone={dialPhone(lead.phone)}
           status={lead.status}
-          firstName={firstName}
-          templates={templates}
+          phone={dialPhone(lead.phone)}
+          templates={templates as unknown as TemplateOption[]}
           doNotContact={lead.doNotContact}
           canUndo={Boolean(lastAutoChange?.fromStatus)}
           botMuted={lead.botMuted}
           botPausedUntil={
             lead.botPausedUntil ? lead.botPausedUntil.toISOString() : null
           }
-          knowledge={knowledge}
+          knowledge={knowledge as KnowledgeOption[]}
           statuses={statuses}
           leadName={name}
           currentSub={lead.subStatus}
           subStatuses={subStatusMap}
         />
       </div>
+
+      {/* המשימות של הליד - עם כל הפרטים, לא רק שנפתחה משימה */}
+      <LeadTasks leadId={lead.id} />
 
       {detailKeys.length > 0 && (
         <>
@@ -195,22 +200,24 @@ export default async function LeadPage({
               הלקוח ענה וממתין לתשובה ממך
             </div>
           )}
+
           <div className="chat">
             {[...lead.messages].reverse().map((m) => (
               <div
                 className={m.direction === "in" ? "bubble in" : "bubble out"}
                 key={m.id}
               >
-                {m.bodyText && <div className="bubble-text">{m.bodyText}</div>}
+                <div className="bubble-text">
+                  {m.bodyText || m.templateName || "(ללא טקסט)"}
+                </div>
                 <div className="bubble-meta">
-                  {m.direction === "in"
-                    ? "הלקוח"
-                    : m.status === "failed"
-                    ? `נכשל: ${m.error?.slice(0, 80) ?? "שגיאה"}`
-                    : "נשלח"}
+                  {m.direction === "in" ? "הלקוח" : "אנחנו"}
                   {m.templateName ? ` · ${m.templateName}` : ""}
                   {" · "}
                   {formatDate(m.createdAt)}
+                  {m.status === "failed" && m.error
+                    ? ` · נכשל: ${m.error}`
+                    : ""}
                 </div>
               </div>
             ))}
@@ -218,36 +225,71 @@ export default async function LeadPage({
         </>
       )}
 
-      <div className="section-title">מה קרה עם הליד הזה</div>
-      <div className="timeline">
-        {lead.events.length === 0 && (
-          <div className="event">אין עדיין רשומות</div>
-        )}
-        {lead.events.map((e) => (
-          <div
-            className="event"
-            key={e.id}
-            style={{
-              borderInlineStartColor: e.toStatus
-                ? statusColor(e.toStatus, statuses)
-                : "#dde3ea",
-            }}
-          >
-            <div>
-              {EVENT_LABELS[e.type] ?? e.type}
-              {e.fromStatus && e.toStatus
-                ? `: ${e.fromStatus} ← ${e.toStatus}`
-                : e.toStatus
-                ? `: ${e.toStatus}`
-                : ""}
-            </div>
-            <div className="when">
-              {formatDate(e.createdAt)}
-              {e.actor === "user" ? " · ידני" : " · אוטומטי"}
-            </div>
+      {lead.events.length > 0 && (
+        <>
+          <div className="section-title">מה קרה עם הליד הזה</div>
+          <div className="timeline">
+            {lead.events.map((e) => {
+              const payload =
+                e.payload && typeof e.payload === "object"
+                  ? (e.payload as Record<string, unknown>)
+                  : {};
+
+              const taskTitle =
+                e.type === "task_created" && typeof payload.title === "string"
+                  ? payload.title
+                  : null;
+
+              const taskDue =
+                e.type === "task_created" && typeof payload.dueAt === "string"
+                  ? payload.dueAt
+                  : null;
+
+              return (
+                <div
+                  className="event"
+                  key={e.id}
+                  style={
+                    e.toStatus
+                      ? {
+                          borderInlineStartColor: statusColor(
+                            e.toStatus,
+                            statuses
+                          ),
+                        }
+                      : undefined
+                  }
+                >
+                  <div style={{ fontWeight: 600 }}>
+                    {EVENT_LABELS[e.type] ?? e.type}
+                    {e.fromStatus && e.toStatus
+                      ? `: ${e.fromStatus} ← ${e.toStatus}`
+                      : e.toStatus
+                      ? `: ${e.toStatus}`
+                      : ""}
+                  </div>
+
+                  {taskTitle && (
+                    <div style={{ fontSize: 14, marginTop: 3 }}>
+                      {taskTitle}
+                      {taskDue ? ` · לשעה ${formatDate(new Date(taskDue))}` : ""}
+                    </div>
+                  )}
+
+                  <div className="when">
+                    {formatDate(e.createdAt)}
+                    {e.actor === "bot"
+                      ? " · אוטומטי"
+                      : e.actor === "system"
+                      ? " · המערכת"
+                      : ""}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        ))}
-      </div>
+        </>
+      )}
     </div>
   );
 }

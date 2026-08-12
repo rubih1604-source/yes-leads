@@ -4,6 +4,43 @@ import { isLoggedIn } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
+/** כל המשימות של הליד - פתוחות קודם, ואז מה שכבר בוצע */
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  if (!isLoggedIn()) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const tasks = await db.task.findMany({
+    where: { leadId: params.id },
+    orderBy: [
+      { done: "asc" },
+      { urgent: "desc" },
+      { dueAt: { sort: "asc", nulls: "last" } },
+      { createdAt: "desc" },
+    ],
+    take: 40,
+  });
+
+  return NextResponse.json({
+    ok: true,
+    tasks: tasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      body: t.body,
+      dueAt: t.dueAt ? t.dueAt.toISOString() : null,
+      urgent: t.urgent,
+      needsReview: t.needsReview,
+      done: t.done,
+      doneAt: t.doneAt ? t.doneAt.toISOString() : null,
+      createdAt: t.createdAt.toISOString(),
+      notifiedAt: t.notifiedAt ? t.notifiedAt.toISOString() : null,
+    })),
+  });
+}
+
 /** פתיחת משימה ידנית על ליד, עם שעה שתתריע במייל */
 export async function POST(
   request: Request,
@@ -42,12 +79,21 @@ export async function POST(
     },
   });
 
+  /**
+   * ביומן נשמרים גם הפרטים, לא רק העובדה שנוצרה משימה,
+   * כדי שאפשר יהיה לראות מה בדיוק נפתח ומתי.
+   */
   await db.leadEvent.create({
     data: {
       leadId: lead.id,
       type: "task_created",
       actor: "user",
-      payload: { title: task.title, dueAt: due?.toISOString() ?? null },
+      payload: {
+        title: task.title,
+        body: task.body,
+        dueAt: due?.toISOString() ?? null,
+        urgent: task.urgent,
+      },
     },
   });
 
