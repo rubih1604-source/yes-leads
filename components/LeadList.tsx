@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { statusColor, type StatusDef } from "@/lib/statuses";
-import { DEFAULT_ROW_FIELDS, type RowFieldKey } from "@/lib/row-fields";
 import { displayPhone, dialPhone } from "@/lib/phone";
+import { DEFAULT_ROW_FIELDS, type RowFieldKey } from "@/lib/row-fields";
 import StatusSheet from "./StatusSheet";
 
 export type LeadRow = {
@@ -13,11 +14,11 @@ export type LeadRow = {
   firstName: string | null;
   lastName: string | null;
   status: string;
+  subStatus: string | null;
+  duplicateOf: string | null;
   intakeAt: string;
   campaign: string | null;
   supplier: string | null;
-  subStatus: string | null;
-  duplicateOf: string | null;
   source: string | null;
   package: string | null;
   price: string | null;
@@ -58,18 +59,6 @@ function intakeStamp(iso: string): string {
   });
 }
 
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "עכשיו";
-  if (mins < 60) return `לפני ${mins} דק'`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `לפני ${hours} שע'`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `לפני ${days} ימים`;
-  return new Date(iso).toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem" });
-}
-
 export default function LeadList({
   leads,
   statuses,
@@ -83,11 +72,59 @@ export default function LeadList({
   templates?: Array<{ name: string; displayName: string | null }>;
   rowFields?: RowFieldKey[];
 }) {
+  /**
+   * הסינון נשמר בכתובת.
+   *
+   * ככה חזרה מכרטיס ליד מחזירה אותך בדיוק לאותו סינון,
+   * ואפשר גם לשמור קישור למסך מסונן או לשלוח אותו לעצמך.
+   */
+  const params = useSearchParams();
+  const router = useRouter();
+
+  const [query, setQuery] = useState(params.get("q") ?? "");
+  const [filter, setFilter] = useState<string | null>(params.get("status"));
+  const [campaign, setCampaign] = useState<string | null>(
+    params.get("campaign")
+  );
+  const [period, setPeriod] = useState<"all" | "today" | "week" | "month">(
+    (params.get("period") as "all" | "today" | "week" | "month") ?? "all"
+  );
+
+  const [campaignOpen, setCampaignOpen] = useState(false);
+  const [sheetFor, setSheetFor] = useState<LeadRow | null>(null);
+
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkTemplate, setBulkTemplate] = useState("");
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMessage, setBulkMessage] = useState("");
   const [bulkConfirm, setBulkConfirm] = useState(false);
+
+  // כל שינוי בסינון נכתב לכתובת, בלי להוסיף רשומה להיסטוריה
+  useEffect(() => {
+    const next = new URLSearchParams();
+    if (filter) next.set("status", filter);
+    if (campaign) next.set("campaign", campaign);
+    if (period !== "all") next.set("period", period);
+    if (query.trim()) next.set("q", query.trim());
+
+    const qs = next.toString();
+    const target = qs ? `/?${qs}` : "/";
+    const currentUrl = `${window.location.pathname}${window.location.search}`;
+
+    if (target !== currentUrl) {
+      router.replace(target, { scroll: false });
+    }
+  }, [filter, campaign, period, query, router]);
+
+  const anyFilter =
+    filter !== null || campaign !== null || period !== "all" || query !== "";
+
+  function clearAll() {
+    setFilter(null);
+    setCampaign(null);
+    setPeriod("all");
+    setQuery("");
+  }
 
   function toggleOne(id: string) {
     setSelected((prev) => {
@@ -119,14 +156,6 @@ export default function LeadList({
     setBulkConfirm(false);
     setBulkBusy(false);
   }
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<string | null>(null);
-  const [sheetFor, setSheetFor] = useState<LeadRow | null>(null);
-  const [campaign, setCampaign] = useState<string | null>(null);
-  const [campaignOpen, setCampaignOpen] = useState(false);
-  const [period, setPeriod] = useState<"all" | "today" | "week" | "month">(
-    "all"
-  );
 
   const visible = useMemo(() => {
     const q = query.trim();
@@ -137,7 +166,9 @@ export default function LeadList({
         return false;
       if (campaign && lead.campaign !== campaign) return false;
       if (filter && lead.status !== filter) return false;
+
       if (!q) return true;
+
       const name = `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim();
       const digits = q.replace(/\D/g, "");
       return (
@@ -246,6 +277,18 @@ export default function LeadList({
         />
       </div>
 
+      {anyFilter && (
+        <div style={{ margin: "10px 16px 0" }}>
+          <button
+            className="btn"
+            style={{ height: 40, fontSize: 14 }}
+            onClick={clearAll}
+          >
+            נקה את כל הסינון
+          </button>
+        </div>
+      )}
+
       <div className="filters periods">
         {(
           [
@@ -273,12 +316,13 @@ export default function LeadList({
             data-active={campaign !== null}
             onClick={() => setCampaignOpen(true)}
           >
-            {campaign ? `קמפיין: ${campaign}` : "כל הקמפיינים"}
+            <span>{campaign ? `קמפיין: ${campaign}` : "כל הקמפיינים"}</span>
             <span className="chev" aria-hidden="true">
               ⌄
             </span>
           </button>
         )}
+
         <button
           className="chip"
           data-active={filter === null}
@@ -286,6 +330,7 @@ export default function LeadList({
         >
           הכל
         </button>
+
         {usedStatuses.map((st) => (
           <button
             key={st.name}
@@ -406,18 +451,10 @@ export default function LeadList({
 
       {visible.length === 0 ? (
         <div className="empty">
-          {leads.length === 0 ? (
-            <>
-              <strong>עוד לא נכנסו לידים</strong>
-              חבר את ליד מנגר לכתובת ה־webhook, או שנה סטטוס לליד אמיתי
-              כדי לראות אותו מופיע כאן.
-            </>
-          ) : (
-            <>
-              <strong>אין תוצאות</strong>
-              נסה חיפוש אחר או בטל את הסינון.
-            </>
-          )}
+          <strong>אין לידים להצגה</strong>
+          {anyFilter
+            ? "נסה לנקות את הסינון."
+            : "לידים חדשים יופיעו כאן ברגע שייכנסו."}
         </div>
       ) : (
         <div className="list">
@@ -425,12 +462,14 @@ export default function LeadList({
             const name =
               `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim() ||
               displayPhone(lead.phone);
+
             return (
               <div className="lead" key={lead.id}>
                 <span
                   className="bar"
                   style={{ background: statusColor(lead.status, statuses) }}
                 />
+
                 {templates.length > 0 && (
                   <button
                     className="lead-check"
@@ -441,18 +480,22 @@ export default function LeadList({
                     {selected.has(lead.id) ? "☑" : "☐"}
                   </button>
                 )}
+
                 <Link href={`/leads/${lead.id}`} className="body">
                   <div className="name">
                     {name}
                     {lead.duplicateOf && <span className="dup-tag">כפול</span>}
                   </div>
+
                   {inlineFor(lead).length > 0 && (
                     <div className="meta">
                       {inlineFor(lead).map((part, i) => (
                         <span key={part.key} style={{ display: "contents" }}>
                           {i > 0 && <span>·</span>}
                           <span
-                            className={part.key === "status" ? "status-text" : ""}
+                            className={
+                              part.key === "status" ? "status-text" : ""
+                            }
                             style={
                               part.key === "status"
                                 ? { color: statusColor(lead.status, statuses) }
@@ -515,6 +558,7 @@ export default function LeadList({
         >
           <div className="sheet">
             <h3>סינון לפי קמפיין</h3>
+
             <button
               className="status-option"
               data-current={campaign === null}
