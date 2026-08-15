@@ -147,6 +147,7 @@ export default async function LeadPage({
           }
           knowledge={knowledge as KnowledgeOption[]}
           statuses={statuses}
+          firstName={lead.firstName ?? name}
           leadName={name}
           currentSub={lead.subStatus}
           subStatuses={subStatusMap}

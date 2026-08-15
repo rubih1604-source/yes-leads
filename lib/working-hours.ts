@@ -160,3 +160,23 @@ export function startOfIsraelDay(date: Date = new Date()): Date {
   const p = israelParts(date);
   return fromIsrael(p.year, p.month, p.day, 0);
 }
+
+
+/**
+ * כמה דקות עברו מאז שיום העבודה נסגר היום.
+ *
+ * מחזיר null אם אנחנו עדיין בתוך שעות העבודה, לפני הפתיחה,
+ * או ביום סגור. משמש לחלון החסד: יום עבודה לא באמת נגמר
+ * בדיוק ב-18:30, ולכן הבוט לא קופץ לפעולה בשנייה שאחרי.
+ */
+export function minutesSinceWorkingClose(
+  date: Date = new Date()
+): number | null {
+  const parts = israelParts(date);
+  const window = windowForDay(parts.weekday);
+
+  if (!window) return null; // שבת - אין ממה לספור
+  if (parts.minutes < window.closeMin) return null; // עוד לא נסגר
+
+  return parts.minutes - window.closeMin;
+}

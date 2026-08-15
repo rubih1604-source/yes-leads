@@ -40,6 +40,7 @@ export default function Nav({
         "/jobs",
         "/offers",
         "/import",
+        "/lead-sales",
         "/rules",
         "/templates",
         "/knowledge",

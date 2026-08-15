@@ -9,6 +9,7 @@ import {
 } from "@/lib/leadmanager-mapping";
 import { isKnownStatus } from "@/lib/status-store";
 import { scheduleForStatus } from "@/lib/rules";
+import { salesPriceFor, SALE_ORIGIN } from "@/lib/sales-campaigns";
 
 export const dynamic = "force-dynamic";
 
@@ -128,6 +129,15 @@ async function handle(request: Request) {
      */
     const alreadyCustomer = looksLikeExistingCustomer(extra);
 
+    /**
+     * קמפיין מכירה: הלידים ממנו נמכרים ולא נעבדים.
+     * הם נכנסים דרך אותו webhook, מקבלים מקור "sale",
+     * ולכן לא מופיעים ברשימה ולא מקבלים שום אוטומציה.
+     */
+    const campaignName = extra.fb_campaign || extra.campaign || null;
+    const salePrice = await salesPriceFor(campaignName);
+    const isSaleLead = salePrice !== null;
+
     const existing = await db.lead.findUnique({ where: { phone } });
 
     if (!existing) {
@@ -138,6 +148,7 @@ async function handle(request: Request) {
           lastName: mapped.lastName,
           status: incomingStatus ?? (alreadyCustomer ? "לקוח קיים" : "חדש"),
           source: mapped.source,
+          origin: isSaleLead ? SALE_ORIGIN : "leadmanager",
           extra: Object.keys(extra).length
             ? (extra as Prisma.InputJsonObject)
             : undefined,
@@ -164,8 +175,10 @@ async function handle(request: Request) {
         },
       });
 
-      // אם יש חוקים לסטטוס שבו הליד נכנס - מתזמנים אותם
-      await scheduleForStatus(lead.id, lead.status);
+      // ליד מכירה לא נכנס לשום רצף - הוא רק נספר
+      if (!isSaleLead) {
+        await scheduleForStatus(lead.id, lead.status);
+      }
     } else {
       const statusChanged =
         incomingStatus !== null && incomingStatus !== existing.status;
@@ -177,8 +190,9 @@ async function handle(request: Request) {
           lastName: mapped.lastName ?? existing.lastName,
           source: mapped.source ?? existing.source,
           status: incomingStatus ?? existing.status,
-          // אם הוא נוצר קודם מהודעת וואטסאפ - עכשיו הוא ליד אמיתי
-          origin: "leadmanager",
+          // ליד מכירה נשאר כזה. אחרת - מי שנוצר מהודעת
+          // וואטסאפ משתדרג עכשיו לליד אמיתי.
+          origin: isSaleLead ? SALE_ORIGIN : "leadmanager",
           extra: Object.keys(extra).length
             ? ({
                 ...(typeof existing.extra === "object" && existing.extra
