@@ -1,110 +1,150 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { CampaignStat } from "@/lib/lead-sales";
+import type {
+  CampaignStat,
+  BuyerStat,
+  SaleEntryRow,
+} from "@/lib/lead-sales";
+
+const money = (n: number) => `₪${Math.round(n).toLocaleString("he-IL")}`;
+
+function when(iso: string): string {
+  return new Date(iso).toLocaleString("he-IL", {
+    timeZone: "Asia/Jerusalem",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export default function LeadSalesScreen({
   campaigns,
+  buyers,
+  entries,
   totalMonth,
   revenueMonth,
   unregistered,
   monthLabel,
+  missingEntries,
 }: {
   campaigns: CampaignStat[];
+  buyers: BuyerStat[];
+  entries: SaleEntryRow[];
   totalMonth: number;
   revenueMonth: number;
   unregistered: Array<{ name: string; count: number }>;
   monthLabel: string;
+  missingEntries: number;
 }) {
-  const [adding, setAdding] = useState(false);
-  const [name, setName] = useState("");
-  const [price, setPrice] = useState("");
-  const [buyer, setBuyer] = useState("");
-  const [moveExisting, setMoveExisting] = useState(true);
+  const [tab, setTab] = useState<"leads" | "campaigns" | "buyers">("leads");
+  const [filter, setFilter] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [rates, setRates] = useState<Record<string, string>>({});
   const router = useRouter();
 
-  const money = (n: number) => `₪${n.toLocaleString("he-IL")}`;
+  // טפסים
+  const [addingCampaign, setAddingCampaign] = useState(false);
+  const [cName, setCName] = useState("");
+  const [cPrice, setCPrice] = useState("");
+  const [cBuyer, setCBuyer] = useState("");
+  const [moveExisting, setMoveExisting] = useState(true);
 
-  async function add() {
-    if (!name || !price) {
-      setError("צריך לבחור קמפיין ולהגדיר מחיר");
+  const [addingBuyer, setAddingBuyer] = useState(false);
+  const [bName, setBName] = useState("");
+
+  const [rates, setRates] = useState<Record<string, string>>({});
+
+  const visible = useMemo(
+    () => (filter ? entries.filter((e) => e.campaign === filter) : entries),
+    [entries, filter]
+  );
+
+  const filteredRevenue = useMemo(
+    () => visible.reduce((s, e) => s + e.price, 0),
+    [visible]
+  );
+
+  async function call(url: string, body?: unknown, method = "POST") {
+    setBusy(true);
+    setMessage("");
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok) setMessage(data.error || "הפעולה נכשלה");
+    router.refresh();
+    return { ok: res.ok, data };
+  }
+
+  async function addCampaign() {
+    if (!cName || !cPrice) {
+      setMessage("צריך לבחור קמפיין ולהגדיר מחיר");
       return;
     }
-    setBusy(true);
-    setError("");
-
-    const res = await fetch("/api/sales-campaigns", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name,
-        pricePerLead: Number(price),
-        buyer,
-        moveExisting,
-      }),
+    const { ok, data } = await call("/api/sales-campaigns", {
+      name: cName,
+      pricePerLead: Number(cPrice),
+      buyerId: cBuyer || null,
+      moveExisting,
     });
-
-    const data = await res.json().catch(() => ({}));
-
-    if (res.ok) {
+    if (ok) {
       setMessage(
         data.moved > 0
-          ? `הקמפיין נרשם · ${data.moved} לידים קיימים הועברו לכאן`
+          ? `נרשם · ${data.moved} לידים קיימים הועברו לכאן`
           : "הקמפיין נרשם"
       );
-      setName("");
-      setPrice("");
-      setBuyer("");
-      setAdding(false);
-      router.refresh();
-    } else {
-      setError(data.error || "הרישום נכשל");
+      setCName("");
+      setCPrice("");
+      setAddingCampaign(false);
     }
-    setBusy(false);
-  }
-
-  async function savePrice(id: string, value: string) {
-    setBusy(true);
-    await fetch(`/api/sales-campaigns/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pricePerLead: Number(value) || 0 }),
-    });
-    setBusy(false);
-    router.refresh();
-  }
-
-  async function remove(id: string) {
-    setBusy(true);
-    const res = await fetch(`/api/sales-campaigns/${id}`, { method: "DELETE" });
-    const data = await res.json().catch(() => ({}));
-    setMessage(
-      res.ok
-        ? `הקמפיין הוסר · ${data.returned} לידים חזרו לרשימה הרגילה`
-        : "ההסרה נכשלה"
-    );
-    setBusy(false);
-    router.refresh();
   }
 
   return (
     <>
-      {/* הצג הראשי - כמה כסף החודש */}
+      {/* ציר ההכנסות */}
       <div className="revenue">
         <div className="revenue-head">
           <div>
-            <span className="revenue-num">{money(revenueMonth)}</span>
+            <span className="revenue-num">
+              {money(filter ? filteredRevenue : revenueMonth)}
+            </span>
           </div>
           <span className="revenue-meta">
-            {totalMonth} לידים · {monthLabel}
+            {filter ? `${visible.length} לידים · ${filter}` : `${totalMonth} לידים · ${monthLabel}`}
           </span>
         </div>
       </div>
+
+      {missingEntries > 0 && (
+        <div className="card">
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>
+            השלמת לידים ותיקים
+          </div>
+          <div style={{ fontSize: 13, color: "#475467", marginBottom: 12 }}>
+            <strong>{missingEntries}</strong> לידים נכנסו לפני שהתחלנו לספור
+            כניסות. השלם אותם כדי שייכללו בחישוב.
+          </div>
+          <button
+            className="btn primary"
+            onClick={async () => {
+              const { ok, data } = await call(
+                "/api/maintenance/backfill-entries"
+              );
+              if (ok) setMessage(`${data.created} כניסות הושלמו`);
+            }}
+            disabled={busy}
+          >
+            {busy ? "משלים..." : "השלם"}
+          </button>
+        </div>
+      )}
 
       {message && (
         <div className="card" style={{ fontSize: 14 }}>
@@ -112,192 +152,398 @@ export default function LeadSalesScreen({
         </div>
       )}
 
-      {adding ? (
-        <div className="card">
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>
-            רישום קמפיין מכירה
-          </div>
-          <div style={{ fontSize: 13, color: "#475467", marginBottom: 14 }}>
-            הלידים מהקמפיין הזה לא יופיעו ברשימת הלידים ולא יקבלו שום
-            הודעה אוטומטית. הם רק ייספרו כאן.
-          </div>
-
-          <select
-            className="field"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          >
-            <option value="">— בחר קמפיין —</option>
-            {unregistered.map((c) => (
-              <option key={c.name} value={c.name}>
-                {c.name} ({c.count} לידים)
-              </option>
-            ))}
-          </select>
-
-          <input
-            className="field"
-            type="number"
-            min={0}
-            placeholder="מחיר לליד בשקלים"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-          />
-
-          <input
-            className="field"
-            placeholder="למי מוכרים (לא חובה)"
-            value={buyer}
-            onChange={(e) => setBuyer(e.target.value)}
-          />
-
+      <div className="filters">
+        {(
+          [
+            { key: "leads", label: `לידים ${entries.length}` },
+            { key: "campaigns", label: `קמפיינים ${campaigns.length}` },
+            { key: "buyers", label: `לקוחות ${buyers.length}` },
+          ] as const
+        ).map((t) => (
           <button
-            className="status-option"
-            data-current={moveExisting}
-            onClick={() => setMoveExisting(!moveExisting)}
+            key={t.key}
+            className="chip"
+            data-active={tab === t.key}
+            onClick={() => setTab(t.key)}
           >
-            <span
-              className="dot"
-              style={{ background: moveExisting ? "#12805c" : "#dbe3ea" }}
-            />
-            <span>העבר לכאן גם לידים שכבר נכנסו מהקמפיין הזה</span>
+            {t.label}
           </button>
+        ))}
+      </div>
 
-          {error && <div className="error">{error}</div>}
-
-          <div className="actions">
-            <button
-              className="btn"
-              onClick={() => setAdding(false)}
-              disabled={busy}
-            >
-              ביטול
-            </button>
-            <button className="btn primary" onClick={add} disabled={busy}>
-              {busy ? "שומר..." : "רשום"}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="card">
-          <button className="btn primary" onClick={() => setAdding(true)}>
-            רשום קמפיין מכירה
-          </button>
-          {unregistered.length === 0 && (
-            <div style={{ fontSize: 13, color: "#98a2b3", marginTop: 10 }}>
-              אין קמפיינים לא רשומים כרגע.
+      {/* ---------- לידים ---------- */}
+      {tab === "leads" && (
+        <>
+          {campaigns.length > 0 && (
+            <div className="filters">
+              <button
+                className="chip"
+                data-active={filter === null}
+                onClick={() => setFilter(null)}
+              >
+                כל הקמפיינים
+              </button>
+              {campaigns.map((c) => (
+                <button
+                  key={c.id}
+                  className="chip"
+                  data-active={filter === c.name}
+                  onClick={() => setFilter(filter === c.name ? null : c.name)}
+                >
+                  {c.name}
+                  <span style={{ opacity: 0.55, marginInlineStart: 5 }}>
+                    {money(c.pricePerLead)}
+                  </span>
+                </button>
+              ))}
             </div>
           )}
-        </div>
+
+          {visible.length === 0 ? (
+            <div className="empty">
+              <strong>אין עדיין לידים למכירה</strong>
+              רשום קמפיין מכירה, וכל ליד שייכנס ממנו יופיע כאן.
+            </div>
+          ) : (
+            <div className="list">
+              {visible.map((e) => (
+                <div className="lead" key={e.id}>
+                  <span className="bar" style={{ background: "#12805c" }} />
+                  <Link href={`/leads/${e.leadId}`} className="body">
+                    <div className="name">
+                      {e.name}
+                      {e.existingCustomer && (
+                        <span className="dup-tag">לקוח קיים</span>
+                      )}
+                    </div>
+                    <div className="meta">
+                      <span
+                        className="status-text"
+                        style={{ color: "#12805c" }}
+                      >
+                        {money(e.price)}
+                      </span>
+                      <span>·</span>
+                      <span>{when(e.at)}</span>
+                    </div>
+                    {e.campaign && (
+                      <div className="supplier-tag">{e.campaign}</div>
+                    )}
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
-      {campaigns.length === 0 ? (
-        <div className="empty">
-          <strong>אין עדיין קמפיינים של מכירת לידים</strong>
-          רשום קמפיין, הגדר מחיר לליד, וכל מה שייכנס ממנו ייספר כאן
-          במקום להיכנס לרשימת הלידים.
-        </div>
-      ) : (
-        campaigns.map((c) => (
-          <div className="card" key={c.id}>
-            <div style={{ fontWeight: 600, fontSize: 16 }}>{c.name}</div>
-            {c.buyer && (
-              <div style={{ fontSize: 13, color: "#98a2b3", marginTop: 2 }}>
-                נמכר ל{c.buyer}
+      {/* ---------- קמפיינים ---------- */}
+      {tab === "campaigns" && (
+        <>
+          {addingCampaign ? (
+            <div className="card">
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                רישום קמפיין מכירה
               </div>
-            )}
-
-            <div
-              style={{
-                display: "flex",
-                gap: 18,
-                flexWrap: "wrap",
-                margin: "12px 0",
-                fontSize: 13,
-                color: "#475467",
-              }}
-            >
-              <span>
-                <strong
-                  style={{
-                    fontFamily: "Rubik, sans-serif",
-                    fontSize: 20,
-                    color: "#101828",
-                  }}
-                >
-                  {c.leadsMonth}
-                </strong>{" "}
-                לידים החודש
-              </span>
-              <span>
-                <strong
-                  style={{
-                    fontFamily: "Rubik, sans-serif",
-                    fontSize: 20,
-                    color: "#12805c",
-                  }}
-                >
-                  {money(c.revenueMonth)}
-                </strong>
-              </span>
-              <span>
-                <strong
-                  style={{
-                    fontFamily: "Rubik, sans-serif",
-                    fontSize: 20,
-                    color: c.existingPercent > 25 ? "#b54708" : "#101828",
-                  }}
-                >
-                  {c.existingPercent}%
-                </strong>{" "}
-                לקוחות קיימים
-              </span>
-              <span style={{ color: "#98a2b3" }}>
-                {c.leadsTotal} מאז ומעולם
-              </span>
-            </div>
-
-            {c.existingPercent > 25 && (
-              <div className="insight">
-                יותר מרבע מהלידים בקמפיין הזה כבר לקוחות yes. שווה לצמצם
-                אותם בהגדרות הקהל — הקונה משלם על לידים פחות איכותיים.
+              <div
+                style={{ fontSize: 13, color: "#475467", marginBottom: 14 }}
+              >
+                לידים מהקמפיין הזה לא יופיעו ברשימת הלידים ולא יקבלו שום
+                הודעה אוטומטית.
               </div>
-            )}
 
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <select
+                className="field"
+                value={cName}
+                onChange={(e) => setCName(e.target.value)}
+              >
+                <option value="">— בחר קמפיין —</option>
+                {unregistered.map((u) => (
+                  <option key={u.name} value={u.name}>
+                    {u.name} ({u.count})
+                  </option>
+                ))}
+              </select>
+
               <input
                 className="field"
                 type="number"
                 min={0}
-                value={rates[c.id] ?? String(c.pricePerLead)}
-                onChange={(e) =>
-                  setRates((p) => ({ ...p, [c.id]: e.target.value }))
-                }
-                style={{ marginBottom: 0, flex: 1 }}
+                placeholder="מחיר לליד"
+                value={cPrice}
+                onChange={(e) => setCPrice(e.target.value)}
               />
-              <span style={{ fontSize: 14 }}>₪ לליד</span>
-              <button
-                className="btn"
-                style={{ flex: "0 0 auto", height: 50 }}
-                onClick={() =>
-                  savePrice(c.id, rates[c.id] ?? String(c.pricePerLead))
-                }
-                disabled={busy}
+
+              <select
+                className="field"
+                value={cBuyer}
+                onChange={(e) => setCBuyer(e.target.value)}
               >
-                שמור
+                <option value="">— לקוח (לא חובה) —</option>
+                {buyers.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                className="status-option"
+                data-current={moveExisting}
+                onClick={() => setMoveExisting(!moveExisting)}
+              >
+                <span
+                  className="dot"
+                  style={{ background: moveExisting ? "#12805c" : "#dbe3ea" }}
+                />
+                <span>העבר לכאן גם לידים שכבר נכנסו מהקמפיין</span>
+              </button>
+
+              <div className="actions">
+                <button
+                  className="btn"
+                  onClick={() => setAddingCampaign(false)}
+                  disabled={busy}
+                >
+                  ביטול
+                </button>
+                <button
+                  className="btn primary"
+                  onClick={addCampaign}
+                  disabled={busy}
+                >
+                  רשום
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="card">
+              <button
+                className="btn primary"
+                onClick={() => setAddingCampaign(true)}
+              >
+                רשום קמפיין מכירה
               </button>
             </div>
+          )}
 
-            <button
-              className="btn"
-              style={{ marginTop: 10, color: "#b42318" }}
-              onClick={() => remove(c.id)}
-              disabled={busy}
-            >
-              הסר מקמפיין מכירה
-            </button>
-          </div>
-        ))
+          {campaigns.map((c) => (
+            <div className="card" key={c.id}>
+              <div style={{ fontWeight: 600, fontSize: 16 }}>{c.name}</div>
+              {c.buyerName && (
+                <div style={{ fontSize: 13, color: "#98a2b3", marginTop: 2 }}>
+                  {c.buyerName}
+                </div>
+              )}
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 16,
+                  flexWrap: "wrap",
+                  margin: "12px 0",
+                  fontSize: 13,
+                  color: "#475467",
+                }}
+              >
+                <span>
+                  <strong style={{ fontSize: 19, color: "#101828" }}>
+                    {c.leadsMonth}
+                  </strong>{" "}
+                  החודש
+                </span>
+                <span>
+                  <strong style={{ fontSize: 19, color: "#12805c" }}>
+                    {money(c.revenueMonth)}
+                  </strong>
+                </span>
+                <span>
+                  <strong
+                    style={{
+                      fontSize: 19,
+                      color: c.existingPercent > 25 ? "#b54708" : "#101828",
+                    }}
+                  >
+                    {c.existingPercent}%
+                  </strong>{" "}
+                  לקוחות קיימים
+                </span>
+                <span style={{ color: "#98a2b3" }}>{c.leadsTotal} סה"כ</span>
+              </div>
+
+              {c.existingPercent > 25 && (
+                <div className="insight">
+                  יותר מרבע מהלידים כאן כבר לקוחות yes. שווה לצמצם אותם
+                  בהגדרות הקהל.
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input
+                  className="field"
+                  type="number"
+                  min={0}
+                  value={rates[c.id] ?? String(c.pricePerLead)}
+                  onChange={(e) =>
+                    setRates((p) => ({ ...p, [c.id]: e.target.value }))
+                  }
+                  style={{ marginBottom: 0, flex: 1 }}
+                />
+                <span style={{ fontSize: 14 }}>₪</span>
+                <button
+                  className="btn"
+                  style={{ flex: "0 0 auto", height: 50 }}
+                  onClick={() =>
+                    call(
+                      `/api/sales-campaigns/${c.id}`,
+                      {
+                        pricePerLead: Number(
+                          rates[c.id] ?? c.pricePerLead
+                        ),
+                      },
+                      "PATCH"
+                    )
+                  }
+                  disabled={busy}
+                >
+                  שמור
+                </button>
+              </div>
+
+              {buyers.length > 0 && (
+                <select
+                  className="field"
+                  style={{ marginTop: 10 }}
+                  value={c.buyerId ?? ""}
+                  onChange={(e) =>
+                    call(
+                      `/api/sales-campaigns/${c.id}`,
+                      { buyerId: e.target.value || null },
+                      "PATCH"
+                    )
+                  }
+                >
+                  <option value="">— בלי לקוח —</option>
+                  {buyers.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              <button
+                className="btn"
+                style={{ marginTop: 10, color: "#b42318" }}
+                onClick={async () => {
+                  const { ok, data } = await call(
+                    `/api/sales-campaigns/${c.id}`,
+                    undefined,
+                    "DELETE"
+                  );
+                  if (ok)
+                    setMessage(
+                      `הוסר · ${data.returned} לידים חזרו לרשימה הרגילה`
+                    );
+                }}
+                disabled={busy}
+              >
+                הסר מקמפיין מכירה
+              </button>
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* ---------- לקוחות ---------- */}
+      {tab === "buyers" && (
+        <>
+          {addingBuyer ? (
+            <div className="card">
+              <input
+                className="field"
+                placeholder="שם הלקוח"
+                value={bName}
+                onChange={(e) => setBName(e.target.value)}
+              />
+              <div className="actions">
+                <button
+                  className="btn"
+                  onClick={() => setAddingBuyer(false)}
+                  disabled={busy}
+                >
+                  ביטול
+                </button>
+                <button
+                  className="btn primary"
+                  onClick={async () => {
+                    const { ok } = await call("/api/lead-buyers", {
+                      name: bName,
+                    });
+                    if (ok) {
+                      setBName("");
+                      setAddingBuyer(false);
+                    }
+                  }}
+                  disabled={busy}
+                >
+                  הוסף
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="card">
+              <button
+                className="btn primary"
+                onClick={() => setAddingBuyer(true)}
+              >
+                הוסף לקוח
+              </button>
+            </div>
+          )}
+
+          {buyers.length === 0 ? (
+            <div className="empty">
+              <strong>אין עדיין לקוחות</strong>
+              הוסף לקוח, שייך אליו קמפיינים, ותראה כמה כסף מגיע לך מכל אחד.
+            </div>
+          ) : (
+            buyers.map((b) => (
+              <div className="card" key={b.id}>
+                <div style={{ fontWeight: 600, fontSize: 16 }}>{b.name}</div>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 16,
+                    flexWrap: "wrap",
+                    margin: "10px 0",
+                    fontSize: 13,
+                    color: "#475467",
+                  }}
+                >
+                  <span>
+                    <strong style={{ fontSize: 22, color: "#12805c" }}>
+                      {money(b.revenueMonth)}
+                    </strong>{" "}
+                    החודש
+                  </span>
+                  <span>{b.leadsMonth} לידים</span>
+                  <span>{b.campaigns} קמפיינים</span>
+                </div>
+                <button
+                  className="btn"
+                  style={{ color: "#b42318" }}
+                  onClick={() =>
+                    call(`/api/lead-buyers/${b.id}`, undefined, "DELETE")
+                  }
+                  disabled={busy}
+                >
+                  מחק לקוח
+                </button>
+              </div>
+            ))
+          )}
+        </>
       )}
     </>
   );

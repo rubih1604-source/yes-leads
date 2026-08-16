@@ -1,22 +1,24 @@
 /**
  * ============================================================
- *  מכירת לידים - ספירה וכסף
+ *  מכירת לידים
  * ============================================================
  *
- *  לכל קמפיין מכירה: כמה לידים נכנסו, כמה מתוכם לקוחות
- *  קיימים (כלומר פחות שווים לקונה), וכמה כסף זה שווה.
+ *  ההכנסה נספרת לפי **כניסות**, לא לפי לידים.
  *
- *  הכל מחושב בזמן אמת מהלידים עצמם.
+ *  אותו אדם יכול להיכנס מקמפיין של אלעד וגם מקמפיין שלך.
+ *  שתי הכניסות אמיתיות, ומגיע לך תשלום על זו שנמכרה -
+ *  גם אם הליד עצמו נשאר ברשימת העבודה שלך.
  */
 
 import { db } from "./db";
-import { normalizeName, SALE_ORIGIN } from "./sales-campaigns";
+import { normalizeName } from "./sales-campaigns";
 import { israelParts, fromIsrael } from "./working-hours";
 
 export type CampaignStat = {
   id: string;
   name: string;
-  buyer: string | null;
+  buyerId: string | null;
+  buyerName: string | null;
   pricePerLead: number;
   active: boolean;
   leadsMonth: number;
@@ -26,8 +28,29 @@ export type CampaignStat = {
   revenueMonth: number;
 };
 
+export type BuyerStat = {
+  id: string;
+  name: string;
+  campaigns: number;
+  leadsMonth: number;
+  revenueMonth: number;
+};
+
+export type SaleEntryRow = {
+  id: string;
+  leadId: string;
+  name: string;
+  phone: string;
+  campaign: string | null;
+  price: number;
+  at: string;
+  existingCustomer: boolean;
+};
+
 export type LeadSalesSummary = {
   campaigns: CampaignStat[];
+  buyers: BuyerStat[];
+  entries: SaleEntryRow[];
   totalMonth: number;
   revenueMonth: number;
   unregistered: Array<{ name: string; count: number }>;
@@ -56,13 +79,25 @@ export async function getLeadSales(): Promise<LeadSalesSummary> {
   const now = new Date();
   const monthStart = startOfMonth(now);
 
-  const [registered, saleLeads, otherLeads] = await Promise.all([
+  const [registered, buyers, saleEntries, normalLeads] = await Promise.all([
     db.salesCampaign.findMany({ orderBy: { createdAt: "desc" } }),
-    db.lead.findMany({
-      where: { origin: SALE_ORIGIN },
-      select: { id: true, extra: true, intakeAt: true },
+    db.leadBuyer.findMany({ orderBy: { name: "asc" } }),
+    db.leadEntry.findMany({
+      where: { isSale: true },
+      orderBy: { at: "desc" },
+      take: 2000,
+      include: {
+        lead: {
+          select: {
+            id: true,
+            phone: true,
+            firstName: true,
+            lastName: true,
+            extra: true,
+          },
+        },
+      },
     }),
-    // קמפיינים שעוד לא נרשמו - כדי שתוכל לסמן אותם
     db.lead.findMany({
       where: { origin: "leadmanager" },
       select: { extra: true },
@@ -70,25 +105,43 @@ export async function getLeadSales(): Promise<LeadSalesSummary> {
     }),
   ]);
 
+  const buyerById = new Map(buyers.map((b) => [b.id, b]));
+
+  // ---- צבירה לפי קמפיין ----
   const byCampaign = new Map<
     string,
     { month: number; total: number; existingMonth: number }
   >();
 
-  for (const lead of saleLeads) {
-    const name = campaignOf(lead.extra);
-    if (!name) continue;
+  const entries: SaleEntryRow[] = [];
 
-    const key = normalizeName(name);
+  for (const entry of saleEntries) {
+    const key = entry.campaign ? normalizeName(entry.campaign) : "";
     const row = byCampaign.get(key) ?? { month: 0, total: 0, existingMonth: 0 };
 
-    row.total++;
-    if (lead.intakeAt >= monthStart) {
-      row.month++;
-      if (isExistingCustomer(lead.extra)) row.existingMonth++;
-    }
+    const existing = isExistingCustomer(entry.lead?.extra);
 
+    row.total++;
+    if (entry.at >= monthStart) {
+      row.month++;
+      if (existing) row.existingMonth++;
+    }
     byCampaign.set(key, row);
+
+    if (entries.length < 300 && entry.lead) {
+      entries.push({
+        id: entry.id,
+        leadId: entry.lead.id,
+        name:
+          `${entry.lead.firstName ?? ""} ${entry.lead.lastName ?? ""}`.trim() ||
+          entry.lead.phone,
+        phone: entry.lead.phone,
+        campaign: entry.campaign,
+        price: Number(entry.price ?? 0),
+        at: entry.at.toISOString(),
+        existingCustomer: existing,
+      });
+    }
   }
 
   const campaigns: CampaignStat[] = registered.map((c) => {
@@ -98,27 +151,43 @@ export async function getLeadSales(): Promise<LeadSalesSummary> {
       existingMonth: 0,
     };
     const price = Number(c.pricePerLead ?? 0);
+    const buyer = c.buyerId ? buyerById.get(c.buyerId) : null;
 
     return {
       id: c.id,
       name: c.name,
-      buyer: c.buyer,
+      buyerId: c.buyerId ?? null,
+      buyerName: buyer?.name ?? c.buyer ?? null,
       pricePerLead: price,
       active: c.active,
       leadsMonth: row.month,
       leadsTotal: row.total,
       existingMonth: row.existingMonth,
       existingPercent:
-        row.month > 0 ? Math.round((row.existingMonth / row.month) * 1000) / 10 : 0,
+        row.month > 0
+          ? Math.round((row.existingMonth / row.month) * 1000) / 10
+          : 0,
       revenueMonth: Math.round(row.month * price),
     };
   });
 
-  // קמפיינים שיש בהם לידים אבל לא סומנו כמכירה
+  // ---- צבירה לפי לקוח ----
+  const buyerStats: BuyerStat[] = buyers.map((b) => {
+    const mine = campaigns.filter((c) => c.buyerId === b.id);
+    return {
+      id: b.id,
+      name: b.name,
+      campaigns: mine.length,
+      leadsMonth: mine.reduce((s, c) => s + c.leadsMonth, 0),
+      revenueMonth: mine.reduce((s, c) => s + c.revenueMonth, 0),
+    };
+  });
+
+  // ---- קמפיינים שעוד לא נרשמו ----
   const registeredKeys = new Set(registered.map((c) => normalizeName(c.name)));
   const unregisteredCounts = new Map<string, number>();
 
-  for (const lead of otherLeads) {
+  for (const lead of normalLeads) {
     const name = campaignOf(lead.extra);
     if (!name) continue;
     if (registeredKeys.has(normalizeName(name))) continue;
@@ -132,8 +201,10 @@ export async function getLeadSales(): Promise<LeadSalesSummary> {
 
   return {
     campaigns,
-    totalMonth: campaigns.reduce((sum, c) => sum + c.leadsMonth, 0),
-    revenueMonth: campaigns.reduce((sum, c) => sum + c.revenueMonth, 0),
+    buyers: buyerStats,
+    entries,
+    totalMonth: campaigns.reduce((s, c) => s + c.leadsMonth, 0),
+    revenueMonth: campaigns.reduce((s, c) => s + c.revenueMonth, 0),
     unregistered,
     monthLabel: now.toLocaleDateString("he-IL", {
       timeZone: "Asia/Jerusalem",

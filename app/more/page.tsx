@@ -16,12 +16,6 @@ export default async function MorePage() {
       title: "העוזר האוטומטי",
       items: [
         {
-          href: "/lead-sales",
-          glyph: "₪",
-          label: "מכירת לידים",
-          desc: "קמפיינים שהלידים בהם נמכרים - ספירה והכנסה",
-        },
-        {
           href: "/import",
           glyph: "⇪",
           label: "טעינת דוח מכירות",

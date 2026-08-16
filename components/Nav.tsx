@@ -16,6 +16,7 @@ const TABS = [
   { href: "/dashboard", label: "ביצועים", glyph: "◱" },
   { href: "/today", label: "היום", glyph: "◎" },
   { href: "/", label: "לידים", glyph: "▤" },
+  { href: "/lead-sales", label: "מכירה", glyph: "₪" },
   { href: "/chats", label: "שיחות", glyph: "✉" },
   { href: "/more", label: "עוד", glyph: "⋯" },
 ];
@@ -40,7 +41,6 @@ export default function Nav({
         "/jobs",
         "/offers",
         "/import",
-        "/lead-sales",
         "/rules",
         "/templates",
         "/knowledge",

@@ -34,6 +34,7 @@ model Lead {
   jobs           ScheduledJob[]
   alerts         Alert[]
   tasks          Task[]
+  entries        LeadEntry[]
 
   @@index([status])
   @@index([origin, intakeAt])
@@ -267,9 +268,38 @@ model SalesCampaign {
   name         String   @unique
   pricePerLead Float    @default(0)
   buyer        String?
+  buyerId      String?
+  buyerRef     LeadBuyer? @relation(fields: [buyerId], references: [id], onDelete: SetNull)
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@index([active])
+}
+
+/// מי שקונה ממך לידים
+model LeadBuyer {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  note      String?
+  createdAt DateTime @default(now())
+
+  campaigns SalesCampaign[]
+}
+
+/// כל כניסה של ליד, בנפרד.
+/// אותו אדם יכול להיכנס מכמה קמפיינים - וכל כניסה נספרת.
+model LeadEntry {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  campaign  String?
+  source    String?
+  isSale    Boolean  @default(false)
+  price     Float    @default(0)
+  at        DateTime @default(now())
+
+  @@index([isSale, at])
+  @@index([leadId])
+  @@index([campaign])
 }

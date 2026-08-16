@@ -33,6 +33,12 @@ export async function PATCH(
 
   if (typeof body.active === "boolean") data.active = body.active;
 
+  // שיוך לקמפיין של לקוח מסוים. null מנתק.
+  if (body.buyerId !== undefined) {
+    data.buyerId =
+      typeof body.buyerId === "string" && body.buyerId ? body.buyerId : null;
+  }
+
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: "לא נשלח מה לעדכן" }, { status: 400 });
   }

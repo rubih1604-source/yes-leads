@@ -175,6 +175,20 @@ async function handle(request: Request) {
         },
       });
 
+      // כל כניסה נרשמת בנפרד, כדי שליד שהגיע מכמה
+      // קמפיינים ייספר בכל אחד מהם
+      await db.leadEntry
+        .create({
+          data: {
+            leadId: lead.id,
+            campaign: campaignName,
+            source: mapped.source,
+            isSale: isSaleLead,
+            price: salePrice ?? 0,
+          },
+        })
+        .catch(() => null);
+
       // ליד מכירה לא נכנס לשום רצף - הוא רק נספר
       if (!isSaleLead) {
         await scheduleForStatus(lead.id, lead.status);
@@ -190,9 +204,12 @@ async function handle(request: Request) {
           lastName: mapped.lastName ?? existing.lastName,
           source: mapped.source ?? existing.source,
           status: incomingStatus ?? existing.status,
-          // ליד מכירה נשאר כזה. אחרת - מי שנוצר מהודעת
-          // וואטסאפ משתדרג עכשיו לליד אמיתי.
-          origin: isSaleLead ? SALE_ORIGIN : "leadmanager",
+          /**
+           * ליד שהגיע גם מקמפיין מכירה וגם מקמפיין שלך -
+           * נשאר שלך. הכניסה למכירה נספרת בנפרד ואתה
+           * מקבל עליה תשלום, אבל הוא לא נעלם מהרשימה.
+           */
+          origin: isSaleLead ? existing.origin : "leadmanager",
           extra: Object.keys(extra).length
             ? ({
                 ...(typeof existing.extra === "object" && existing.extra
@@ -203,6 +220,18 @@ async function handle(request: Request) {
             : undefined,
         },
       });
+
+      await db.leadEntry
+        .create({
+          data: {
+            leadId: existing.id,
+            campaign: campaignName,
+            source: mapped.source,
+            isSale: isSaleLead,
+            price: salePrice ?? 0,
+          },
+        })
+        .catch(() => null);
 
       await db.leadEvent.create({
         data: {
