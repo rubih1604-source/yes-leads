@@ -125,12 +125,14 @@ export default function LeadList({
   subStatuses = {},
   templates = [],
   rowFields = DEFAULT_ROW_FIELDS,
+  saleCampaigns = [],
 }: {
   leads: LeadRow[];
   statuses: StatusDef[];
   subStatuses?: Record<string, string[]>;
   templates?: Array<{ name: string; displayName: string | null }>;
   rowFields?: RowFieldKey[];
+  saleCampaigns?: Array<{ id: string; name: string; pricePerLead: number }>;
 }) {
   /**
    * הסינון נשמר בכתובת.
@@ -163,6 +165,8 @@ export default function LeadList({
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMessage, setBulkMessage] = useState("");
   const [bulkConfirm, setBulkConfirm] = useState(false);
+  const [saleCampaign, setSaleCampaign] = useState("");
+  const [saleConfirm, setSaleConfirm] = useState(false);
 
   /**
    * שומרים את הסינון בשני מקומות, בלי לערב את הראוטר של Next.
@@ -287,6 +291,30 @@ export default function LeadList({
     );
     if (res.ok) setSelected(new Set());
     setBulkConfirm(false);
+    setBulkBusy(false);
+  }
+
+  async function moveToSale() {
+    setBulkBusy(true);
+    setBulkMessage("");
+    const res = await fetch("/api/leads/bulk-move-sale", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        leadIds: Array.from(selected),
+        campaignId: saleCampaign,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setBulkMessage(
+      res.ok
+        ? `${data.moved} לידים הועברו ל"${data.campaign}"` +
+            (data.alreadyThere ? ` · ${data.alreadyThere} כבר היו שם` : "") +
+            ` · ₪${Math.round(data.revenue).toLocaleString("he-IL")}`
+        : data.error || "ההעברה נכשלה"
+    );
+    if (res.ok) setSelected(new Set());
+    setSaleConfirm(false);
     setBulkBusy(false);
   }
 
@@ -531,6 +559,65 @@ export default function LeadList({
             >
               שלח דיוור ל-{selected.size} לידים
             </button>
+          )}
+
+          {saleCampaigns.length > 0 && (
+            <>
+              <div
+                style={{
+                  borderTop: "1px solid rgba(255,255,255,0.25)",
+                  margin: "12px 0 8px",
+                  paddingTop: 10,
+                  fontSize: 13,
+                  opacity: 0.9,
+                }}
+              >
+                או להעביר אותם למכירת לידים
+              </div>
+
+              <select
+                value={saleCampaign}
+                onChange={(e) => setSaleCampaign(e.target.value)}
+              >
+                <option value="">— בחר קמפיין מכירה —</option>
+                {saleCampaigns.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} · ₪{c.pricePerLead}
+                  </option>
+                ))}
+              </select>
+
+              {saleConfirm ? (
+                <div className="actions">
+                  <button
+                    className="btn"
+                    onClick={() => setSaleConfirm(false)}
+                  >
+                    ביטול
+                  </button>
+                  <button
+                    className="btn"
+                    style={{
+                      background: "#12805c",
+                      color: "#fff",
+                      border: "none",
+                    }}
+                    onClick={moveToSale}
+                    disabled={bulkBusy}
+                  >
+                    {bulkBusy ? "מעביר..." : `כן, העבר ${selected.size}`}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className="btn"
+                  onClick={() => setSaleConfirm(true)}
+                  disabled={!saleCampaign}
+                >
+                  העבר {selected.size} למכירת לידים
+                </button>
+              )}
+            </>
           )}
 
           {bulkMessage && (

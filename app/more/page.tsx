@@ -16,6 +16,12 @@ export default async function MorePage() {
       title: "העוזר האוטומטי",
       items: [
         {
+          href: "/import-leads",
+          glyph: "⊕",
+          label: "ייבוא לידים",
+          desc: "העלה קובץ ותוסיף לידים שלא קיימים במערכת",
+        },
+        {
           href: "/import",
           glyph: "⇪",
           label: "טעינת דוח מכירות",

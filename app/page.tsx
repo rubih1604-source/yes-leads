@@ -10,7 +10,8 @@ import RevenueBar from "@/components/RevenueBar";
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [statuses, subStatuses, revenue, templates, settings] = await Promise.all([
+  const [statuses, subStatuses, revenue, templates, settings, saleCampaigns] =
+    await Promise.all([
     getStatuses(),
     getSubStatusMap(),
     getRevenue("month"),
@@ -20,6 +21,13 @@ export default async function HomePage() {
       select: { name: true, displayName: true },
     }),
     getSettings(),
+    db.salesCampaign
+      .findMany({
+        where: { active: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, pricePerLead: true },
+      })
+      .catch(() => []),
   ]);
 
   const leads = await db.lead.findMany({
@@ -79,6 +87,7 @@ export default async function HomePage() {
         subStatuses={subStatuses}
         templates={templates}
         rowFields={settings.leadRowFields}
+        saleCampaigns={saleCampaigns}
       />
     </div>
   );
