@@ -64,9 +64,25 @@ export default function LeadSalesScreen({
   );
 
   const filteredRevenue = useMemo(
-    () => visible.reduce((s, e) => s + e.price, 0),
+    () => visible.reduce((s, e) => s + (e.billable ? e.price : 0), 0),
     [visible]
   );
+
+  const excludedCount = useMemo(
+    () => visible.filter((e) => !e.billable).length,
+    [visible]
+  );
+
+  async function toggleBillable(id: string, billable: boolean) {
+    setBusy(true);
+    await fetch(`/api/lead-entries/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ billable }),
+    });
+    setBusy(false);
+    router.refresh();
+  }
 
   async function call(url: string, body?: unknown, method = "POST") {
     setBusy(true);
@@ -117,7 +133,10 @@ export default function LeadSalesScreen({
             </span>
           </div>
           <span className="revenue-meta">
-            {filter ? `${visible.length} לידים · ${filter}` : `${totalMonth} לידים · ${monthLabel}`}
+            {filter
+              ? `${visible.length} לידים · ${filter}`
+              : `${totalMonth} לידים · ${monthLabel}`}
+            {excludedCount > 0 && ` · ${excludedCount} לא לחיוב`}
           </span>
         </div>
       </div>
@@ -207,19 +226,41 @@ export default function LeadSalesScreen({
           ) : (
             <div className="list">
               {visible.map((e) => (
-                <div className="lead" key={e.id}>
-                  <span className="bar" style={{ background: "#12805c" }} />
+                <div
+                  className="lead"
+                  key={e.id}
+                  style={e.billable ? undefined : { opacity: 0.62 }}
+                >
+                  <span
+                    className="bar"
+                    style={{ background: e.billable ? "#12805c" : "#98a2b3" }}
+                  />
                   <Link href={`/leads/${e.leadId}`} className="body">
                     <div className="name">
                       {e.name}
                       {e.existingCustomer && (
                         <span className="dup-tag">לקוח קיים</span>
                       )}
+                      {!e.billable && (
+                        <span
+                          className="dup-tag"
+                          style={{
+                            background: "#eef2f6",
+                            borderColor: "#98a2b3",
+                            color: "#475467",
+                          }}
+                        >
+                          הועבר אליי
+                        </span>
+                      )}
                     </div>
                     <div className="meta">
                       <span
                         className="status-text"
-                        style={{ color: "#12805c" }}
+                        style={{
+                          color: e.billable ? "#12805c" : "#98a2b3",
+                          textDecoration: e.billable ? "none" : "line-through",
+                        }}
                       >
                         {money(e.price)}
                       </span>
@@ -230,6 +271,21 @@ export default function LeadSalesScreen({
                       <div className="supplier-tag">{e.campaign}</div>
                     )}
                   </Link>
+
+                  <div className="row-actions">
+                    <button
+                      className="row-btn"
+                      style={{ color: e.billable ? "#98a2b3" : "#12805c" }}
+                      aria-label={
+                        e.billable ? "סמן כהועבר אליי" : "החזר לחיוב"
+                      }
+                      title={e.billable ? "סמן כהועבר אליי" : "החזר לחיוב"}
+                      onClick={() => toggleBillable(e.id, !e.billable)}
+                      disabled={busy}
+                    >
+                      {e.billable ? "⊘" : "↺"}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -368,6 +424,11 @@ export default function LeadSalesScreen({
                   </strong>{" "}
                   לקוחות קיימים
                 </span>
+                {c.excludedMonth > 0 && (
+                  <span style={{ color: "#98a2b3" }}>
+                    {c.excludedMonth} לא לחיוב
+                  </span>
+                )}
                 <span style={{ color: "#98a2b3" }}>{c.leadsTotal} סה"כ</span>
               </div>
 

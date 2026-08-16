@@ -296,6 +296,7 @@ model LeadEntry {
   campaign  String?
   source    String?
   isSale    Boolean  @default(false)
+  billable  Boolean  @default(true)
   price     Float    @default(0)
   at        DateTime @default(now())
 

@@ -26,6 +26,7 @@ export type CampaignStat = {
   existingMonth: number;
   existingPercent: number;
   revenueMonth: number;
+  excludedMonth: number;
 };
 
 export type BuyerStat = {
@@ -45,6 +46,7 @@ export type SaleEntryRow = {
   price: number;
   at: string;
   existingCustomer: boolean;
+  billable: boolean;
 };
 
 export type LeadSalesSummary = {
@@ -110,20 +112,35 @@ export async function getLeadSales(): Promise<LeadSalesSummary> {
   // ---- צבירה לפי קמפיין ----
   const byCampaign = new Map<
     string,
-    { month: number; total: number; existingMonth: number }
+    {
+      month: number;
+      billableMonth: number;
+      total: number;
+      existingMonth: number;
+      excludedMonth: number;
+    }
   >();
 
   const entries: SaleEntryRow[] = [];
 
   for (const entry of saleEntries) {
     const key = entry.campaign ? normalizeName(entry.campaign) : "";
-    const row = byCampaign.get(key) ?? { month: 0, total: 0, existingMonth: 0 };
+    const row = byCampaign.get(key) ?? {
+      month: 0,
+      billableMonth: 0,
+      total: 0,
+      existingMonth: 0,
+      excludedMonth: 0,
+    };
 
     const existing = isExistingCustomer(entry.lead?.extra);
+    const billable = entry.billable !== false;
 
     row.total++;
     if (entry.at >= monthStart) {
       row.month++;
+      if (billable) row.billableMonth++;
+      else row.excludedMonth++;
       if (existing) row.existingMonth++;
     }
     byCampaign.set(key, row);
@@ -140,6 +157,7 @@ export async function getLeadSales(): Promise<LeadSalesSummary> {
         price: Number(entry.price ?? 0),
         at: entry.at.toISOString(),
         existingCustomer: existing,
+        billable,
       });
     }
   }
@@ -147,8 +165,10 @@ export async function getLeadSales(): Promise<LeadSalesSummary> {
   const campaigns: CampaignStat[] = registered.map((c) => {
     const row = byCampaign.get(normalizeName(c.name)) ?? {
       month: 0,
+      billableMonth: 0,
       total: 0,
       existingMonth: 0,
+      excludedMonth: 0,
     };
     const price = Number(c.pricePerLead ?? 0);
     const buyer = c.buyerId ? buyerById.get(c.buyerId) : null;
@@ -167,7 +187,8 @@ export async function getLeadSales(): Promise<LeadSalesSummary> {
         row.month > 0
           ? Math.round((row.existingMonth / row.month) * 1000) / 10
           : 0,
-      revenueMonth: Math.round(row.month * price),
+      revenueMonth: Math.round(row.billableMonth * price),
+      excludedMonth: row.excludedMonth,
     };
   });
 
