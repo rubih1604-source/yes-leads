@@ -70,16 +70,46 @@ function campaignOf(extra: unknown): string | null {
   return e.fb_campaign || e.campaign || null;
 }
 
-function isExistingCustomer(extra: unknown): boolean {
+const YES_ANSWER = /(^|[\s,\/\\|-])(yes|סטינג|sting|יס)([\s,\/\\|-]|$)/i;
+
+/**
+ * האם הליד כבר לקוח של yes.
+ *
+ * שלושה מקורות, כי הדאטה הגיע משלושה מקומות:
+ *  1. שאלת הספק מהטופס בפייסבוק
+ *  2. עמודה בקובץ CSV - השם שלה יכול להיות בעברית
+ *  3. הסטטוס שאתה עצמך קבעת
+ *
+ * מספיק שאחד מהם אומר כן.
+ */
+function isExistingCustomer(extra: unknown, status?: string | null): boolean {
+  if (status && status.includes("לקוח קיים")) return true;
+
   if (!extra || typeof extra !== "object" || Array.isArray(extra)) return false;
-  const answer = (extra as Record<string, string>).supplier_question;
-  if (!answer) return false;
-  return /(^|[\s,\/\\|-])(yes|סטינג|sting|יס)([\s,\/\\|-]|$)/i.test(answer);
+
+  const record = extra as Record<string, string>;
+
+  const direct = record.supplier_question;
+  if (direct && YES_ANSWER.test(direct)) return true;
+
+  // עמודות מקובץ - שם העמודה יכול להיות "ספק", "ספק נוכחי" וכו'
+  for (const [key, value] of Object.entries(record)) {
+    if (typeof value !== "string" || !value.trim()) continue;
+    if (!/ספק|supplier|provider|חברה נוכחית/i.test(key)) continue;
+    if (YES_ANSWER.test(value)) return true;
+  }
+
+  return false;
 }
 
-export async function getLeadSales(): Promise<LeadSalesSummary> {
+export type SalesPeriod = "month" | "all";
+
+export async function getLeadSales(
+  period: SalesPeriod = "month"
+): Promise<LeadSalesSummary> {
   const now = new Date();
-  const monthStart = startOfMonth(now);
+  // "הכל" סופר מתחילת הזמן, כדי לכלול גם מה שיובא מקובץ
+  const from = period === "all" ? new Date(0) : startOfMonth(now);
 
   const [registered, buyers, saleEntries, normalLeads] = await Promise.all([
     db.salesCampaign.findMany({ orderBy: { createdAt: "desc" } }),
@@ -95,6 +125,7 @@ export async function getLeadSales(): Promise<LeadSalesSummary> {
             phone: true,
             firstName: true,
             lastName: true,
+            status: true,
             extra: true,
           },
         },
@@ -133,11 +164,14 @@ export async function getLeadSales(): Promise<LeadSalesSummary> {
       excludedMonth: 0,
     };
 
-    const existing = isExistingCustomer(entry.lead?.extra);
+    const existing = isExistingCustomer(
+      entry.lead?.extra,
+      entry.lead?.status
+    );
     const billable = entry.billable !== false;
 
     row.total++;
-    if (entry.at >= monthStart) {
+    if (entry.at >= from) {
       row.month++;
       if (billable) row.billableMonth++;
       else row.excludedMonth++;
@@ -227,10 +261,13 @@ export async function getLeadSales(): Promise<LeadSalesSummary> {
     totalMonth: campaigns.reduce((s, c) => s + c.leadsMonth, 0),
     revenueMonth: campaigns.reduce((s, c) => s + c.revenueMonth, 0),
     unregistered,
-    monthLabel: now.toLocaleDateString("he-IL", {
-      timeZone: "Asia/Jerusalem",
-      month: "long",
-      year: "numeric",
-    }),
+    monthLabel:
+      period === "all"
+        ? "כל הזמן"
+        : now.toLocaleDateString("he-IL", {
+            timeZone: "Asia/Jerusalem",
+            month: "long",
+            year: "numeric",
+          }),
   };
 }

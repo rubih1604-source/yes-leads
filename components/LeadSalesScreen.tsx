@@ -30,6 +30,7 @@ export default function LeadSalesScreen({
   unregistered,
   monthLabel,
   missingEntries,
+  period,
 }: {
   campaigns: CampaignStat[];
   buyers: BuyerStat[];
@@ -39,6 +40,7 @@ export default function LeadSalesScreen({
   unregistered: Array<{ name: string; count: number }>;
   monthLabel: string;
   missingEntries: number;
+  period: "month" | "all";
 }) {
   const [tab, setTab] = useState<"leads" | "campaigns" | "buyers">("leads");
   const [filter, setFilter] = useState<string | null>(null);
@@ -84,6 +86,19 @@ export default function LeadSalesScreen({
     router.refresh();
   }
 
+  const existingTotal = useMemo(() => {
+    const count = campaigns.reduce((s, c) => s + c.existingMonth, 0);
+    return {
+      count,
+      percent: totalMonth > 0 ? Math.round((count / totalMonth) * 1000) / 10 : 0,
+    };
+  }, [campaigns, totalMonth]);
+
+  const excludedTotal = useMemo(
+    () => campaigns.reduce((s, c) => s + c.excludedMonth, 0),
+    [campaigns]
+  );
+
   async function call(url: string, body?: unknown, method = "POST") {
     setBusy(true);
     setMessage("");
@@ -124,6 +139,23 @@ export default function LeadSalesScreen({
 
   return (
     <>
+      <div className="filters periods">
+        <Link
+          href="/lead-sales"
+          className="chip period-chip"
+          data-active={period === "month"}
+        >
+          החודש
+        </Link>
+        <Link
+          href="/lead-sales?period=all"
+          className="chip period-chip"
+          data-active={period === "all"}
+        >
+          כל הזמן
+        </Link>
+      </div>
+
       {/* ציר ההכנסות */}
       <div className="revenue">
         <div className="revenue-head">
@@ -165,9 +197,65 @@ export default function LeadSalesScreen({
         </div>
       )}
 
+      {campaigns.length > 0 && (
+        <div className="card">
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>חישוב מחדש</div>
+          <div style={{ fontSize: 13, color: "#475467", marginBottom: 12 }}>
+            עובר על כל הדאטה ומיישר אותו למצב הנוכחי — כולל מה שיובא
+            מקובץ. שינית מחיר לליד? זה יעדכן גם אחורה.
+            הסימונים הידניים של &quot;לא לחיוב&quot; לא ייפגעו.
+          </div>
+          <button
+            className="btn"
+            onClick={async () => {
+              const { ok, data } = await call(
+                "/api/maintenance/recalc-sales"
+              );
+              if (ok)
+                setMessage(
+                  `נסרקו ${data.scanned} כניסות · ${data.marked} סומנו כמכירה · ${data.repriced} עודכן מחיר · ${data.unmarked} הוסרו`
+                );
+            }}
+            disabled={busy}
+          >
+            {busy ? "מחשב..." : "חשב הכל מחדש"}
+          </button>
+        </div>
+      )}
+
       {message && (
         <div className="card" style={{ fontSize: 14 }}>
           {message}
+        </div>
+      )}
+
+      {campaigns.length > 0 && (
+        <div className="stat-grid">
+          <div className="stat">
+            <div className="stat-num">{totalMonth}</div>
+            <div className="stat-label">לידים</div>
+          </div>
+          <div className="stat">
+            <div className="stat-num" style={{ color: "#12805c" }}>
+              {money(revenueMonth)}
+            </div>
+            <div className="stat-label">לתשלום</div>
+          </div>
+          <div className="stat">
+            <div
+              className="stat-num"
+              style={{ color: existingTotal.percent > 25 ? "#b54708" : undefined }}
+            >
+              {existingTotal.count}
+            </div>
+            <div className="stat-label">
+              לקוחות קיימים · {existingTotal.percent}%
+            </div>
+          </div>
+          <div className="stat">
+            <div className="stat-num">{excludedTotal}</div>
+            <div className="stat-label">לא לחיוב</div>
+          </div>
         </div>
       )}
 
@@ -420,9 +508,18 @@ export default function LeadSalesScreen({
                       color: c.existingPercent > 25 ? "#b54708" : "#101828",
                     }}
                   >
-                    {c.existingPercent}%
+                    {c.existingMonth}
                   </strong>{" "}
                   לקוחות קיימים
+                  <span
+                    style={{
+                      color: c.existingPercent > 25 ? "#b54708" : "#98a2b3",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {" "}
+                    ({c.existingPercent}%)
+                  </span>
                 </span>
                 {c.excludedMonth > 0 && (
                   <span style={{ color: "#98a2b3" }}>

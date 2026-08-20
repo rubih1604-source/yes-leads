@@ -1,11 +1,16 @@
 import { db } from "@/lib/db";
-import { getLeadSales } from "@/lib/lead-sales";
+import { getLeadSales, type SalesPeriod } from "@/lib/lead-sales";
 import LeadSalesScreen from "@/components/LeadSalesScreen";
 
 export const dynamic = "force-dynamic";
 
-export default async function LeadSalesPage() {
-  const data = await getLeadSales();
+export default async function LeadSalesPage({
+  searchParams,
+}: {
+  searchParams?: { period?: string };
+}) {
+  const period: SalesPeriod = searchParams?.period === "all" ? "all" : "month";
+  const data = await getLeadSales(period);
 
   // כמה לידים ותיקים עדיין בלי כניסה רשומה
   const [leadCount, withEntries] = await Promise.all([
@@ -33,6 +38,7 @@ export default async function LeadSalesPage() {
         unregistered={data.unregistered}
         monthLabel={data.monthLabel}
         missingEntries={Math.max(0, leadCount - withEntries.length)}
+        period={period}
       />
     </div>
   );
