@@ -165,6 +165,7 @@ export default function LeadList({
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMessage, setBulkMessage] = useState("");
   const [bulkConfirm, setBulkConfirm] = useState(false);
+  const [sendNow, setSendNow] = useState(false);
   const [saleCampaign, setSaleCampaign] = useState("");
   const [saleConfirm, setSaleConfirm] = useState(false);
 
@@ -281,6 +282,7 @@ export default function LeadList({
       body: JSON.stringify({
         leadIds: Array.from(selected),
         templateName: bulkTemplate,
+        sendNow,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -552,6 +554,28 @@ export default function LeadList({
               </option>
             ))}
           </select>
+
+          <button
+            className="status-option"
+            data-current={sendNow}
+            onClick={() => setSendNow(!sendNow)}
+            style={{ marginBottom: 8 }}
+          >
+            <span
+              className="dot"
+              style={{ background: sendNow ? "#12805c" : "#dbe3ea" }}
+            />
+            <span style={{ textAlign: "start", fontSize: 14 }}>
+              שלח עכשיו, גם מחוץ לשעות הפעילות
+              <span
+                style={{ display: "block", fontSize: 12, opacity: 0.75 }}
+              >
+                {sendNow
+                  ? "ההודעות יצאו מיד, אחת כל 8 שניות"
+                  : "כרגע: יחכה לשעות הפעילות"}
+              </span>
+            </span>
+          </button>
 
           {bulkConfirm ? (
             <div className="actions">

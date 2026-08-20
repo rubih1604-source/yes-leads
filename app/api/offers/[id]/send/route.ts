@@ -69,7 +69,7 @@ export async function POST(
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const { templateName } = await request.json().catch(() => ({}));
+  const { templateName, sendNow } = await request.json().catch(() => ({}));
   if (!templateName) {
     return NextResponse.json({ error: "צריך לבחור תבנית" }, { status: 400 });
   }
@@ -102,9 +102,8 @@ export async function POST(
   let created = 0;
 
   for (const [i, lead] of leads.entries()) {
-    const runAt = shiftToWorkingHours(
-      new Date(now + i * GAP_SECONDS * 1000)
-    );
+    const at = new Date(now + i * GAP_SECONDS * 1000);
+    const runAt = sendNow === true ? at : shiftToWorkingHours(at);
 
     await db.scheduledJob
       .create({

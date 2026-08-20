@@ -19,7 +19,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const { leadIds, templateName } = await request.json().catch(() => ({}));
+  const { leadIds, templateName, sendNow } = await request
+    .json()
+    .catch(() => ({}));
 
   if (!Array.isArray(leadIds) || leadIds.length === 0) {
     return NextResponse.json({ error: "לא נבחרו לידים" }, { status: 400 });
@@ -65,7 +67,15 @@ export async function POST(request: Request) {
   let firstError: string | null = null;
 
   for (const [i, lead] of leads.entries()) {
-    const runAt = shiftToWorkingHours(new Date(now + i * GAP_SECONDS * 1000));
+    const at = new Date(now + i * GAP_SECONDS * 1000);
+
+    /**
+     * דיוור ידני יוצא מתי שאתה מחליט.
+     *
+     * דחיית שעות קיימת כדי שרצף אוטומטי לא יתעורר ב-2 בלילה,
+     * אבל כשאתה לוחץ על הכפתור בעצמך - זו החלטה שלך.
+     */
+    const runAt = sendNow === true ? at : shiftToWorkingHours(at);
 
     try {
       await db.scheduledJob.create({
