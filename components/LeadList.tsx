@@ -284,11 +284,27 @@ export default function LeadList({
       }),
     });
     const data = await res.json().catch(() => ({}));
-    setBulkMessage(
-      res.ok
-        ? `${data.scheduled} הודעות נכנסו לתור ויֵצאו בקצב מבוקר`
-        : data.error || "הדיוור נכשל"
-    );
+    if (res.ok) {
+      const starts = data.startsAt ? new Date(data.startsAt) : new Date();
+      const later = starts.getTime() > Date.now() + 5 * 60000;
+      const clock = starts.toLocaleString("he-IL", {
+        timeZone: "Asia/Jerusalem",
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
+      setBulkMessage(
+        `${data.scheduled} הודעות בתור · ` +
+          (later
+            ? `יתחילו לצאת ב-${clock} (מחוץ לשעות הפעילות)`
+            : "יוצאות עכשיו, אחת כל 8 שניות") +
+          ` · מעקב במסך "מה המנוע עשה"`
+      );
+    } else {
+      setBulkMessage(data.error || "הדיוור נכשל");
+    }
     if (res.ok) setSelected(new Set());
     setBulkConfirm(false);
     setBulkBusy(false);

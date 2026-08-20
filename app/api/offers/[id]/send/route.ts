@@ -90,6 +90,15 @@ export async function POST(
    * וגם נותן לך זמן לעצור אם משהו נראה לא טוב.
    */
   const now = Date.now();
+
+  /**
+   * מזהה ייחודי לדיוור הזה.
+   *
+   * למשימות דיוור אין חוק, ולכן ruleId ריק. בלי מזהה צעד
+   * ייחודי, ליד שכבר קיבל דיוור בעבר עלול להיחסם על ידי
+   * מגבלת הייחודיות - וההודעה פשוט לא תיווצר.
+   */
+  const runId = now % 1_000_000;
   let created = 0;
 
   for (const [i, lead] of leads.entries()) {
@@ -104,6 +113,7 @@ export async function POST(
           action: "send_template",
           templateName,
           runAt,
+          stepIndex: runId,
           state: "pending",
           note: `דיוור מבצע: ${offer.title}`,
         },

@@ -16,6 +16,12 @@ export default async function MorePage() {
       title: "העוזר האוטומטי",
       items: [
         {
+          href: "/broadcast",
+          glyph: "✦",
+          label: "דאטה לדיוור",
+          desc: "טען קובץ ושלח לו תבנית - בלי שייכנס ללידים",
+        },
+        {
           href: "/import-leads",
           glyph: "⊕",
           label: "ייבוא לידים",
@@ -67,6 +73,12 @@ export default async function MorePage() {
           glyph: "△",
           label: "התראות",
           desc: `כל מה שקרה בלי שהיית מולו · ${alerts}`,
+        },
+        {
+          href: "/bot-log",
+          glyph: "◉",
+          label: "מה העוזר הבין",
+          desc: "איך הוא סיווג כל הודעה - ואיפה הוא טעה",
         },
         {
           href: "/jobs",

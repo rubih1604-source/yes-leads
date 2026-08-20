@@ -73,6 +73,7 @@ model Template {
   bodyText    String?
   variables   Int      @default(0)
   approved    Boolean  @default(true)
+  autoReply   Boolean  @default(false)
   raw         Json?
   syncedAt    DateTime @default(now())
 }
@@ -303,4 +304,44 @@ model LeadEntry {
   @@index([isSale, at])
   @@index([leadId])
   @@index([campaign])
+}
+
+/// רשימת דיוור - אנשי קשר שאינם לידים
+model BroadcastList {
+  id        String   @id @default(cuid())
+  name      String
+  note      String?
+  createdAt DateTime @default(now())
+
+  contacts  BroadcastContact[]
+  sends     BroadcastSend[]
+
+  @@index([createdAt])
+}
+
+model BroadcastContact {
+  id        String   @id @default(cuid())
+  listId    String
+  list      BroadcastList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  phone     String
+  firstName String?
+  createdAt DateTime @default(now())
+
+  @@unique([listId, phone])
+  @@index([listId])
+}
+
+model BroadcastSend {
+  id           String   @id @default(cuid())
+  listId       String
+  list         BroadcastList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  templateName String
+  total        Int      @default(0)
+  sent         Int      @default(0)
+  failed       Int      @default(0)
+  state        String   @default("running")
+  createdAt    DateTime @default(now())
+  finishedAt   DateTime?
+
+  @@index([listId])
 }

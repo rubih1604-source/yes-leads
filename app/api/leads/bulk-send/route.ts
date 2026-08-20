@@ -8,7 +8,12 @@ export const dynamic = "force-dynamic";
 /** מרווח בין הודעות, כדי לא להיחסם */
 const GAP_SECONDS = 8;
 
-/** דיוור לרשימת לידים שסימנת ידנית */
+/**
+ * דיוור לרשימת לידים שסימנת.
+ *
+ * חשוב: לא בולעים שגיאות. אם יצירת המשימה נכשלה, זה חוזר
+ * אליך עם הסיבה - במקום לדווח "נשלח" ושום דבר לא יקרה.
+ */
 export async function POST(request: Request) {
   if (!isLoggedIn()) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -24,6 +29,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "צריך לבחור תבנית" }, { status: 400 });
   }
 
+  const template = await db.template.findUnique({
+    where: { name: templateName },
+  });
+  if (!template) {
+    return NextResponse.json(
+      { error: `התבנית ${templateName} לא קיימת במערכת` },
+      { status: 400 }
+    );
+  }
+
   const leads = await db.lead.findMany({
     where: { id: { in: leadIds }, doNotContact: false },
     select: { id: true },
@@ -37,27 +52,64 @@ export async function POST(request: Request) {
   }
 
   const now = Date.now();
+
+  /**
+   * מזהה ייחודי לדיוור הזה.
+   *
+   * למשימות דיוור אין חוק, ולכן ruleId ריק. בלי מזהה צעד
+   * ייחודי, ליד שכבר קיבל דיוור בעבר עלול להיחסם על ידי
+   * מגבלת הייחודיות - וההודעה פשוט לא תיווצר.
+   */
+  const runId = now % 1_000_000;
   let scheduled = 0;
+  let firstError: string | null = null;
 
   for (const [i, lead] of leads.entries()) {
-    await db.scheduledJob
-      .create({
+    const runAt = shiftToWorkingHours(new Date(now + i * GAP_SECONDS * 1000));
+
+    try {
+      await db.scheduledJob.create({
         data: {
           leadId: lead.id,
           action: "send_template",
           templateName,
-          runAt: shiftToWorkingHours(new Date(now + i * GAP_SECONDS * 1000)),
+          runAt,
+          stepIndex: runId,
           state: "pending",
           note: "דיוור ידני מרשימת הלידים",
         },
-      })
-      .catch(() => null);
-    scheduled++;
+      });
+      scheduled++;
+    } catch (err) {
+      /**
+       * ליד שכבר יש לו משימה זהה ממתינה יידחה על ידי
+       * מגבלת הייחודיות. זה תקין ולא נחשב לכישלון.
+       */
+      const message = err instanceof Error ? err.message : String(err);
+      if (!firstError && !message.includes("Unique constraint")) {
+        firstError = message.slice(0, 300);
+      }
+    }
   }
+
+  if (scheduled === 0) {
+    return NextResponse.json(
+      {
+        error: firstError
+          ? `לא נוצרה אף משימה. השגיאה: ${firstError}`
+          : "לא נוצרה אף משימה. ייתכן שכבר קיים דיוור ממתין ללידים האלה.",
+      },
+      { status: 500 }
+    );
+  }
+
+  const firstRun = shiftToWorkingHours(new Date(now));
 
   return NextResponse.json({
     ok: true,
     scheduled,
     skipped: leadIds.length - scheduled,
+    startsAt: firstRun.toISOString(),
+    warning: firstError,
   });
 }

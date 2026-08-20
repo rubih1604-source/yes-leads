@@ -2,6 +2,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { displayPhone } from "@/lib/phone";
 import AutoRefresh from "@/components/AutoRefresh";
+import JobsControls from "@/components/JobsControls";
 
 export const dynamic = "force-dynamic";
 
@@ -42,13 +43,24 @@ function ago(d: Date | null): string {
 }
 
 export default async function JobsPage() {
-  const [jobs, settings] = await Promise.all([
+  const [jobs, settings, pending, bulkPending, nextJob] = await Promise.all([
     db.scheduledJob.findMany({
       orderBy: { createdAt: "desc" },
       take: 60,
       include: { lead: true },
     }),
     db.settings.findUnique({ where: { id: "main" } }).catch(() => null),
+    db.scheduledJob.count({ where: { state: "pending" } }).catch(() => 0),
+    db.scheduledJob
+      .count({ where: { state: "pending", note: { not: null } } })
+      .catch(() => 0),
+    db.scheduledJob
+      .findFirst({
+        where: { state: "pending" },
+        orderBy: { runAt: "asc" },
+        select: { runAt: true },
+      })
+      .catch(() => null),
   ]);
 
   const lastRun = settings?.lastRunAt ?? null;
@@ -80,6 +92,12 @@ export default async function JobsPage() {
           </div>
         )}
       </div>
+
+      <JobsControls
+        pending={pending}
+        bulkPending={bulkPending}
+        nextAt={nextJob?.runAt.toISOString() ?? null}
+      />
 
       {jobs.length === 0 ? (
         <div className="empty">
