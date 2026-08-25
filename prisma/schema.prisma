@@ -345,3 +345,31 @@ model BroadcastSend {
 
   @@index([listId])
 }
+
+/// קטגוריית הוצאה - פרסום, מרכזייה, תפעול וכו'
+model ExpenseCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String   @default("#64748b")
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  expenses  Expense[]
+
+  @@index([position])
+}
+
+model Expense {
+  id         String   @id @default(cuid())
+  categoryId String?
+  category   ExpenseCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  title      String
+  amount     Float    @default(0)
+  at         DateTime @default(now())
+  recurring  Boolean  @default(false)
+  note       String?
+  createdAt  DateTime @default(now())
+
+  @@index([at])
+  @@index([categoryId])
+}

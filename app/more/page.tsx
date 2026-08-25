@@ -66,6 +66,29 @@ export default async function MorePage() {
       ],
     },
     {
+      title: "כסף ודוחות",
+      items: [
+        {
+          href: "/insights",
+          glyph: "◈",
+          label: "תובנות",
+          desc: "מתי נכנסים לידים, מתי עונים, ומה מאפיין סגירה",
+        },
+        {
+          href: "/reports",
+          glyph: "▦",
+          label: "דוחות",
+          desc: "פילוח לפי תקופה, סטטוס וקמפיין · ייצוא לאקסל",
+        },
+        {
+          href: "/expenses",
+          glyph: "₪",
+          label: "הוצאות ורווח",
+          desc: "כמה נכנס, כמה יצא, ומה נשאר",
+        },
+      ],
+    },
+    {
       title: "מעקב",
       items: [
         {
