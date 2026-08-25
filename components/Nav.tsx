@@ -46,6 +46,7 @@ export default function Nav({
         "/broadcast",
         "/reports",
         "/insights",
+        "/callbacks",
         "/expenses",
         "/rules",
         "/templates",

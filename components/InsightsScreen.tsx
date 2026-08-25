@@ -56,16 +56,47 @@ function HeatGrid({ heat, color }: { heat: Heatmap; color: string }) {
   );
 }
 
+/** מקרא: מה הצבע אומר */
+function HeatLegend({ heat, color }: { heat: Heatmap; color: string }) {
+  const steps = [0, 0.25, 0.5, 0.75, 1];
+
+  return (
+    <div className="heat-legend">
+      <span>מעט</span>
+      {steps.map((s, i) => (
+        <span
+          key={i}
+          className="heat-legend-box"
+          style={{
+            background:
+              s === 0
+                ? "#f1f5f9"
+                : `color-mix(in srgb, ${color} ${Math.round(
+                    15 + s * 85
+                  )}%, white)`,
+          }}
+        />
+      ))}
+      <span>הרבה</span>
+      <span className="heat-legend-max">
+        התא הכהה ביותר = {heat.max}
+      </span>
+    </div>
+  );
+}
+
 function HeatSection({
   title,
   heat,
   color,
   insight,
+  caveat,
 }: {
   title: string;
   heat: Heatmap;
   color: string;
   insight: string;
+  caveat?: string;
 }) {
   if (heat.total === 0) return null;
 
@@ -74,6 +105,21 @@ function HeatSection({
       <div className="section-title">{title}</div>
       <div className="card">
         <HeatGrid heat={heat} color={color} />
+        <HeatLegend heat={heat} color={color} />
+
+        {caveat && (
+          <div
+            style={{
+              fontSize: 12.5,
+              color: "#98a2b3",
+              marginTop: 10,
+              lineHeight: 1.6,
+            }}
+          >
+            {caveat}
+          </div>
+        )}
+
         {heat.peakDay !== null && heat.peakHour !== null && (
           <div className="insight" style={{ marginTop: 12 }}>
             השיא: <strong>יום {heat.peakDay}</strong> סביב השעה{" "}
@@ -273,6 +319,7 @@ export default function InsightsScreen({
             heat={data.closings}
             color="#7c3aed"
             insight="השעות שבהן אתה הכי אפקטיבי. שווה לפנות אותן."
+            caveat="נמדד לפי הרגע שבו שינית את הסטטוס במערכת. סגירות שעודכנו מטעינת דוח לא נספרות כאן, כדי שלא ייווצר שיא מדומה ביום שבו טענת את הקובץ."
           />
         </>
       )}

@@ -8,6 +8,11 @@ export type AppSettings = {
   replyCooldownMinutes: number;
   liveChatMinutes: number;
   revenueTarget: number;
+  callbackStatuses: string[];
+  callbackMorningHour: number;
+  callbackAfternoonHour: number;
+  callbackCutoffHour: number;
+  callbackEnabled: boolean;
   leadRowFields: RowFieldKey[];
   onlyAfterTemplate: boolean;
   offDutyUntil: Date | null;
@@ -25,6 +30,11 @@ const DEFAULTS: AppSettings = {
   replyCooldownMinutes: 10,
   liveChatMinutes: 30,
   revenueTarget: 0,
+  callbackStatuses: [],
+  callbackMorningHour: 10,
+  callbackAfternoonHour: 13,
+  callbackCutoffHour: 18,
+  callbackEnabled: false,
   leadRowFields: readRowFields(null),
   onlyAfterTemplate: false,
   offDutyUntil: null,
@@ -49,6 +59,15 @@ export async function getSettings(): Promise<AppSettings> {
       replyCooldownMinutes: row.replyCooldownMinutes,
       liveChatMinutes: row.liveChatMinutes,
       revenueTarget: row.revenueTarget,
+      callbackStatuses: Array.isArray(row.callbackStatuses)
+        ? (row.callbackStatuses as string[]).filter(
+            (x): x is string => typeof x === "string"
+          )
+        : [],
+      callbackMorningHour: row.callbackMorningHour,
+      callbackAfternoonHour: row.callbackAfternoonHour,
+      callbackCutoffHour: row.callbackCutoffHour,
+      callbackEnabled: row.callbackEnabled,
       leadRowFields: readRowFields(row.leadRowFields),
       onlyAfterTemplate: row.onlyAfterTemplate,
       offDutyUntil: row.offDutyUntil,

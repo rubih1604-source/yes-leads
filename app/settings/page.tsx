@@ -5,6 +5,7 @@ import SubStatusEditor, { type SubStatusRow } from "@/components/SubStatusEditor
 import { getSubStatuses } from "@/lib/substatus";
 import MaintenanceCard from "@/components/MaintenanceCard";
 import RowFieldsEditor from "@/components/RowFieldsEditor";
+import CallbackSettings from "@/components/CallbackSettings";
 import { db } from "@/lib/db";
 import { getStatuses } from "@/lib/status-store";
 
@@ -48,6 +49,16 @@ export default async function SettingsPage() {
       </div>
 
       <SettingsScreen settings={settings as SettingsRow} />
+      <div className="section-title">רשימת חזרה</div>
+      <CallbackSettings
+        statuses={statuses}
+        enabled={settings.callbackEnabled}
+        selected={settings.callbackStatuses}
+        morningHour={settings.callbackMorningHour}
+        afternoonHour={settings.callbackAfternoonHour}
+        cutoffHour={settings.callbackCutoffHour}
+      />
+
       <div className="section-title">תצוגה</div>
       <RowFieldsEditor current={settings.leadRowFields} />
 

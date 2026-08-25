@@ -10,6 +10,7 @@
 
 import { db } from "./db";
 import { shiftToWorkingHours } from "./working-hours";
+import { queueForCallback } from "./callback-list";
 
 /** מבטל את כל המשימות הממתינות של ליד. נקרא בכל שינוי ובכל תגובה. */
 export async function cancelPendingJobs(leadId: string, reason: string) {

@@ -69,6 +69,12 @@ export default async function MorePage() {
       title: "כסף ודוחות",
       items: [
         {
+          href: "/callbacks",
+          glyph: "↻",
+          label: "רשימת חזרה",
+          desc: "לידים שצריך לחזור אליהם - פעמיים ביום",
+        },
+        {
           href: "/insights",
           glyph: "◈",
           label: "תובנות",

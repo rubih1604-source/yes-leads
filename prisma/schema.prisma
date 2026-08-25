@@ -23,6 +23,8 @@ model Lead {
   lastInboundAt  DateTime?
   chatId         String?
   botPausedUntil DateTime?
+  callbackQueuedAt DateTime?
+  callbackSentAt   DateTime?
   botMuted       Boolean  @default(false)
   notes          String?
   extra          Json?
@@ -189,6 +191,13 @@ model Settings {
   replyAfterHours      String   @default("היי, אני כבר סיימתי לעבוד. {מתי} מתאים לך?\nואם כן באיזה שעה :)")
   lastRunAt            DateTime?
   revenueTarget        Float     @default(0)
+
+  // רשימת חזרה: אילו סטטוסים נכנסים אליה ומתי היא נשלחת
+  callbackStatuses     Json?
+  callbackMorningHour  Int       @default(10)
+  callbackAfternoonHour Int      @default(13)
+  callbackCutoffHour   Int       @default(18)
+  callbackEnabled      Boolean   @default(false)
   leadRowFields        Json?
   replyCallback        String   @default("מעולה, רשמתי. אחזור אליך בזמן שביקשת :)")
 

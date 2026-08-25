@@ -39,6 +39,27 @@ export async function PATCH(request: Request) {
     data.leadRowFields = readRowFields(body.leadRowFields);
   }
 
+  if (typeof body.callbackEnabled === "boolean") {
+    data.callbackEnabled = body.callbackEnabled;
+  }
+
+  if (Array.isArray(body.callbackStatuses)) {
+    data.callbackStatuses = body.callbackStatuses.filter(
+      (x: unknown) => typeof x === "string"
+    );
+  }
+
+  for (const key of [
+    "callbackMorningHour",
+    "callbackAfternoonHour",
+    "callbackCutoffHour",
+  ]) {
+    if (body[key] !== undefined) {
+      const n = Number(body[key]);
+      if (Number.isFinite(n) && n >= 0 && n <= 23) data[key] = Math.round(n);
+    }
+  }
+
   if (body.revenueTarget !== undefined) {
     const n = Number(body.revenueTarget);
     if (Number.isFinite(n) && n >= 0 && n <= 10000000) data.revenueTarget = n;

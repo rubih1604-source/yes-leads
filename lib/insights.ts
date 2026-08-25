@@ -175,16 +175,31 @@ export async function getInsights(range: Range): Promise<InsightsData> {
       })
     : [];
 
-  const closings = ids.length
+  /**
+   * מפת הסגירות מודדת מתי **שינית סטטוס במערכת**, לא מתי
+   * העסקה נסגרה בפועל.
+   *
+   * לכן מסננים עדכונים שהגיעו מטעינת דוח או מייבוא: שם כל
+   * הסגירות מקבלות את חותמת הזמן של רגע הטעינה, וזה מייצר
+   * שיא מדומה ביום שבו טענת את הקובץ - כולל שבת.
+   */
+  const rawClosings = ids.length
     ? await db.leadEvent.findMany({
         where: {
           leadId: { in: ids },
           type: "status_changed",
           toStatus: { in: Array.from(wonNames) },
         },
-        select: { leadId: true, createdAt: true },
+        select: { leadId: true, createdAt: true, payload: true },
       })
     : [];
+
+  const closings = rawClosings.filter((e) => {
+    if (!e.payload || typeof e.payload !== "object") return true;
+    const note = (e.payload as Record<string, unknown>).note;
+    if (typeof note !== "string") return true;
+    return !/דוח|ייבוא|יובא/.test(note);
+  });
 
   // ---- קיבוץ לפי ליד ----
   const firstOut = new Map<string, Date>();

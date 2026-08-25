@@ -12,6 +12,9 @@ import { sendTemplate } from "./texter";
 import { applyStatusChange } from "./rules";
 import { displayPhone } from "./phone";
 import { sendEmail } from "./email";
+import { getSettings } from "./settings";
+import { leadsForSlot, markSent, type Slot } from "./callback-list";
+import { israelParts } from "./working-hours";
 
 export type RunSummary = {
   picked: number;
@@ -238,6 +241,7 @@ export async function runDueJobs(limit = 50): Promise<RunSummary> {
   }
 
   await sendTaskReminders(summary);
+  await sendCallbackList();
 
   // חותמת ריצה - ככה רואים במסך החוקים אם המנוע חי
   await db.settings
@@ -312,4 +316,63 @@ async function sendTaskReminders(summary: RunSummary) {
 
     summary.taskReminders++;
   }
+}
+
+
+/**
+ * רשימת החזרה, פעמיים ביום.
+ *
+ * רצה בתוך השעה שנקבעה בלבד, ומסמנת את מי שכבר נשלח -
+ * ככה לא יוצאות שתי רשימות לאותם לידים.
+ */
+async function sendCallbackList() {
+  const settings = await getSettings();
+  if (!settings.callbackEnabled) return;
+
+  const now = new Date();
+  const p = israelParts(now);
+  const hour = Math.floor(p.minutes / 60);
+
+  let slot: Slot | null = null;
+  if (hour === settings.callbackMorningHour) slot = "morning";
+  else if (hour === settings.callbackAfternoonHour) slot = "afternoon";
+  if (!slot) return;
+
+  const leads = await leadsForSlot(slot, now);
+  if (leads.length === 0) return;
+
+  const appUrl = process.env.APP_URL?.trim() || "";
+  const label = slot === "morning" ? "רשימת הבוקר" : "רשימת הצהריים";
+
+  const lines = [
+    `${leads.length} לידים לחזור אליהם`,
+    "",
+    ...leads.map(
+      (l, i) => `${i + 1}. ${l.name} · ${l.phone} · ${l.status}`
+    ),
+  ];
+
+  if (appUrl) lines.push("", `הרשימה במערכת: ${appUrl}/callbacks`);
+  lines.push("", "— העוזר של רובי");
+
+  await sendEmail({
+    subject: `${label} · ${leads.length} לידים לחזור אליהם`,
+    body: lines.join("\n"),
+  });
+
+  await db.task
+    .create({
+      data: {
+        title: `${label} - ${leads.length} לידים`,
+        body: leads
+          .slice(0, 40)
+          .map((l) => `${l.name} · ${l.phone} · ${l.status}`)
+          .join("\n"),
+        dueAt: now,
+        urgent: false,
+      },
+    })
+    .catch(() => null);
+
+  await markSent(leads.map((l) => l.id));
 }
