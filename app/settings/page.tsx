@@ -6,6 +6,7 @@ import { getSubStatuses } from "@/lib/substatus";
 import MaintenanceCard from "@/components/MaintenanceCard";
 import RowFieldsEditor from "@/components/RowFieldsEditor";
 import CallbackSettings from "@/components/CallbackSettings";
+import BotSettings from "@/components/BotSettings";
 import { db } from "@/lib/db";
 import { getStatuses } from "@/lib/status-store";
 
@@ -47,6 +48,18 @@ export default async function SettingsPage() {
       <div className="topbar">
         <h1>הגדרות</h1>
       </div>
+
+      <div className="section-title">העוזר</div>
+      <BotSettings
+        statuses={statuses}
+        enabled={settings.botEnabled}
+        fromHour={settings.botFromHour}
+        toHour={settings.botToHour}
+        selected={settings.botStatuses}
+        pauseHours={settings.botPauseHours}
+        cooldownMinutes={settings.replyCooldownMinutes}
+        liveChatMinutes={settings.liveChatMinutes}
+      />
 
       <SettingsScreen settings={settings as SettingsRow} />
       <div className="section-title">רשימת חזרה</div>

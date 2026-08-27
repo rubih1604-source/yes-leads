@@ -198,6 +198,11 @@ model Settings {
   callbackAfternoonHour Int      @default(13)
   callbackCutoffHour   Int       @default(18)
   callbackEnabled      Boolean   @default(false)
+
+  // הבוט: מתי הוא פעיל ועל אילו סטטוסים הוא עונה
+  botFromHour          Int       @default(8)
+  botToHour            Int       @default(21)
+  botStatuses          Json?
   leadRowFields        Json?
   replyCallback        String   @default("מעולה, רשמתי. אחזור אליך בזמן שביקשת :)")
 

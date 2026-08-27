@@ -13,6 +13,9 @@ export type AppSettings = {
   callbackAfternoonHour: number;
   callbackCutoffHour: number;
   callbackEnabled: boolean;
+  botFromHour: number;
+  botToHour: number;
+  botStatuses: string[];
   leadRowFields: RowFieldKey[];
   onlyAfterTemplate: boolean;
   offDutyUntil: Date | null;
@@ -35,6 +38,9 @@ const DEFAULTS: AppSettings = {
   callbackAfternoonHour: 13,
   callbackCutoffHour: 18,
   callbackEnabled: false,
+  botFromHour: 8,
+  botToHour: 21,
+  botStatuses: [],
   leadRowFields: readRowFields(null),
   onlyAfterTemplate: false,
   offDutyUntil: null,
@@ -68,6 +74,13 @@ export async function getSettings(): Promise<AppSettings> {
       callbackAfternoonHour: row.callbackAfternoonHour,
       callbackCutoffHour: row.callbackCutoffHour,
       callbackEnabled: row.callbackEnabled,
+      botFromHour: row.botFromHour,
+      botToHour: row.botToHour,
+      botStatuses: Array.isArray(row.botStatuses)
+        ? (row.botStatuses as string[]).filter(
+            (x): x is string => typeof x === "string"
+          )
+        : [],
       leadRowFields: readRowFields(row.leadRowFields),
       onlyAfterTemplate: row.onlyAfterTemplate,
       offDutyUntil: row.offDutyUntil,

@@ -1,55 +1,93 @@
 /**
  * ============================================================
- *  מתי הבוט מדבר ומתי הוא שותק
+ *  מתי העוזר מדבר
  * ============================================================
  *
- *  העיקרון: **ברגע שאתה נכנס לשיחה, הבוט זז הצידה.**
+ *  הכלל פשוט: **אתה עובד בלי מגבלות. הבוט עובד לפי מה
+ *  שהגדרת.**
  *
- *  הוא שותק אם:
- *  1. כיבית אותו לגמרי בהגדרות
- *  2. השתקת אותו מול הלקוח הזה
- *  3. ענית ללקוח בעצמך לאחרונה (השתקה אוטומטית)
- *  4. הוא כבר ענה לו לפני רגע (מניעת הצפה)
- *  5. בחרת שהוא יענה רק מחוץ לשעות הפעילות, ועכשיו שעות פעילות
+ *  כל פעולה שאתה עושה - שינוי סטטוס, שליחת תבנית, דיוור -
+ *  יוצאת מיד, בכל שעה. הקובץ הזה נוגע רק לבוט.
+ *
+ *  הבוט עונה רק אם **כל** התנאים מתקיימים:
+ *
+ *   1. הוא דלוק
+ *   2. השעה בתוך החלון שהגדרת
+ *   3. הליד נמצא באחד הסטטוסים שבחרת
+ *   4. לא השתקת אותו מול הלקוח הזה
+ *   5. אתה לא באמצע שיחה איתו
+ *   6. הוא לא ענה לו כרגע
+ *
+ *  אם אחד מהם לא מתקיים - הוא שותק, ואתה מקבל התראה.
  */
 
 import { db } from "./db";
 import { getSettings } from "./settings";
-import {
-  isWithinWorkingHours,
-  minutesSinceWorkingClose,
-} from "./working-hours";
+import { israelParts } from "./working-hours";
 
 export type GateDecision = {
   allowed: boolean;
   reason: string;
-  /**
-   * מצב "רק שירות": העוזר יענה על שאלות שירות וטכניקה,
-   * אבל **לא** יגיב לפניות מכירתיות - אלה מחכות להחלטה שלך.
-   */
+  /** מצב שירות בלבד - נשמר לתאימות, לא בשימוש כרגע */
   serviceOnly: boolean;
 };
+
+const NO = (reason: string): GateDecision => ({
+  allowed: false,
+  reason,
+  serviceOnly: false,
+});
+
+/** האם השעה עכשיו בתוך חלון הפעילות של הבוט */
+export function withinBotHours(
+  from: number,
+  to: number,
+  now = new Date()
+): boolean {
+  const hour = Math.floor(israelParts(now).minutes / 60);
+
+  // חלון רגיל, למשל 8 עד 21
+  if (from <= to) return hour >= from && hour < to;
+
+  // חלון שחוצה חצות, למשל 20 עד 2
+  return hour >= from || hour < to;
+}
 
 export async function shouldBotReply(leadId: string): Promise<GateDecision> {
   const settings = await getSettings();
 
   if (!settings.botEnabled) {
-    return { allowed: false, reason: "הבוט כבוי בהגדרות", serviceOnly: false };
-  }
-
-  const lead = await db.lead.findUnique({ where: { id: leadId } });
-  if (!lead) return { allowed: false, reason: "הליד לא נמצא", serviceOnly: false };
-
-  if (lead.botMuted) {
-    return {
-      allowed: false,
-      reason: "הבוט מושתק מול הלקוח הזה",
-      serviceOnly: false,
-    };
+    return NO("הבוט כבוי");
   }
 
   const now = new Date();
 
+  if (!withinBotHours(settings.botFromHour, settings.botToHour, now)) {
+    return NO(
+      `מחוץ לשעות הבוט (${settings.botFromHour}:00–${settings.botToHour}:00)`
+    );
+  }
+
+  const lead = await db.lead.findUnique({ where: { id: leadId } });
+  if (!lead) return NO("הליד לא נמצא");
+
+  if (lead.botMuted) {
+    return NO("הבוט מושתק מול הלקוח הזה");
+  }
+
+  /**
+   * הסטטוסים שבחרת. רשימה ריקה = הבוט לא עונה לאף אחד,
+   * כדי שלא יתחיל לעבוד בטעות על כל המסד.
+   */
+  if (settings.botStatuses.length === 0) {
+    return NO("לא נבחרו סטטוסים שהבוט עונה עליהם");
+  }
+
+  if (!settings.botStatuses.includes(lead.status)) {
+    return NO(`הבוט לא עונה בסטטוס "${lead.status}"`);
+  }
+
+  // אתה ענית ללקוח לאחרונה - הבוט לא מתערב
   if (lead.botPausedUntil && lead.botPausedUntil > now) {
     const until = lead.botPausedUntil.toLocaleString("he-IL", {
       timeZone: "Asia/Jerusalem",
@@ -58,94 +96,10 @@ export async function shouldBotReply(leadId: string): Promise<GateDecision> {
       hour: "2-digit",
       minute: "2-digit",
     });
-    return {
-      allowed: false,
-      reason: `אתה בשיחה עם הלקוח - הבוט שותק עד ${until}`,
-      serviceOnly: false,
-    };
+    return NO(`אתה בשיחה עם הלקוח - הבוט שותק עד ${until}`);
   }
 
-  /**
-   * ============================================================
-   *  מתי אתה "בעבודה"
-   * ============================================================
-   *
-   *  הבוט קיים בשביל הזמן שאתה לא זמין. לכן:
-   *
-   *  - בשעות העבודה אתה בעבודה
-   *  - גם בחלון החסד אחרי הסגירה (ברירת מחדל שעה) - כי יום עבודה
-   *    לא נגמר בדיוק ב-18:30
-   *  - אלא אם לחצת "סיימתי להיום", ואז הבוט נכנס לפעולה מיד
-   */
-  const sinceClose = minutesSinceWorkingClose(now);
-  const inGrace =
-    sinceClose !== null && sinceClose < settings.afterHoursGrace;
-
-  const offDuty = Boolean(
-    settings.offDutyUntil && settings.offDutyUntil.getTime() > now.getTime()
-  );
-
-  const atWork = !offDuty && (isWithinWorkingHours(now) || inGrace);
-
-  /**
-   * בשעות שאתה בעבודה, פנייה מכירתית מחכה לך.
-   * שאלת שירות עדיין נענית - היא מידע קבוע ולא מסכנת כלום.
-   */
-  const serviceOnly = settings.botOnlyOutsideHours && atWork;
-
-  /**
-   * הבוט עונה רק ללקוחות שאנחנו פנינו אליהם.
-   * אם לא שלחנו לליד הזה שום תבנית, השיחה הזו שלך - לא שלו.
-   */
-  if (settings.requireTemplateFirst) {
-    const weMessaged = await db.message.count({
-      where: { leadId, direction: "out", templateName: { not: null } },
-    });
-
-    if (weMessaged === 0) {
-      return {
-        allowed: false,
-        reason: "לא שלחנו ללקוח הזה תבנית - השיחה הזו שלך",
-        serviceOnly: false,
-      };
-    }
-  }
-
-  /**
-   * הכלל שהגדרת: הבוט נכנס לפעולה **רק** כשהלקוח עונה
-   * לתבנית אוטומטית שהמערכת שלחה.
-   *
-   * לקוח שכותב מיוזמתו - באמצע שיחה איתך, או סתם - לא מקבל
-   * תשובה אוטומטית. רק התראה אליך.
-   */
-  if (settings.onlyAfterTemplate) {
-    const lastOut = await db.message.findFirst({
-      where: { leadId, direction: "out", status: "sent" },
-      orderBy: { createdAt: "desc" },
-    });
-
-    if (!lastOut?.templateName) {
-      return {
-        allowed: false,
-        reason: lastOut
-          ? "ההודעה האחרונה שיצאה ללקוח לא הייתה תבנית אוטומטית"
-          : "לא נשלחה ללקוח תבנית אוטומטית שאפשר לענות עליה",
-        serviceOnly: false,
-      };
-    }
-  }
-
-  /**
-   * זיהוי שיחה חיה.
-   *
-   * לקוח ששולח כמה הודעות בפרק זמן קצר נמצא באמצע שיחה,
-   * ובדרך כלל אתה זה שמדבר איתו. הבוט לא מתערב לשיחה
-   * שכבר מתנהלת - הוא רק מתריע לך.
-   *
-   * זו רשת ביטחון למקרה שטקסטר לא מדווח לנו על ההודעות
-   * שאתה שולח. כשהסנריו יכלול גם הודעות יוצאות, ההשתקה
-   * תהיה מדויקת עוד יותר.
-   */
+  // שיחה חיה: כמה הודעות בזמן קצר = אתה כנראה בפנים
   const liveWindow = new Date(
     now.getTime() - settings.liveChatMinutes * 60000
   );
@@ -155,57 +109,33 @@ export async function shouldBotReply(leadId: string): Promise<GateDecision> {
   });
 
   if (recentInbound >= 2) {
-    return {
-      allowed: false,
-      reason: `הלקוח שלח ${recentInbound} הודעות ב-${settings.liveChatMinutes} הדקות האחרונות - נראה שאתה באמצע שיחה איתו`,
-      serviceOnly: false,
-    };
+    return NO(
+      `הלקוח שלח ${recentInbound} הודעות ב-${settings.liveChatMinutes} הדקות האחרונות - נראה שאתה באמצע שיחה`
+    );
   }
 
-  /**
-   * הכלל שביקשת: אחרי שהעוזר כבר ענה וסיווג פעם אחת -
-   * הוא לא עונה שוב, **אלא אם זה מחוץ לשעות העבודה שלך**.
-   * בשעות העבודה אתה רואה את ההודעה ועונה בעצמך.
-   */
-  const repliedRecently = await db.leadEvent.findFirst({
-    where: {
-      leadId,
-      type: { in: ["bot_answered", "bot_classified"] },
-      createdAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) },
-    },
-  });
-
-  if (repliedRecently && isWithinWorkingHours(now)) {
-    return {
-      allowed: false,
-      reason: "העוזר כבר טיפל בלקוח הזה, ואתה בשעות עבודה - ההודעה מחכה לך",
-      serviceOnly: false,
-    };
-  }
-
-  // מניעת הצפה: לא עונים פעמיים ברצף בפרק זמן קצר
+  // מניעת הצפה
   const cooldownStart = new Date(
     now.getTime() - settings.replyCooldownMinutes * 60000
   );
-  const recentBotReply = await db.message.findFirst({
+
+  const recentReply = await db.message.findFirst({
     where: {
       leadId,
       direction: "out",
-      templateName: null, // תשובות הבוט הן טקסט חופשי, בלי תבנית
+      templateName: null,
       status: "sent",
       createdAt: { gte: cooldownStart },
     },
   });
 
-  if (recentBotReply) {
-    return {
-      allowed: false,
-      reason: `הבוט כבר ענה בדקות האחרונות (המתנה של ${settings.replyCooldownMinutes} דקות)`,
-      serviceOnly: false,
-    };
+  if (recentReply) {
+    return NO(
+      `הבוט כבר ענה בדקות האחרונות (המתנה של ${settings.replyCooldownMinutes} דקות)`
+    );
   }
 
-  return { allowed: true, reason: "", serviceOnly };
+  return { allowed: true, reason: "", serviceOnly: false };
 }
 
 /**

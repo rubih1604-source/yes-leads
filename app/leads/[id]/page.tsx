@@ -8,6 +8,7 @@ import { getStatuses } from "@/lib/status-store";
 import { getSubStatusMap } from "@/lib/substatus";
 import LeadCardActions from "@/components/LeadCardActions";
 import LeadTasks from "@/components/LeadTasks";
+import BackLink from "@/components/BackLink";
 import AutoRefresh from "@/components/AutoRefresh";
 import type { TemplateOption } from "@/components/SendTemplateSheet";
 import type { KnowledgeOption } from "@/components/SendKnowledgeSheet";
@@ -104,10 +105,7 @@ export default async function LeadPage({
         className="topbar lead-head"
         style={{ borderBottomColor: statusColor(lead.status, statuses) }}
       >
-        <Link href="/" className="nav-back">
-          <span>→</span>
-          <span>לידים</span>
-        </Link>
+        <BackLink fallback="/" label="חזרה" />
 
         <h1>{name}</h1>
 
@@ -147,7 +145,6 @@ export default async function LeadPage({
           }
           knowledge={knowledge as KnowledgeOption[]}
           statuses={statuses}
-          firstName={lead.firstName ?? name}
           leadName={name}
           currentSub={lead.subStatus}
           subStatuses={subStatusMap}

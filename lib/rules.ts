@@ -124,7 +124,14 @@ export async function applyStatusChange(params: {
   });
 
   await cancelPendingJobs(lead.id, `הסטטוס שונה ל${params.toStatus}`);
-  await scheduleForStatus(lead.id, params.toStatus);
+  /**
+   * ה-actor עובר הלאה: שינוי שאתה עשית יוצא מיד,
+   * שינוי אוטומטי מכבד שעות עבודה.
+   */
+  await scheduleForStatus(lead.id, params.toStatus, params.actor);
+
+  // ליד בסטטוס שדורש חזרה נכנס לרשימה של פעמיים ביום
+  await queueForCallback(lead.id, params.toStatus);
 
   return updated;
 }

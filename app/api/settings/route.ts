@@ -39,6 +39,19 @@ export async function PATCH(request: Request) {
     data.leadRowFields = readRowFields(body.leadRowFields);
   }
 
+  if (Array.isArray(body.botStatuses)) {
+    data.botStatuses = body.botStatuses.filter(
+      (x: unknown) => typeof x === "string"
+    );
+  }
+
+  for (const key of ["botFromHour", "botToHour"]) {
+    if (body[key] !== undefined) {
+      const n = Number(body[key]);
+      if (Number.isFinite(n) && n >= 0 && n <= 23) data[key] = Math.round(n);
+    }
+  }
+
   if (typeof body.callbackEnabled === "boolean") {
     data.callbackEnabled = body.callbackEnabled;
   }

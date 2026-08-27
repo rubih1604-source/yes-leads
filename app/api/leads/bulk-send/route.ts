@@ -117,7 +117,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const firstRun = shiftToWorkingHours(new Date(now));
+  const firstRun =
+    sendNow === false ? shiftToWorkingHours(new Date(now)) : new Date(now);
 
   return NextResponse.json({
     ok: true,
