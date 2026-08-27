@@ -165,7 +165,7 @@ export default function LeadList({
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMessage, setBulkMessage] = useState("");
   const [bulkConfirm, setBulkConfirm] = useState(false);
-  const [sendNow, setSendNow] = useState(false);
+  const [sendNow, setSendNow] = useState(true);
   const [saleCampaign, setSaleCampaign] = useState("");
   const [saleConfirm, setSaleConfirm] = useState(false);
 
@@ -572,7 +572,7 @@ export default function LeadList({
               >
                 {sendNow
                   ? "ההודעות יצאו מיד, אחת כל 8 שניות"
-                  : "כרגע: יחכה לשעות הפעילות"}
+                  : "כבוי: ידחה לשעות הפעילות"}
               </span>
             </span>
           </button>

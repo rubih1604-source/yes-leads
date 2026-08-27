@@ -103,7 +103,7 @@ export async function POST(
 
   for (const [i, lead] of leads.entries()) {
     const at = new Date(now + i * GAP_SECONDS * 1000);
-    const runAt = sendNow === true ? at : shiftToWorkingHours(at);
+    const runAt = sendNow === false ? shiftToWorkingHours(at) : at;
 
     await db.scheduledJob
       .create({

@@ -75,7 +75,11 @@ export async function POST(request: Request) {
      * דחיית שעות קיימת כדי שרצף אוטומטי לא יתעורר ב-2 בלילה,
      * אבל כשאתה לוחץ על הכפתור בעצמך - זו החלטה שלך.
      */
-    const runAt = sendNow === true ? at : shiftToWorkingHours(at);
+    /**
+     * דיוור ידני יוצא מיד כברירת מחדל - אתה לחצת על הכפתור.
+     * מי שרוצה לדחות לשעות פעילות מכבה את המתג.
+     */
+    const runAt = sendNow === false ? shiftToWorkingHours(at) : at;
 
     try {
       await db.scheduledJob.create({

@@ -25,7 +25,20 @@ export async function cancelPendingJobs(leadId: string, reason: string) {
  * מתזמן את כל הצעדים של הסטטוס החדש.
  * כל צעד נדחה לשעות הפעילות אם הוא נופל מחוץ להן.
  */
-export async function scheduleForStatus(leadId: string, status: string) {
+export async function scheduleForStatus(
+  leadId: string,
+  status: string,
+  /**
+   * מי גרם לשינוי.
+   *
+   * "user" - אתה שינית סטטוס בעצמך. אתה עובד עכשיו, ולכן
+   * ההודעה יוצאת מיד, גם ב-22:00. זו החלטה שלך.
+   *
+   * "bot" / "system" - השינוי קרה אוטומטית. כאן כן מכבדים
+   * שעות עבודה, כדי שרצף לא יתעורר באמצע הלילה.
+   */
+  actor: "user" | "system" | "bot" = "system"
+) {
   const rules = await db.rule.findMany({
     where: { triggerStatus: status, active: true },
     orderBy: { stepIndex: "asc" },
@@ -38,7 +51,7 @@ export async function scheduleForStatus(leadId: string, status: string) {
 
   for (const rule of rules) {
     const rawRunAt = new Date(now + rule.delayMinutes * 60000);
-    const runAt = shiftToWorkingHours(rawRunAt);
+    const runAt = actor === "user" ? rawRunAt : shiftToWorkingHours(rawRunAt);
 
     try {
       await db.scheduledJob.upsert({

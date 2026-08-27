@@ -5,6 +5,7 @@ import { getStatuses } from "@/lib/status-store";
 import { statusColor } from "@/lib/statuses";
 import { displayPhone, dialPhone } from "@/lib/phone";
 import AutoRefresh from "@/components/AutoRefresh";
+import CallbackNowButton from "@/components/CallbackNowButton";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +63,8 @@ export default async function CallbacksPage() {
           כאן רואים את כל מי שממתין, בכל רגע.
         </div>
       )}
+
+      <CallbackNowButton count={leads.length} />
 
       {leads.length === 0 ? (
         <div className="empty">
