@@ -30,14 +30,14 @@ const SAVE_KEY = "leads:filters";
 const SCROLL_KEY = "leads:scroll";
 
 type SavedFilters = {
-  status: string | null;
+  status: string[];
   campaign: string | null;
   period: "all" | "today" | "week" | "month";
   q: string;
 };
 
 const EMPTY_FILTERS: SavedFilters = {
-  status: null,
+  status: [],
   campaign: null,
   period: "all",
   q: "",
@@ -49,7 +49,10 @@ const EMPTY_FILTERS: SavedFilters = {
  */
 function readSaved(params: URLSearchParams): SavedFilters {
   const fromUrl: SavedFilters = {
-    status: params.get("status"),
+    status: (params.get("status") ?? "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
     campaign: params.get("campaign"),
     period:
       (params.get("period") as SavedFilters["period"]) ?? "all",
@@ -57,7 +60,7 @@ function readSaved(params: URLSearchParams): SavedFilters {
   };
 
   const urlHasSomething =
-    fromUrl.status !== null ||
+    fromUrl.status.length > 0 ||
     fromUrl.campaign !== null ||
     fromUrl.period !== "all" ||
     fromUrl.q !== "";
@@ -72,7 +75,11 @@ function readSaved(params: URLSearchParams): SavedFilters {
 
     const parsed = JSON.parse(raw) as Partial<SavedFilters>;
     return {
-      status: typeof parsed.status === "string" ? parsed.status : null,
+      status: Array.isArray(parsed.status)
+        ? parsed.status.filter((x): x is string => typeof x === "string")
+        : typeof parsed.status === "string" && parsed.status
+        ? [parsed.status]
+        : [],
       campaign: typeof parsed.campaign === "string" ? parsed.campaign : null,
       period: ["all", "today", "week", "month"].includes(
         parsed.period as string
@@ -151,7 +158,7 @@ export default function LeadList({
   const initial = readSaved(params);
 
   const [query, setQuery] = useState(initial.q);
-  const [filter, setFilter] = useState<string | null>(initial.status);
+  const [filter, setFilter] = useState<string[]>(initial.status);
   const [campaign, setCampaign] = useState<string | null>(initial.campaign);
   const [period, setPeriod] = useState<"all" | "today" | "week" | "month">(
     initial.period
@@ -191,7 +198,7 @@ export default function LeadList({
     }
 
     const next = new URLSearchParams();
-    if (state.status) next.set("status", state.status);
+    if (state.status.length) next.set("status", state.status.join(","));
     if (state.campaign) next.set("campaign", state.campaign);
     if (state.period !== "all") next.set("period", state.period);
     if (state.q) next.set("q", state.q);
@@ -248,10 +255,10 @@ export default function LeadList({
   }, []);
 
   const anyFilter =
-    filter !== null || campaign !== null || period !== "all" || query !== "";
+    filter.length > 0 || campaign !== null || period !== "all" || query !== "";
 
   function clearAll() {
-    setFilter(null);
+    setFilter([]);
     setCampaign(null);
     setPeriod("all");
     setQuery("");
@@ -344,7 +351,7 @@ export default function LeadList({
       if (since !== null && new Date(lead.intakeAt).getTime() < since)
         return false;
       if (campaign && lead.campaign !== campaign) return false;
-      if (filter && lead.status !== filter) return false;
+      if (filter.length > 0 && !filter.includes(lead.status)) return false;
 
       if (!q) return true;
 
@@ -504,8 +511,8 @@ export default function LeadList({
 
         <button
           className="chip"
-          data-active={filter === null}
-          onClick={() => setFilter(null)}
+          data-active={filter.length === 0}
+          onClick={() => setFilter([])}
         >
           הכל
         </button>
@@ -514,8 +521,14 @@ export default function LeadList({
           <button
             key={st.name}
             className="chip"
-            data-active={filter === st.name}
-            onClick={() => setFilter(filter === st.name ? null : st.name)}
+            data-active={filter.includes(st.name)}
+            onClick={() =>
+              setFilter(
+                filter.includes(st.name)
+                  ? filter.filter((f) => f !== st.name)
+                  : [...filter, st.name]
+              )
+            }
           >
             {st.name}
             <span style={{ opacity: 0.55, marginInlineStart: 5 }}>
@@ -683,6 +696,54 @@ export default function LeadList({
               ? "בטל בחירת הכל"
               : `בחר את כל ${visible.length} המוצגים`}
           </button>
+        </div>
+      )}
+
+      {visible.length > 0 && (
+        <div className="card" style={{ padding: 14 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>
+                ייצוא {visible.length} הלידים המסוננים
+              </div>
+              <div style={{ fontSize: 12.5, color: "#98a2b3", marginTop: 2 }}>
+                {filter.length > 0
+                  ? filter.join(" · ")
+                  : "כל הסטטוסים"}
+                {campaign ? ` · ${campaign}` : ""}
+              </div>
+            </div>
+
+            <a
+              className="btn"
+              href={`/api/leads/export?${new URLSearchParams({
+                ...(filter.length ? { status: filter.join(",") } : {}),
+                ...(campaign ? { campaign } : {}),
+                ...(period !== "all" ? { period } : {}),
+                ...(query.trim() ? { q: query.trim() } : {}),
+              }).toString()}`}
+              style={{
+                flex: "0 0 auto",
+                height: 44,
+                textDecoration: "none",
+                paddingInline: 18,
+              }}
+            >
+              הורד קובץ
+            </a>
+          </div>
+
+          <div style={{ fontSize: 12, color: "#98a2b3", marginTop: 10 }}>
+            הקובץ מכיל שם, טלפון בפורמט בינלאומי, מייל וכל שאר הפרטים —
+            מוכן להעלאה לפייסבוק כקהל מותאם ל-Lookalike.
+          </div>
         </div>
       )}
 
