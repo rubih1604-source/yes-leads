@@ -5,13 +5,13 @@ import { getStatuses } from "@/lib/status-store";
 import { getSubStatusMap } from "@/lib/substatus";
 import { getRevenue } from "@/lib/revenue";
 import { getSettings } from "@/lib/settings";
+import { isExistingCustomer } from "@/lib/existing-customer";
 import RevenueBar from "@/components/RevenueBar";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [statuses, subStatuses, revenue, templates, settings, saleCampaigns] =
-    await Promise.all([
+  const [statuses, subStatuses, revenue, templates, settings] = await Promise.all([
     getStatuses(),
     getSubStatusMap(),
     getRevenue("month"),
@@ -21,13 +21,6 @@ export default async function HomePage() {
       select: { name: true, displayName: true },
     }),
     getSettings(),
-    db.salesCampaign
-      .findMany({
-        where: { active: true },
-        orderBy: { name: "asc" },
-        select: { id: true, name: true, pricePerLead: true },
-      })
-      .catch(() => []),
   ]);
 
   const leads = await db.lead.findMany({
@@ -69,6 +62,7 @@ export default async function HomePage() {
       intakeAt: l.intakeAt.toISOString(),
       campaign: extra.fb_campaign || extra.campaign || null,
       supplier: extra.supplier_question || null,
+      existingCustomer: isExistingCustomer(l.extra, l.status),
       source: l.source,
       package: extra.package || null,
       price: extra.price || null,
@@ -87,7 +81,6 @@ export default async function HomePage() {
         subStatuses={subStatuses}
         templates={templates}
         rowFields={settings.leadRowFields}
-        saleCampaigns={saleCampaigns}
       />
     </div>
   );

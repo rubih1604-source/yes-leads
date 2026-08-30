@@ -38,7 +38,7 @@ export default function MaintenanceCard({
     router.refresh();
   }
 
-  if (count === 0 && duplicates === 0 && !message) return null;
+  // הכרטיס תמיד מוצג - יש בו גם תיקון תאריכים
 
   return (
     <div className="card">
@@ -77,6 +77,32 @@ export default function MaintenanceCard({
           </button>
         </>
       )}
+
+      <div style={{ fontWeight: 600, margin: "18px 0 4px" }}>
+        תאריכי כניסה
+      </div>
+      <div style={{ fontSize: 13, color: "#475467", marginBottom: 12 }}>
+        ליד שתאריך הכניסה שלו נקרא לא נכון מקובץ נדחק לסוף הרשימה ונראה
+        כאילו נעלם. הפעולה מיישרת אותם לפי מתי הרשומה נוצרה בפועל.
+      </div>
+      <button
+        className="btn"
+        onClick={async () => {
+          setBusy(true);
+          const res = await fetch("/api/maintenance/fix-dates", {
+            method: "POST",
+          });
+          const data = await res.json().catch(() => ({}));
+          setMessage(
+            res.ok ? `${data.fixed} תאריכים תוקנו` : "הפעולה נכשלה"
+          );
+          setBusy(false);
+          router.refresh();
+        }}
+        disabled={busy}
+      >
+        {busy ? "בודק..." : "תקן תאריכי כניסה"}
+      </button>
 
       {message && (
         <div style={{ marginTop: 10, fontSize: 14 }}>{message}</div>

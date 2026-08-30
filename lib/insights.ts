@@ -17,6 +17,7 @@
 
 import { db } from "./db";
 import { getStatuses } from "./status-store";
+import { isExistingCustomer } from "./existing-customer";
 import { israelParts } from "./working-hours";
 import type { Range } from "./periods";
 

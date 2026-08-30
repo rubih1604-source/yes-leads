@@ -387,7 +387,7 @@ export default function LeadList({
       total: rows.length,
       won: rows.filter((l) => wonNames.has(l.status)).length,
       declined: rows.filter((l) => l.status.startsWith("לא מעוניין")).length,
-      existing: rows.filter((l) => l.status === "לקוח קיים").length,
+      existing: rows.filter((l) => l.existingCustomer).length,
     };
   }, [leads, campaign, statuses]);
 

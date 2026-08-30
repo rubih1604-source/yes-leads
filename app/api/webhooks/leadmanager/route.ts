@@ -5,11 +5,10 @@ import { normalizePhone } from "@/lib/phone";
 import {
   mapLeadManagerPayload,
   extractExtraFields,
-  looksLikeExistingCustomer,
 } from "@/lib/leadmanager-mapping";
+import { isExistingCustomer } from "@/lib/existing-customer";
 import { isKnownStatus } from "@/lib/status-store";
 import { scheduleForStatus } from "@/lib/rules";
-import { salesPriceFor, SALE_ORIGIN } from "@/lib/sales-campaigns";
 
 export const dynamic = "force-dynamic";
 
@@ -127,16 +126,11 @@ async function handle(request: Request) {
      * הוא כבר לקוח שלנו. נכנס ישר ל"לקוח קיים" במקום "חדש",
      * כדי שלא יקבל פנייה מכירתית מיותרת.
      */
-    const alreadyCustomer = looksLikeExistingCustomer(extra);
-
     /**
-     * קמפיין מכירה: הלידים ממנו נמכרים ולא נעבדים.
-     * הם נכנסים דרך אותו webhook, מקבלים מקור "sale",
-     * ולכן לא מופיעים ברשימה ולא מקבלים שום אוטומציה.
+     * אותו זיהוי שכל המערכת משתמשת בו - כולל עמודות
+     * מקבצים ששמן שונה בכל פעם.
      */
-    const campaignName = extra.fb_campaign || extra.campaign || null;
-    const salePrice = await salesPriceFor(campaignName);
-    const isSaleLead = salePrice !== null;
+    const alreadyCustomer = isExistingCustomer(extra);
 
     const existing = await db.lead.findUnique({ where: { phone } });
 
@@ -148,7 +142,6 @@ async function handle(request: Request) {
           lastName: mapped.lastName,
           status: incomingStatus ?? (alreadyCustomer ? "לקוח קיים" : "חדש"),
           source: mapped.source,
-          origin: isSaleLead ? SALE_ORIGIN : "leadmanager",
           extra: Object.keys(extra).length
             ? (extra as Prisma.InputJsonObject)
             : undefined,
@@ -175,24 +168,8 @@ async function handle(request: Request) {
         },
       });
 
-      // כל כניסה נרשמת בנפרד, כדי שליד שהגיע מכמה
-      // קמפיינים ייספר בכל אחד מהם
-      await db.leadEntry
-        .create({
-          data: {
-            leadId: lead.id,
-            campaign: campaignName,
-            source: mapped.source,
-            isSale: isSaleLead,
-            price: salePrice ?? 0,
-          },
-        })
-        .catch(() => null);
-
-      // ליד מכירה לא נכנס לשום רצף - הוא רק נספר
-      if (!isSaleLead) {
-        await scheduleForStatus(lead.id, lead.status);
-      }
+      // אם יש חוקים לסטטוס שבו הליד נכנס - מתזמנים אותם
+      await scheduleForStatus(lead.id, lead.status);
     } else {
       const statusChanged =
         incomingStatus !== null && incomingStatus !== existing.status;
@@ -204,12 +181,8 @@ async function handle(request: Request) {
           lastName: mapped.lastName ?? existing.lastName,
           source: mapped.source ?? existing.source,
           status: incomingStatus ?? existing.status,
-          /**
-           * ליד שהגיע גם מקמפיין מכירה וגם מקמפיין שלך -
-           * נשאר שלך. הכניסה למכירה נספרת בנפרד ואתה
-           * מקבל עליה תשלום, אבל הוא לא נעלם מהרשימה.
-           */
-          origin: isSaleLead ? existing.origin : "leadmanager",
+          // אם הוא נוצר קודם מהודעת וואטסאפ - עכשיו הוא ליד אמיתי
+          origin: "leadmanager",
           extra: Object.keys(extra).length
             ? ({
                 ...(typeof existing.extra === "object" && existing.extra
@@ -220,18 +193,6 @@ async function handle(request: Request) {
             : undefined,
         },
       });
-
-      await db.leadEntry
-        .create({
-          data: {
-            leadId: existing.id,
-            campaign: campaignName,
-            source: mapped.source,
-            isSale: isSaleLead,
-            price: salePrice ?? 0,
-          },
-        })
-        .catch(() => null);
 
       await db.leadEvent.create({
         data: {

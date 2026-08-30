@@ -9,6 +9,7 @@
 
 import { db } from "./db";
 import { getStatuses } from "./status-store";
+import { isExistingCustomer } from "./existing-customer";
 import type { Range } from "./periods";
 
 export type Slice = {
@@ -22,6 +23,8 @@ export type ReportData = {
   total: number;
   won: number;
   winPercent: number;
+  existingCustomers: number;
+  existingPercent: number;
   byStatus: Slice[];
   byCampaign: Slice[];
   bySupplier: Slice[];
@@ -60,10 +63,12 @@ export async function getReport(range: Range): Promise<ReportData> {
   const campaignCounts = new Map<string, number>();
   const supplierCounts = new Map<string, number>();
   let won = 0;
+  let existing = 0;
 
   for (const lead of leads) {
     statusCounts.set(lead.status, (statusCounts.get(lead.status) ?? 0) + 1);
     if (wonNames.has(lead.status)) won++;
+    if (isExistingCustomer(lead.extra, lead.status)) existing++;
 
     const campaign = fieldOf(lead.extra, ["fb_campaign", "campaign"]);
     const key = campaign ?? "ללא קמפיין";
@@ -98,6 +103,8 @@ export async function getReport(range: Range): Promise<ReportData> {
     total,
     won,
     winPercent: percent(won, total),
+    existingCustomers: existing,
+    existingPercent: percent(existing, total),
     byStatus,
     byCampaign: toSlices(campaignCounts, "#1b4d8f"),
     bySupplier: toSlices(supplierCounts, "#0891b2"),
@@ -118,6 +125,8 @@ export function reportToCsv(report: ReportData): string {
   lines.push(`סה"כ לידים,${report.total}`);
   lines.push(`נסגרו,${report.won}`);
   lines.push(`אחוז סגירה,${report.winPercent}%`);
+  lines.push(`לקוחות קיימים,${report.existingCustomers}`);
+  lines.push(`אחוז לקוחות קיימים,${report.existingPercent}%`);
   lines.push("");
 
   const section = (title: string, slices: Slice[]) => {

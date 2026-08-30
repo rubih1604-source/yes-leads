@@ -135,10 +135,17 @@ export default function ReportScreen({
           <div className="stat-label">אחוז סגירה</div>
         </div>
         <div className="stat">
-          <div className="stat-num" style={{ fontSize: 17 }}>
-            {report.label}
+          <div
+            className="stat-num"
+            style={{
+              color: report.existingPercent > 25 ? "#b54708" : undefined,
+            }}
+          >
+            {report.existingCustomers}
           </div>
-          <div className="stat-label">התקופה</div>
+          <div className="stat-label">
+            לקוחות קיימים · {report.existingPercent}%
+          </div>
         </div>
       </div>
 

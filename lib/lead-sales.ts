@@ -12,6 +12,7 @@
 
 import { db } from "./db";
 import { normalizeName } from "./sales-campaigns";
+import { isExistingCustomer } from "./existing-customer";
 import { israelParts, fromIsrael } from "./working-hours";
 
 export type CampaignStat = {
@@ -70,37 +71,6 @@ function campaignOf(extra: unknown): string | null {
   return e.fb_campaign || e.campaign || null;
 }
 
-const YES_ANSWER = /(^|[\s,\/\\|-])(yes|סטינג|sting|יס)([\s,\/\\|-]|$)/i;
-
-/**
- * האם הליד כבר לקוח של yes.
- *
- * שלושה מקורות, כי הדאטה הגיע משלושה מקומות:
- *  1. שאלת הספק מהטופס בפייסבוק
- *  2. עמודה בקובץ CSV - השם שלה יכול להיות בעברית
- *  3. הסטטוס שאתה עצמך קבעת
- *
- * מספיק שאחד מהם אומר כן.
- */
-function isExistingCustomer(extra: unknown, status?: string | null): boolean {
-  if (status && status.includes("לקוח קיים")) return true;
-
-  if (!extra || typeof extra !== "object" || Array.isArray(extra)) return false;
-
-  const record = extra as Record<string, string>;
-
-  const direct = record.supplier_question;
-  if (direct && YES_ANSWER.test(direct)) return true;
-
-  // עמודות מקובץ - שם העמודה יכול להיות "ספק", "ספק נוכחי" וכו'
-  for (const [key, value] of Object.entries(record)) {
-    if (typeof value !== "string" || !value.trim()) continue;
-    if (!/ספק|supplier|provider|חברה נוכחית/i.test(key)) continue;
-    if (YES_ANSWER.test(value)) return true;
-  }
-
-  return false;
-}
 
 export type SalesPeriod = "month" | "all";
 
