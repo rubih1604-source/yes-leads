@@ -255,6 +255,7 @@ export async function runDueJobs(limit = 50): Promise<RunSummary> {
 
   await sendTaskReminders(summary);
   await sendCallbackList();
+  await syncSaleLeads();
 
   // חותמת ריצה - ככה רואים במסך החוקים אם המנוע חי
   await db.settings
@@ -388,4 +389,95 @@ async function sendCallbackList() {
     .catch(() => null);
 
   await markSent(leads.map((l) => l.id));
+}
+
+
+/**
+ * מחזיר למכירה לידים שדלפו לרשימה הרגילה.
+ *
+ * הקליטה מחזירה לפעמים ליד קיים ל-leadmanager גם אם הוא
+ * שייך לקמפיין מכירה. במקום לגעת בקוד הקליטה, המנוע מיישר
+ * את זה כל דקה - וגם מבטל להם משימות ממתינות, כך שלקוח
+ * של הקונה לא יקבל מאיתנו הודעה.
+ */
+async function syncSaleLeads() {
+  const campaigns = await db.salesCampaign
+    .findMany({
+      where: { active: true },
+      select: { name: true, pricePerLead: true },
+    })
+    .catch(() => []);
+
+  if (campaigns.length === 0) return;
+
+  const priceByKey = new Map<string, number>(
+    campaigns.map((c) => [
+      c.name.trim().replace(/\s+/g, " ").toLowerCase(),
+      Number(c.pricePerLead ?? 0),
+    ])
+  );
+
+  /**
+   * סורקים רק את מה שנגע לאחרונה. סריקה מלאה כל דקה מיותרת,
+   * והכפתור בהגדרות עושה מעבר על הכל כשצריך.
+   */
+  const since = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+
+  const leads = await db.lead
+    .findMany({
+      where: { origin: { not: "sale" }, updatedAt: { gte: since } },
+      select: { id: true, extra: true, intakeAt: true, source: true },
+      orderBy: { updatedAt: "desc" },
+      take: 500,
+    })
+    .catch(() => []);
+
+  for (const lead of leads) {
+    const extra =
+      lead.extra && typeof lead.extra === "object" && !Array.isArray(lead.extra)
+        ? (lead.extra as Record<string, string>)
+        : {};
+
+    const name = extra.fb_campaign || extra.campaign;
+    if (!name) continue;
+
+    const key = name.trim().replace(/\s+/g, " ").toLowerCase();
+    const price = priceByKey.get(key);
+    if (price === undefined) continue;
+
+    await db.lead
+      .update({ where: { id: lead.id }, data: { origin: "sale" } })
+      .catch(() => null);
+
+    /**
+     * בלי כניסת מכירה הליד לא יופיע ברשימה של הקונה ולא
+     * ייספר בהכנסה. הזמן נלקח מתאריך הכניסה המקורי, כדי
+     * שהמיון בסוף יהיה לפי מתי הליד באמת נכנס.
+     */
+    const already = await db.leadEntry.findFirst({
+      where: { leadId: lead.id, campaign: name, isSale: true },
+    });
+
+    if (!already) {
+      await db.leadEntry
+        .create({
+          data: {
+            leadId: lead.id,
+            campaign: name,
+            source: lead.source,
+            isSale: true,
+            price,
+            at: lead.intakeAt,
+          },
+        })
+        .catch(() => null);
+    }
+
+    await db.scheduledJob
+      .updateMany({
+        where: { leadId: lead.id, state: "pending" },
+        data: { state: "cancelled", lastError: "ליד מכירה - הוחזר אוטומטית" },
+      })
+      .catch(() => null);
+  }
 }

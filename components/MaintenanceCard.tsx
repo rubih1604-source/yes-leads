@@ -88,6 +88,35 @@ export default function MaintenanceCard({
         }}
       >
         <div style={{ fontWeight: 700, color: "#b42318" }}>
+          החזרת לידי מכירה למקומם
+        </div>
+        <div style={{ fontSize: 13, color: "#475467", margin: "6px 0 10px" }}>
+          עובר על כל הלידים ומעביר למכירה כל מי ששייך לקמפיין מכירה
+          רשום — כולל מי שדלף לרשימה שלך. מבטל להם גם משימות ממתינות.
+        </div>
+        <button
+          className="btn primary"
+          style={{ marginBottom: 16 }}
+          onClick={async () => {
+            setBusy(true);
+            const res = await fetch("/api/maintenance/sync-sale-leads", {
+              method: "POST",
+            });
+            const data = await res.json().catch(() => ({}));
+            setMessage(
+              res.ok
+                ? `${data.moved} לידים הועברו למכירה · ${data.cancelled} משימות בוטלו`
+                : data.error || "הפעולה נכשלה"
+            );
+            setBusy(false);
+            router.refresh();
+          }}
+          disabled={busy}
+        >
+          {busy ? "מעביר..." : "העבר לידי מכירה למקומם"}
+        </button>
+
+        <div style={{ fontWeight: 700, color: "#b42318" }}>
           עצירת הודעות ללידי מכירה
         </div>
         <div style={{ fontSize: 13, color: "#475467", margin: "6px 0 10px" }}>
