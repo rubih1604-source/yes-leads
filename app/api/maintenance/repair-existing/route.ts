@@ -8,19 +8,30 @@ export const dynamic = "force-dynamic";
 /**
  * מתקן לידים שסומנו בטעות כלקוחות קיימים.
  *
- * הסריקה הרחבה שהייתה כאן קודם סימנה כמעט כל ליד, כי שמות
- * הקמפיינים והטפסים מכילים את המילה yes. הפעולה הזו עוברת
- * ליד ליד ומיישרת לפי שאלת הספק בלבד.
+ * חשוב: לא מחזירים ל"חדש" בעיוורון. קודם מחפשים ביומן
+ * את הסטטוס שהליד היה בו **לפני** שהוא הפך ל"לקוח קיים",
+ * ומחזירים אליו. ליד שהיה "נשלחה הצעת מחיר" חוזר לשם,
+ * לא לתחילת המסלול.
  *
- * מה שקורה:
- *  - סטטוס "לקוח קיים" ושאלת הספק אינה yes/sting -> חוזר ל"חדש"
- *  - שאלת הספק כן yes/sting והסטטוס אחר -> עובר ל"לקוח קיים"
- *
- * בכל מקרה מבטלים משימות ממתינות של אותם לידים, כדי שלא
- * תצא להם הודעה על סמך הסימון השגוי.
- *
- * לידים שסימנת ידנית ואין להם שאלת ספק כלל - לא נוגעים בהם.
+ * רק אם אין תיעוד כזה - נופלים ל"חדש".
  */
+
+async function previousStatusOf(leadId: string): Promise<string | null> {
+  const event = await db.leadEvent.findFirst({
+    where: {
+      leadId,
+      type: "status_changed",
+      toStatus: "לקוח קיים",
+      fromStatus: { not: null },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { fromStatus: true },
+  });
+
+  const from = event?.fromStatus ?? null;
+  return from && from !== "לקוח קיים" ? from : null;
+}
+
 export async function GET() {
   if (!isLoggedIn()) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -34,11 +45,8 @@ export async function GET() {
   let missing = 0;
 
   for (const lead of leads) {
-    const answer = supplierAnswer(lead.extra);
-    if (!answer) continue;
-
+    if (!supplierAnswer(lead.extra)) continue;
     const should = isExistingCustomer(lead.extra, lead.status);
-
     if (lead.status === "לקוח קיים" && !should) wrong++;
     if (should && lead.status !== "לקוח קיים") missing++;
   }
@@ -56,59 +64,56 @@ export async function POST() {
   });
 
   let reverted = 0;
+  let restored = 0;
   let marked = 0;
   let cancelled = 0;
 
   for (const lead of leads) {
     const answer = supplierAnswer(lead.extra);
+
     // אין שאלת ספק - סימון ידני שלך, לא נוגעים
     if (!answer) continue;
 
     const should = isExistingCustomer(lead.extra, lead.status);
+    let from: string | null = null;
+    let to: string | null = null;
 
     if (lead.status === "לקוח קיים" && !should) {
-      await db.lead
-        .update({ where: { id: lead.id }, data: { status: "חדש" } })
-        .catch(() => null);
+      const previous = await previousStatusOf(lead.id);
+      if (previous) restored++;
 
-      await db.leadEvent
-        .create({
-          data: {
-            leadId: lead.id,
-            type: "status_changed",
-            actor: "system",
-            fromStatus: "לקוח קיים",
-            toStatus: "חדש",
-            payload: {
-              note: `תוקן: שאלת הספק היא "${answer}", לא yes/sting`,
-            },
-          },
-        })
-        .catch(() => null);
-
+      from = "לקוח קיים";
+      to = previous ?? "חדש";
       reverted++;
     } else if (should && lead.status !== "לקוח קיים") {
-      await db.lead
-        .update({ where: { id: lead.id }, data: { status: "לקוח קיים" } })
-        .catch(() => null);
-
-      await db.leadEvent
-        .create({
-          data: {
-            leadId: lead.id,
-            type: "status_changed",
-            actor: "system",
-            fromStatus: lead.status,
-            toStatus: "לקוח קיים",
-            payload: { note: `תוקן לפי שאלת ספק: ${answer}` },
-          },
-        })
-        .catch(() => null);
-
+      from = lead.status;
+      to = "לקוח קיים";
       marked++;
     } else {
       continue;
     }
+
+    await db.lead
+      .update({ where: { id: lead.id }, data: { status: to } })
+      .catch(() => null);
+
+    await db.leadEvent
+      .create({
+        data: {
+          leadId: lead.id,
+          type: "status_changed",
+          actor: "system",
+          fromStatus: from,
+          toStatus: to,
+          payload: {
+            note:
+              to === "לקוח קיים"
+                ? `תוקן לפי שאלת ספק: ${answer}`
+                : `תוקן: שאלת הספק היא "${answer}", לא yes/sting`,
+          },
+        },
+      })
+      .catch(() => null);
 
     // אף הודעה לא תצא על סמך הסימון הקודם
     const res = await db.scheduledJob
@@ -121,5 +126,11 @@ export async function POST() {
     cancelled += res.count;
   }
 
-  return NextResponse.json({ ok: true, reverted, marked, cancelled });
+  return NextResponse.json({
+    ok: true,
+    reverted,
+    restored,
+    marked,
+    cancelled,
+  });
 }

@@ -29,7 +29,12 @@ export default async function HomePage() {
     // רק לידים אמיתיים. מי שכתב בוואטסאפ בלי להיות ליד
     // יושב במסך השיחות בלבד.
     where: { origin: "leadmanager" },
-    orderBy: { intakeAt: "desc" },
+    /**
+     * הליד האחרון שנכנס תמיד בראש.
+     * createdAt כגיבוי, כדי שליד עם תאריך כניסה חריג
+     * מקובץ לא ייעלם בתחתית הרשימה.
+     */
+    orderBy: [{ intakeAt: "desc" }, { createdAt: "desc" }],
     take: 500,
     select: {
       id: true,

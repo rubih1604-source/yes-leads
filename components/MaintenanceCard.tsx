@@ -119,8 +119,7 @@ export default function MaintenanceCard({
         </div>
         <div style={{ fontSize: 13, color: "#475467", margin: "6px 0 10px" }}>
           עובר ליד ליד ומיישר לפי שאלת הספק בלבד. מי שסומן בטעות חוזר
-          ל&quot;חדש&quot;, ומשימות ממתינות שלו מבוטלות כדי שלא תצא לו
-          הודעה. לידים שסימנת ידנית ואין להם שאלת ספק לא ייגעו.
+          לסטטוס שהיה לו לפני כן לפי היומן, ומשימות ממתינות שלו מבוטלות. לידים שסימנת ידנית ואין להם שאלת ספק לא ייגעו.
         </div>
         <button
           className="btn primary"
@@ -132,7 +131,7 @@ export default function MaintenanceCard({
             const data = await res.json().catch(() => ({}));
             setMessage(
               res.ok
-                ? `${data.reverted} הוחזרו ל"חדש" · ${data.marked} סומנו כלקוח קיים · ${data.cancelled} משימות בוטלו`
+                ? `${data.reverted} תוקנו (${data.restored} חזרו לסטטוס המקורי מהיומן) · ${data.marked} סומנו כלקוח קיים · ${data.cancelled} משימות בוטלו`
                 : "הפעולה נכשלה"
             );
             setBusy(false);
