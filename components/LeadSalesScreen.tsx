@@ -327,7 +327,7 @@ export default function LeadSalesScreen({
                     <div className="name">
                       {e.name}
                       {e.existingCustomer && (
-                        <span className="dup-tag">לקוח קיים</span>
+                        <span className="existing-tag">לקוח קיים</span>
                       )}
                       {!e.billable && (
                         <span

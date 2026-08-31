@@ -71,6 +71,11 @@ export async function shouldBotReply(leadId: string): Promise<GateDecision> {
   const lead = await db.lead.findUnique({ where: { id: leadId } });
   if (!lead) return NO("הליד לא נמצא");
 
+  // ליד מכירה שייך לקונה. אנחנו לא מדברים איתו.
+  if (lead.origin === "sale") {
+    return NO("ליד מכירה - אין אוטומציה");
+  }
+
   if (lead.botMuted) {
     return NO("הבוט מושתק מול הלקוח הזה");
   }

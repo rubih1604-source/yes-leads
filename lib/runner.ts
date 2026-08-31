@@ -44,6 +44,19 @@ async function runOne(jobId: string, summary: RunSummary) {
 
   const lead = job.lead;
 
+  /**
+   * מעקה אחרון: גם אם משימה נוצרה איכשהו לליד מכירה -
+   * היא לא תצא. הלקוחות של הקונה לא מקבלים מאיתנו הודעות.
+   */
+  if (job.lead?.origin === "sale") {
+    await db.scheduledJob.update({
+      where: { id: job.id },
+      data: { state: "cancelled", lastError: "ליד מכירה - אין אוטומציה" },
+    });
+    summary.skipped++;
+    return;
+  }
+
   async function finish(state: string, error?: string) {
     await db.scheduledJob.update({
       where: { id: jobId },

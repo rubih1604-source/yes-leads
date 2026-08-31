@@ -42,7 +42,12 @@ export async function POST(request: Request) {
   }
 
   const leads = await db.lead.findMany({
-    where: { id: { in: leadIds }, doNotContact: false },
+    where: {
+      id: { in: leadIds },
+      doNotContact: false,
+      // לידים של מכירה לא מקבלים דיוור בשום מצב
+      origin: { not: "sale" },
+    },
     select: { id: true },
   });
 

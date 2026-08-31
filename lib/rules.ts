@@ -11,6 +11,7 @@
 import { db } from "./db";
 import { shiftToWorkingHours } from "./working-hours";
 import { queueForCallback } from "./callback-list";
+import { SALE_ORIGIN } from "./sales-campaigns";
 
 /** מבטל את כל המשימות הממתינות של ליד. נקרא בכל שינוי ובכל תגובה. */
 export async function cancelPendingJobs(leadId: string, reason: string) {
@@ -39,6 +40,20 @@ export async function scheduleForStatus(
    */
   actor: "user" | "system" | "bot" = "system"
 ) {
+  /**
+   * ליד מכירה לא מקבל שום אוטומציה. אף פעם.
+   *
+   * החסימה כאן ולא רק בקליטה, כי שינוי סטטוס יכול להגיע
+   * מהמסך, מייבוא, מדוח מכירות או מתיקון - וכל אחד מהם
+   * היה מתזמן הודעות ללקוחות של הקונה.
+   */
+  const owner = await db.lead.findUnique({
+    where: { id: leadId },
+    select: { origin: true },
+  });
+
+  if (owner?.origin === SALE_ORIGIN) return;
+
   const rules = await db.rule.findMany({
     where: { triggerStatus: status, active: true },
     orderBy: { stepIndex: "asc" },

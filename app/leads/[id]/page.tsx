@@ -6,6 +6,7 @@ import { displayPhone, dialPhone } from "@/lib/phone";
 import { FIELD_LABELS, FIELD_ORDER } from "@/lib/leadmanager-mapping";
 import { getStatuses } from "@/lib/status-store";
 import { getSubStatusMap } from "@/lib/substatus";
+import { isExistingCustomer, supplierAnswer } from "@/lib/existing-customer";
 import LeadCardActions from "@/components/LeadCardActions";
 import LeadTasks from "@/components/LeadTasks";
 import BackLink from "@/components/BackLink";
@@ -107,7 +108,12 @@ export default async function LeadPage({
       >
         <BackLink fallback="/" label="חזרה" />
 
-        <h1>{name}</h1>
+        <h1>
+          {name}
+          {isExistingCustomer(lead.extra, lead.status) && (
+            <span className="existing-tag">לקוח קיים</span>
+          )}
+        </h1>
 
         <div className="lead-head-status">
           <span

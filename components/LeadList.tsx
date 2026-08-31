@@ -805,6 +805,9 @@ export default function LeadList({
                 <Link href={`/leads/${lead.id}`} className="body">
                   <div className="name">
                     {name}
+                    {lead.existingCustomer && (
+                      <span className="existing-tag">לקוח קיים</span>
+                    )}
                     {lead.duplicateOf && <span className="dup-tag">כפול</span>}
                   </div>
 

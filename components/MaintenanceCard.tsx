@@ -78,6 +78,72 @@ export default function MaintenanceCard({
         </>
       )}
 
+      <div
+        style={{
+          margin: "18px 0 4px",
+          padding: 12,
+          background: "#fef3f2",
+          border: "1px solid #b42318",
+          borderRadius: 10,
+        }}
+      >
+        <div style={{ fontWeight: 700, color: "#b42318" }}>
+          עצירת הודעות ללידי מכירה
+        </div>
+        <div style={{ fontSize: 13, color: "#475467", margin: "6px 0 10px" }}>
+          מבטל כל הודעה שממתינה לליד ששייך לקמפיין מכירה. מכאן והלאה
+          המערכת חוסמת את זה לבד בשלוש נקודות.
+        </div>
+        <button
+          className="btn primary"
+          style={{ marginBottom: 16 }}
+          onClick={async () => {
+            setBusy(true);
+            const res = await fetch("/api/maintenance/clear-sale-jobs", {
+              method: "POST",
+            });
+            const data = await res.json().catch(() => ({}));
+            setMessage(
+              res.ok ? `${data.cancelled} הודעות ללידי מכירה בוטלו` : "נכשל"
+            );
+            setBusy(false);
+            router.refresh();
+          }}
+          disabled={busy}
+        >
+          {busy ? "מבטל..." : "בטל הודעות ללידי מכירה"}
+        </button>
+
+        <div style={{ fontWeight: 700, color: "#b42318" }}>
+          תיקון סימון לקוחות קיימים
+        </div>
+        <div style={{ fontSize: 13, color: "#475467", margin: "6px 0 10px" }}>
+          עובר ליד ליד ומיישר לפי שאלת הספק בלבד. מי שסומן בטעות חוזר
+          ל&quot;חדש&quot;, ומשימות ממתינות שלו מבוטלות כדי שלא תצא לו
+          הודעה. לידים שסימנת ידנית ואין להם שאלת ספק לא ייגעו.
+        </div>
+        <button
+          className="btn primary"
+          onClick={async () => {
+            setBusy(true);
+            const res = await fetch("/api/maintenance/repair-existing", {
+              method: "POST",
+            });
+            const data = await res.json().catch(() => ({}));
+            setMessage(
+              res.ok
+                ? `${data.reverted} הוחזרו ל"חדש" · ${data.marked} סומנו כלקוח קיים · ${data.cancelled} משימות בוטלו`
+                : "הפעולה נכשלה"
+            );
+            setBusy(false);
+            router.refresh();
+          }}
+          disabled={busy}
+        >
+          {busy ? "מתקן..." : "תקן עכשיו"}
+        </button>
+      </div>
+
       <div style={{ fontWeight: 600, margin: "18px 0 4px" }}>
         תאריכי כניסה
       </div>
