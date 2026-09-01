@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
-import { getLeadSales, type SalesPeriod } from "@/lib/lead-sales";
+import { getLeadSales } from "@/lib/lead-sales";
+import { resolveRange, type PeriodKey } from "@/lib/periods";
 import LeadSalesScreen from "@/components/LeadSalesScreen";
 
 export const dynamic = "force-dynamic";
@@ -7,10 +8,23 @@ export const dynamic = "force-dynamic";
 export default async function LeadSalesPage({
   searchParams,
 }: {
-  searchParams?: { period?: string };
+  searchParams?: { period?: string; from?: string; to?: string };
 }) {
-  const period: SalesPeriod = searchParams?.period === "all" ? "all" : "month";
-  const data = await getLeadSales(period);
+  const VALID: PeriodKey[] = [
+    "this_month",
+    "last_month",
+    "last_3",
+    "this_year",
+    "all",
+    "custom",
+  ];
+
+  const period = VALID.includes(searchParams?.period as PeriodKey)
+    ? (searchParams!.period as PeriodKey)
+    : "this_month";
+
+  const range = resolveRange(period, searchParams?.from, searchParams?.to);
+  const data = await getLeadSales(range);
 
   // כמה לידים ותיקים עדיין בלי כניסה רשומה
   const [leadCount, withEntries] = await Promise.all([
@@ -39,6 +53,8 @@ export default async function LeadSalesPage({
         monthLabel={data.monthLabel}
         missingEntries={Math.max(0, leadCount - withEntries.length)}
         period={period}
+        from={searchParams?.from ?? ""}
+        to={searchParams?.to ?? ""}
       />
     </div>
   );

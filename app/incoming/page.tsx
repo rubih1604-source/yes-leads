@@ -28,7 +28,7 @@ export default async function IncomingPage() {
   return (
     <div className="app">
       <div className="topbar">
-        <h1>יומן קליטה <span className="count">גרסה 69</span></h1>
+        <h1>יומן קליטה <span className="count">גרסה 72</span></h1>
       </div>
 
       {logs.length === 0 ? (

@@ -203,6 +203,9 @@ model Settings {
   botFromHour          Int       @default(8)
   botToHour            Int       @default(21)
   botStatuses          Json?
+
+  // אילו סטטוסים נחשבים סגירה לצורך אחוז המכירה
+  closeStatuses        Json?
   leadRowFields        Json?
   replyCallback        String   @default("מעולה, רשמתי. אחזור אליך בזמן שביקשת :)")
 
@@ -386,4 +389,44 @@ model Expense {
 
   @@index([at])
   @@index([categoryId])
+}
+
+/// יעד ביצועים לקמפיין. שורה בלי שם קמפיין = ברירת מחדל לכולם
+model CampaignRule {
+  id            String   @id @default(cuid())
+  campaignName  String?  @unique
+  targetPercent Float    @default(15)
+  graceDays     Int      @default(7)
+  recheckDays   Int      @default(7)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+/// תיעוד בדיקה, כדי לדעת מתי לבדוק שוב ולא להתריע פעמיים
+model CampaignCheck {
+  id           String   @id @default(cuid())
+  campaignName String
+  leads        Int      @default(0)
+  closes       Int      @default(0)
+  percent      Float    @default(0)
+  target       Float    @default(0)
+  passed       Boolean  @default(false)
+  checkedAt    DateTime @default(now())
+
+  @@index([campaignName, checkedAt])
+}
+
+/// באנר שמופיע בראש המסך עד שמסירים אותו
+model Notice {
+  id           String    @id @default(cuid())
+  kind         String    @default("campaign")
+  level        String    @default("bad")
+  title        String
+  body         String?
+  campaignName String?
+  createdAt    DateTime  @default(now())
+  dismissedAt  DateTime?
+
+  @@index([dismissedAt, createdAt])
 }

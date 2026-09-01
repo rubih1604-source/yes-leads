@@ -16,6 +16,7 @@ export type AppSettings = {
   botFromHour: number;
   botToHour: number;
   botStatuses: string[];
+  closeStatuses: string[];
   leadRowFields: RowFieldKey[];
   onlyAfterTemplate: boolean;
   offDutyUntil: Date | null;
@@ -41,6 +42,7 @@ const DEFAULTS: AppSettings = {
   botFromHour: 8,
   botToHour: 21,
   botStatuses: [],
+  closeStatuses: [],
   leadRowFields: readRowFields(null),
   onlyAfterTemplate: false,
   offDutyUntil: null,
@@ -76,6 +78,11 @@ export async function getSettings(): Promise<AppSettings> {
       callbackEnabled: row.callbackEnabled,
       botFromHour: row.botFromHour,
       botToHour: row.botToHour,
+      closeStatuses: Array.isArray(row.closeStatuses)
+        ? (row.closeStatuses as string[]).filter(
+            (x): x is string => typeof x === "string"
+          )
+        : [],
       botStatuses: Array.isArray(row.botStatuses)
         ? (row.botStatuses as string[]).filter(
             (x): x is string => typeof x === "string"

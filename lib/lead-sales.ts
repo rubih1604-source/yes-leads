@@ -13,7 +13,7 @@
 import { db } from "./db";
 import { normalizeName } from "./sales-campaigns";
 import { isExistingCustomer } from "./existing-customer";
-import { israelParts, fromIsrael } from "./working-hours";
+import type { Range } from "./periods";
 
 export type CampaignStat = {
   id: string;
@@ -60,11 +60,6 @@ export type LeadSalesSummary = {
   monthLabel: string;
 };
 
-function startOfMonth(now = new Date()): Date {
-  const p = israelParts(now);
-  return fromIsrael(p.year, p.month, 1, 0);
-}
-
 function campaignOf(extra: unknown): string | null {
   if (!extra || typeof extra !== "object" || Array.isArray(extra)) return null;
   const e = extra as Record<string, string>;
@@ -72,14 +67,16 @@ function campaignOf(extra: unknown): string | null {
 }
 
 
-export type SalesPeriod = "month" | "all";
-
+/**
+ * מקבל טווח תאריכים מלא, כדי שאפשר יהיה לסנן לפי חודש
+ * נוכחי, חודש קודם או כל טווח שתבחר - באותה שפה שבה
+ * מדברים שאר הדוחות במערכת.
+ */
 export async function getLeadSales(
-  period: SalesPeriod = "month"
+  range: Range
 ): Promise<LeadSalesSummary> {
-  const now = new Date();
-  // "הכל" סופר מתחילת הזמן, כדי לכלול גם מה שיובא מקובץ
-  const from = period === "all" ? new Date(0) : startOfMonth(now);
+  const from = range.from;
+  const to = range.to;
 
   const [registered, buyers, saleEntries, normalLeads] = await Promise.all([
     db.salesCampaign.findMany({ orderBy: { createdAt: "desc" } }),
@@ -141,7 +138,7 @@ export async function getLeadSales(
     const billable = entry.billable !== false;
 
     row.total++;
-    if (entry.at >= from) {
+    if (entry.at >= from && entry.at < to) {
       row.month++;
       if (billable) row.billableMonth++;
       else row.excludedMonth++;
@@ -231,13 +228,6 @@ export async function getLeadSales(
     totalMonth: campaigns.reduce((s, c) => s + c.leadsMonth, 0),
     revenueMonth: campaigns.reduce((s, c) => s + c.revenueMonth, 0),
     unregistered,
-    monthLabel:
-      period === "all"
-        ? "כל הזמן"
-        : now.toLocaleDateString("he-IL", {
-            timeZone: "Asia/Jerusalem",
-            month: "long",
-            year: "numeric",
-          }),
+    monthLabel: range.label,
   };
 }

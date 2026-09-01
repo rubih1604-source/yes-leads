@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import NavData from "@/components/NavData";
+import Banners from "@/components/Banners";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -40,6 +41,7 @@ export default function RootLayout({
         />
       </head>
       <body>
+        <Banners />
         {children}
         <NavData />
       </body>

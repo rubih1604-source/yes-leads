@@ -39,6 +39,12 @@ export async function PATCH(request: Request) {
     data.leadRowFields = readRowFields(body.leadRowFields);
   }
 
+  if (Array.isArray(body.closeStatuses)) {
+    data.closeStatuses = body.closeStatuses.filter(
+      (x: unknown) => typeof x === "string"
+    );
+  }
+
   if (Array.isArray(body.botStatuses)) {
     data.botStatuses = body.botStatuses.filter(
       (x: unknown) => typeof x === "string"

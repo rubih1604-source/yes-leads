@@ -12,6 +12,7 @@ import { sendTemplate } from "./texter";
 import { applyStatusChange } from "./rules";
 import { displayPhone } from "./phone";
 import { sendEmail } from "./email";
+import { runCampaignChecks } from "./campaign-monitor";
 import { getSettings } from "./settings";
 import { leadsForSlot, markSent, type Slot } from "./callback-list";
 import { israelParts } from "./working-hours";
@@ -256,6 +257,7 @@ export async function runDueJobs(limit = 50): Promise<RunSummary> {
   await sendTaskReminders(summary);
   await sendCallbackList();
   await syncSaleLeads();
+  await checkCampaigns();
 
   // חותמת ריצה - ככה רואים במסך החוקים אם המנוע חי
   await db.settings
@@ -477,6 +479,50 @@ async function syncSaleLeads() {
       .updateMany({
         where: { leadId: lead.id, state: "pending" },
         data: { state: "cancelled", lastError: "ליד מכירה - הוחזר אוטומטית" },
+      })
+      .catch(() => null);
+  }
+}
+
+
+/**
+ * בדיקת הקמפיינים, פעם ביום בשעת בוקר.
+ *
+ * לא בודקים כל דקה - אחוז סגירה לא משתנה בקצב הזה, וגם
+ * לא רוצים להציף בהתראות.
+ */
+async function checkCampaigns() {
+  const hour = Math.floor(israelParts(new Date()).minutes / 60);
+  if (hour !== 9) return;
+
+  const results = await runCampaignChecks().catch(() => []);
+  if (results.length === 0) return;
+
+  /**
+   * במקום מייל - באנר שנשאר על המסך עד שמסירים אותו.
+   *
+   * ירוק לקמפיין שעומד ביעד, אדום למי שמתחת. באנר קודם
+   * לאותו קמפיין מוסר, כדי שלא יצטברו שכבות של אותו מידע.
+   */
+  for (const c of results) {
+    await db.notice
+      .updateMany({
+        where: { campaignName: c.name, dismissedAt: null },
+        data: { dismissedAt: new Date() },
+      })
+      .catch(() => null);
+
+    await db.notice
+      .create({
+        data: {
+          kind: "campaign",
+          level: c.passed ? "good" : "bad",
+          campaignName: c.name,
+          title: c.passed
+            ? `${c.name} עומד על ${c.percent}% מכירה, מעל היעד של ${c.target}%`
+            : `${c.name} עומד על ${c.percent}% מכירה, מתחת ליעד של ${c.target}%`,
+          body: `${c.closes} סגירות מתוך ${c.leads} לידים · הקמפיין רץ ${c.ageDays} ימים`,
+        },
       })
       .catch(() => null);
   }

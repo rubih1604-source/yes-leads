@@ -31,6 +31,8 @@ export default function LeadSalesScreen({
   monthLabel,
   missingEntries,
   period,
+  from,
+  to,
 }: {
   campaigns: CampaignStat[];
   buyers: BuyerStat[];
@@ -40,8 +42,16 @@ export default function LeadSalesScreen({
   unregistered: Array<{ name: string; count: number }>;
   monthLabel: string;
   missingEntries: number;
-  period: "month" | "all";
+  period: string;
+  from: string;
+  to: string;
 }) {
+  const [customFrom, setCustomFrom] = useState(
+    from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
+  );
+  const [customTo, setCustomTo] = useState(
+    to || new Date().toISOString().slice(0, 10)
+  );
   const [tab, setTab] = useState<"leads" | "campaigns" | "buyers">("leads");
   const [filter, setFilter] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -140,21 +150,58 @@ export default function LeadSalesScreen({
   return (
     <>
       <div className="filters periods">
-        <Link
-          href="/lead-sales"
-          className="chip period-chip"
-          data-active={period === "month"}
-        >
-          החודש
-        </Link>
-        <Link
-          href="/lead-sales?period=all"
-          className="chip period-chip"
-          data-active={period === "all"}
-        >
-          כל הזמן
-        </Link>
+        {(
+          [
+            { key: "this_month", label: "החודש" },
+            { key: "last_month", label: "חודש קודם" },
+            { key: "last_3", label: "3 חודשים" },
+            { key: "this_year", label: "השנה" },
+            { key: "all", label: "הכל" },
+            { key: "custom", label: "טווח" },
+          ] as const
+        ).map((opt) => (
+          <Link
+            key={opt.key}
+            href={`/lead-sales?period=${opt.key}`}
+            className="chip period-chip"
+            data-active={period === opt.key}
+          >
+            {opt.label}
+          </Link>
+        ))}
       </div>
+
+      {period === "custom" && (
+        <div className="card">
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+            בחר טווח תאריכים
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              className="field"
+              type="date"
+              value={customFrom}
+              onChange={(e) => setCustomFrom(e.target.value)}
+              style={{ marginBottom: 0, flex: 1 }}
+            />
+            <span style={{ fontSize: 14 }}>עד</span>
+            <input
+              className="field"
+              type="date"
+              value={customTo}
+              onChange={(e) => setCustomTo(e.target.value)}
+              style={{ marginBottom: 0, flex: 1 }}
+            />
+          </div>
+          <Link
+            href={`/lead-sales?period=custom&from=${customFrom}&to=${customTo}`}
+            className="btn primary"
+            style={{ marginTop: 10, textDecoration: "none" }}
+          >
+            הצג
+          </Link>
+        </div>
+      )}
 
       {/* ציר ההכנסות */}
       <div className="revenue">

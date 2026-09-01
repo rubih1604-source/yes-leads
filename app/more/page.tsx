@@ -75,6 +75,12 @@ export default async function MorePage() {
           desc: "לידים שצריך לחזור אליהם - פעמיים ביום",
         },
         {
+          href: "/campaign-alerts",
+          glyph: "◎",
+          label: "יעדי קמפיינים",
+          desc: "יעד סגירה, ימי חסד, והתראה כשקמפיין לא עומד",
+        },
+        {
           href: "/insights",
           glyph: "◈",
           label: "תובנות",
