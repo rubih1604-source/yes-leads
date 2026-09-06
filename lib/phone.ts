@@ -62,3 +62,39 @@ export function dialPhone(phone: string): string {
   if (phone.startsWith("972")) return "0" + phone.slice(3);
   return phone.replace(/[^\d+]/g, "");
 }
+
+/**
+ * ============================================================
+ *  חיפוש לפי טלפון
+ * ============================================================
+ *
+ *  המספרים נשמרים בפורמט בינלאומי: +972521234567 - בלי האפס.
+ *  מי שמחפש מקליד בדרך כלל 052-123-4567, ואז החיפוש נכשל
+ *  כי הוא מחפש "0521234567" במחרוזת שאין בה אפס.
+ *
+ *  כאן מיישרים את שני הצדדים לאותו פורמט לפני ההשוואה,
+ *  כך שכל צורת כתיבה תמצא: עם מקפים, בלי, עם אפס, עם +972.
+ */
+
+/** מחזיר את הספרות המשמעותיות להשוואה */
+export function phoneDigits(value: string): string {
+  let digits = value.replace(/\D/g, "");
+
+  // 972521234567 -> 521234567
+  if (digits.startsWith("972")) digits = digits.slice(3);
+
+  // 0521234567 -> 521234567
+  if (digits.startsWith("0")) digits = digits.slice(1);
+
+  return digits;
+}
+
+/**
+ * האם המספר השמור מתאים למה שהוקלד.
+ * מספיקות 3 ספרות כדי להתחיל לסנן.
+ */
+export function phoneMatches(stored: string, query: string): boolean {
+  const q = phoneDigits(query);
+  if (q.length < 3) return false;
+  return phoneDigits(stored).includes(q);
+}

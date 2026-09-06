@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { statusColor, type StatusDef } from "@/lib/statuses";
-import { displayPhone, dialPhone } from "@/lib/phone";
+import { displayPhone, dialPhone, phoneMatches } from "@/lib/phone";
 import { DEFAULT_ROW_FIELDS, type RowFieldKey } from "@/lib/row-fields";
 import StatusSheet from "./StatusSheet";
 
@@ -356,11 +356,7 @@ export default function LeadList({
       if (!q) return true;
 
       const name = `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim();
-      const digits = q.replace(/\D/g, "");
-      return (
-        name.includes(q) ||
-        (digits.length >= 3 && lead.phone.includes(digits))
-      );
+      return name.includes(q) || phoneMatches(lead.phone, q);
     });
   }, [leads, query, filter, campaign, period]);
 

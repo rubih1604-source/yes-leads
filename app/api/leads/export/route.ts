@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { isLoggedIn } from "@/lib/auth";
-import { displayPhone } from "@/lib/phone";
+import { displayPhone, phoneMatches } from "@/lib/phone";
 
 export const dynamic = "force-dynamic";
 
@@ -91,11 +91,9 @@ export async function GET(request: Request) {
 
     if (query) {
       const full = `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim();
-      const digits = query.replace(/\D/g, "");
-      const match =
-        full.includes(query) ||
-        (digits.length >= 3 && lead.phone.includes(digits));
-      if (!match) return false;
+      if (!full.includes(query) && !phoneMatches(lead.phone, query)) {
+        return false;
+      }
     }
 
     return true;

@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { phoneDigits } from "@/lib/phone";
 
 export const dynamic = "force-dynamic";
 
@@ -19,21 +20,63 @@ function formatDate(d: Date): string {
  * יומן קליטה - מה בדיוק הגיע מליד מנגר.
  * זה המסך שממנו נדע איך למפות את השדות.
  */
-export default async function IncomingPage() {
-  const logs = await db.webhookLog.findMany({
+export default async function IncomingPage({
+  searchParams,
+}: {
+  searchParams?: { q?: string };
+}) {
+  const q = (searchParams?.q ?? "").trim();
+
+  const all = await db.webhookLog.findMany({
     orderBy: { createdAt: "desc" },
-    take: 30,
+    take: q ? 500 : 40,
   });
+
+  /**
+   * חיפוש בתוך התוכן הגולמי. ככה אפשר לאתר אדם מסוים
+   * ולראות אם הבקשה שלו בכלל הגיעה, ומה קרה איתה.
+   */
+  /**
+   * המספרים בתוך התוכן הגולמי מגיעים בכל צורה אפשרית.
+   * מיישרים את שני הצדדים לאותן ספרות לפני ההשוואה, כדי
+   * ש-052-123-4567 ימצא גם כשנשמר כ-+972521234567.
+   */
+  const digits = phoneDigits(q);
+
+  const logs = q
+    ? all.filter((log) => {
+        const raw = JSON.stringify(log.payload ?? {});
+        if (digits.length >= 4) {
+          const rawDigits = raw.replace(/\D/g, "");
+          if (rawDigits.includes(digits)) return true;
+        }
+        return raw.includes(q);
+      })
+    : all;
 
   return (
     <div className="app">
       <div className="topbar">
-        <h1>יומן קליטה <span className="count">גרסה 72</span></h1>
+        <h1>
+          יומן קליטה
+          <span className="count">
+            {q ? `${logs.length} תוצאות` : "גרסה 74"}
+          </span>
+        </h1>
+        <form>
+          <input
+            className="search"
+            name="q"
+            defaultValue={q}
+            placeholder="חפש לפי טלפון או שם"
+            inputMode="search"
+          />
+        </form>
       </div>
 
       {logs.length === 0 ? (
         <div className="empty">
-          <strong>עוד לא הגיע כלום</strong>
+          <strong>{q ? "לא נמצא כלום" : "עוד לא הגיע כלום"}</strong>
           ברגע שליד מנגר ישלח משהו לכתובת ה־webhook, הוא יופיע כאן בדיוק
           כמו שהתקבל.
         </div>

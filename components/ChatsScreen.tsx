@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { statusColor, type StatusDef } from "@/lib/statuses";
-import { displayPhone } from "@/lib/phone";
+import { displayPhone, phoneMatches } from "@/lib/phone";
 
 export type ChatRow = {
   leadId: string;
@@ -61,10 +61,9 @@ export default function ChatsScreen({
     return chats.filter((c) => {
       if (waitingOnly && c.lastDirection !== "in") return false;
       if (!q) return true;
-      const digits = q.replace(/\D/g, "");
       return (
         c.name.includes(q) ||
-        (digits.length >= 3 && c.phone.includes(digits)) ||
+        phoneMatches(c.phone, q) ||
         (c.lastText ?? "").includes(q)
       );
     });
