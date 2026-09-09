@@ -57,6 +57,48 @@ export async function closeStatusNames(): Promise<string[]> {
   return statuses.filter((s) => s.won).map((s) => s.name);
 }
 
+export type CampaignToggle = {
+  name: string;
+  leads: number;
+  active: boolean;
+  ruleId: string | null;
+};
+
+/** כל הקמפיינים שיש בהם לידים, עם מצב דלוק או כבוי */
+export async function getCampaignToggles(): Promise<CampaignToggle[]> {
+  const [rules, leads] = await Promise.all([
+    db.campaignRule.findMany().catch(() => []),
+    db.lead.findMany({
+      where: { origin: "leadmanager" },
+      select: { extra: true },
+      take: 5000,
+    }),
+  ]);
+
+  const ruleByName = new Map(
+    rules.filter((r) => r.campaignName).map((r) => [r.campaignName!, r])
+  );
+
+  const counts = new Map<string, number>();
+  for (const lead of leads) {
+    const name = campaignOf(lead.extra);
+    if (!name) continue;
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .map(([name, count]) => {
+      const rule = ruleByName.get(name);
+      return {
+        name,
+        leads: count,
+        active: rule ? rule.active : true,
+        ruleId: rule?.id ?? null,
+      };
+    })
+    .sort((a, b) => b.leads - a.leads);
+}
+
 export async function getCampaignPerformance(): Promise<CampaignPerf[]> {
   const [closeNames, rules, checks] = await Promise.all([
     closeStatusNames(),
@@ -69,6 +111,17 @@ export async function getCampaignPerformance(): Promise<CampaignPerf[]> {
   const defaultRule = rules.find((r) => r.campaignName === null);
   const ruleByName = new Map(
     rules.filter((r) => r.campaignName).map((r) => [r.campaignName!, r])
+  );
+
+  /**
+   * קמפיין שכיבית לא נספר ולא מתריע.
+   *
+   * קמפיין שכבר לא רץ ימשיך להראות אחוז נמוך לנצח ולהקפיץ
+   * באנרים על משהו שאי אפשר לתקן. הכיבוי מוציא אותו
+   * מהתמונה בלי למחוק את הנתונים.
+   */
+  const disabled = new Set(
+    rules.filter((r) => r.campaignName && !r.active).map((r) => r.campaignName!)
   );
 
   const lastCheck = new Map<string, Date>();
@@ -107,6 +160,8 @@ export async function getCampaignPerformance(): Promise<CampaignPerf[]> {
   const out: CampaignPerf[] = [];
 
   for (const [name, row] of byCampaign) {
+    if (disabled.has(name)) continue;
+
     const own = ruleByName.get(name);
     const rule = own ?? defaultRule;
 

@@ -47,6 +47,7 @@ export default async function HomePage() {
       duplicateOf: true,
       intakeAt: true,
       extra: true,
+      _count: { select: { entries: true } },
     },
   });
 
@@ -64,6 +65,7 @@ export default async function HomePage() {
       status: l.status,
       subStatus: l.subStatus,
       duplicateOf: l.duplicateOf,
+      entryCount: l._count.entries,
       intakeAt: l.intakeAt.toISOString(),
       campaign: extra.fb_campaign || extra.campaign || null,
       supplier: extra.supplier_question || null,

@@ -16,6 +16,41 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({}));
 
+  /**
+   * הדלקה או כיבוי של קמפיין.
+   * כבוי = לא נספר באחוזי הסגירה ולא מקפיץ באנרים.
+   */
+  if (typeof body.setActive === "boolean" && body.campaignName) {
+    const name = String(body.campaignName).trim();
+
+    const existing = await db.campaignRule.findUnique({
+      where: { campaignName: name },
+    });
+
+    if (existing) {
+      await db.campaignRule.update({
+        where: { id: existing.id },
+        data: { active: body.setActive },
+      });
+    } else {
+      await db.campaignRule.create({
+        data: { campaignName: name, active: body.setActive },
+      });
+    }
+
+    // קמפיין שכבה - מסירים את הבאנרים שלו
+    if (!body.setActive) {
+      await db.notice
+        .updateMany({
+          where: { campaignName: name, dismissedAt: null },
+          data: { dismissedAt: new Date() },
+        })
+        .catch(() => null);
+    }
+
+    return NextResponse.json({ ok: true, active: body.setActive });
+  }
+
   if (body.runNow === true) {
     const results = await runCampaignChecks();
 

@@ -258,6 +258,7 @@ export async function runDueJobs(limit = 50): Promise<RunSummary> {
   await sendCallbackList();
   await syncSaleLeads();
   await checkCampaigns();
+  await bumpReturningLeads();
 
   // חותמת ריצה - ככה רואים במסך החוקים אם המנוע חי
   await db.settings
@@ -524,6 +525,48 @@ async function checkCampaigns() {
           body: `${c.closes} סגירות מתוך ${c.leads} לידים · הקמפיין רץ ${c.ageDays} ימים`,
         },
       })
+      .catch(() => null);
+  }
+}
+
+
+/**
+ * ליד שחזר קופץ לראש הרשימה.
+ *
+ * אדם שמילא טופס ב-1.1 ושוב היום הוא הליד הכי חם שיש -
+ * אבל עד עכשיו הוא נשאר קבור בתחתית לפי התאריך הישן.
+ *
+ * מיישרים את תאריך הכניסה לכניסה האחרונה. התאריכים
+ * המקוריים לא אובדים - כל כניסה שמורה בנפרד ומוצגת
+ * בכרטיס הליד.
+ */
+async function bumpReturningLeads() {
+  const leads = await db.lead
+    .findMany({
+      where: { origin: "leadmanager" },
+      select: {
+        id: true,
+        intakeAt: true,
+        entries: {
+          orderBy: { at: "desc" },
+          take: 1,
+          select: { at: true },
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 400,
+    })
+    .catch(() => []);
+
+  for (const lead of leads) {
+    const latest = lead.entries[0]?.at;
+    if (!latest) continue;
+
+    // הפרש של דקה כדי לא לעדכן על רעש
+    if (latest.getTime() <= lead.intakeAt.getTime() + 60_000) continue;
+
+    await db.lead
+      .update({ where: { id: lead.id }, data: { intakeAt: latest } })
       .catch(() => null);
   }
 }

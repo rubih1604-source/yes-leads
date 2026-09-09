@@ -804,7 +804,13 @@ export default function LeadList({
                     {lead.existingCustomer && (
                       <span className="existing-tag">לקוח קיים</span>
                     )}
-                    {lead.duplicateOf && <span className="dup-tag">כפול</span>}
+                    {(lead.duplicateOf || lead.entryCount > 1) && (
+                      <span className="dup-tag">
+                        {lead.entryCount > 1
+                          ? `כפול · ${lead.entryCount}`
+                          : "כפול"}
+                      </span>
+                    )}
                   </div>
 
                   {inlineFor(lead).length > 0 && (

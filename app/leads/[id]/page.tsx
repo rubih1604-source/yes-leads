@@ -51,6 +51,7 @@ export default async function LeadPage({
     include: {
       messages: { orderBy: { createdAt: "desc" }, take: 60 },
       events: { orderBy: { createdAt: "desc" }, take: 40 },
+      entries: { orderBy: { at: "desc" }, take: 20 },
     },
   });
 
@@ -113,6 +114,11 @@ export default async function LeadPage({
           {isExistingCustomer(lead.extra, lead.status) && (
             <span className="existing-tag">לקוח קיים</span>
           )}
+          {lead.entries.length > 1 && (
+            <span className="dup-tag">
+              ליד כפול · {lead.entries.length} כניסות
+            </span>
+          )}
         </h1>
 
         <div className="lead-head-status">
@@ -156,6 +162,25 @@ export default async function LeadPage({
           subStatuses={subStatusMap}
         />
       </div>
+
+      {lead.entries.length > 1 && (
+        <>
+          <div className="section-title">מתי הוא נכנס</div>
+          <div className="card">
+            {lead.entries.map((entry, i) => (
+              <div className="stat-row" key={entry.id}>
+                <span>
+                  {i === 0 ? "האחרונה" : `כניסה ${lead.entries.length - i}`}
+                  {entry.campaign ? ` · ${entry.campaign}` : ""}
+                </span>
+                <strong style={{ fontSize: 14 }}>
+                  {formatDate(entry.at)}
+                </strong>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {/* המשימות של הליד - עם כל הפרטים, לא רק שנפתחה משימה */}
       <LeadTasks leadId={lead.id} />

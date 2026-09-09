@@ -22,6 +22,7 @@ export default function CampaignAlertsScreen({
   defaultGrace,
   defaultRecheck,
   rules,
+  toggles,
 }: {
   campaigns: Array<
     Omit<CampaignPerf, "lastCheckedAt" | "firstLeadAt"> & {
@@ -35,6 +36,7 @@ export default function CampaignAlertsScreen({
   defaultGrace: number;
   defaultRecheck: number;
   rules: Array<{ id: string; campaignName: string | null }>;
+  toggles: Array<{ name: string; leads: number; active: boolean }>;
 }) {
   const [picked, setPicked] = useState<string[]>(closeStatuses);
   const [target, setTarget] = useState(String(defaultTarget));
@@ -212,6 +214,45 @@ export default function CampaignAlertsScreen({
         {message && (
           <div style={{ marginTop: 10, fontSize: 14 }}>{message}</div>
         )}
+      </div>
+
+      {/* ---- אילו קמפיינים בכלל נספרים ---- */}
+      <div className="card">
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>
+          אילו קמפיינים נספרים
+        </div>
+        <div style={{ fontSize: 13, color: "#475467", marginBottom: 12 }}>
+          קמפיין שכבר לא רץ — כבה אותו. הוא לא ייספר באחוזי הסגירה
+          ולא יקפיץ באנרים. הנתונים שלו נשמרים ואפשר להדליק בחזרה.
+        </div>
+
+        {toggles.map((t) => (
+          <button
+            key={t.name}
+            className="status-option"
+            data-current={t.active}
+            onClick={() =>
+              call("/api/campaign-rules", {
+                campaignName: t.name,
+                setActive: !t.active,
+              })
+            }
+            disabled={busy}
+          >
+            <span
+              className="dot"
+              style={{ background: t.active ? "#12805c" : "#dbe3ea" }}
+            />
+            <span style={{ textAlign: "start" }}>
+              {t.name}
+              <span
+                style={{ display: "block", fontSize: 12, color: "#98a2b3" }}
+              >
+                {t.leads} לידים · {t.active ? "נספר" : "כבוי"}
+              </span>
+            </span>
+          </button>
+        ))}
       </div>
 
       {/* ---- הקמפיינים ---- */}

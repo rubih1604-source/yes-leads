@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import {
   getCampaignPerformance,
+  getCampaignToggles,
   closeStatusNames,
 } from "@/lib/campaign-monitor";
 import { getStatuses } from "@/lib/status-store";
@@ -9,11 +10,12 @@ import CampaignAlertsScreen from "@/components/CampaignAlertsScreen";
 export const dynamic = "force-dynamic";
 
 export default async function CampaignAlertsPage() {
-  const [perf, statuses, closes, rules] = await Promise.all([
+  const [perf, statuses, closes, rules, toggles] = await Promise.all([
     getCampaignPerformance(),
     getStatuses(),
     closeStatusNames(),
     db.campaignRule.findMany().catch(() => []),
+    getCampaignToggles(),
   ]);
 
   const fallback = rules.find((r) => r.campaignName === null);
@@ -39,6 +41,7 @@ export default async function CampaignAlertsPage() {
         defaultGrace={fallback?.graceDays ?? 7}
         defaultRecheck={fallback?.recheckDays ?? 7}
         rules={rules.map((r) => ({ id: r.id, campaignName: r.campaignName }))}
+        toggles={toggles}
       />
     </div>
   );
