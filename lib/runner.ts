@@ -250,15 +250,51 @@ export async function runDueJobs(limit = 50): Promise<RunSummary> {
 
   summary.picked = due.length;
 
+  /**
+   * כל משימה בנפרד.
+   *
+   * קודם כל הלולאה הייתה חשופה: משימה אחת שנפלה עצרה את
+   * כל מה שאחריה - כולל תזכורות המשימות. תקלה בשליחה
+   * אחת גרמה לכך שלא קיבלת תזכורות בכלל, ימים.
+   */
   for (const job of due) {
-    await runOne(job.id, summary);
+    try {
+      await runOne(job.id, summary);
+    } catch (err) {
+      summary.failed++;
+      console.error("[מנוע] משימה נכשלה:", job.id, err);
+
+      await db.scheduledJob
+        .updateMany({
+          where: { id: job.id, state: "running" },
+          data: {
+            state: "failed",
+            lastError: err instanceof Error ? err.message.slice(0, 300) : "שגיאה",
+          },
+        })
+        .catch(() => null);
+    }
   }
 
-  await sendTaskReminders(summary);
-  await sendCallbackList();
-  await syncSaleLeads();
-  await checkCampaigns();
-  await bumpReturningLeads();
+  /**
+   * כל שלב עומד בפני עצמו. נפילה באחד לא מונעת מהשאר לרוץ,
+   * ובעיקר לא מונעת תזכורות.
+   */
+  const steps: Array<[string, () => Promise<unknown>]> = [
+    ["תזכורות משימות", () => sendTaskReminders(summary)],
+    ["רשימת חזרה", () => sendCallbackList()],
+    ["סנכרון לידי מכירה", () => syncSaleLeads()],
+    ["בדיקת קמפיינים", () => checkCampaigns()],
+    ["לידים חוזרים", () => bumpReturningLeads()],
+  ];
+
+  for (const [name, run] of steps) {
+    try {
+      await run();
+    } catch (err) {
+      console.error(`[מנוע] ${name} נכשל:`, err);
+    }
+  }
 
   // חותמת ריצה - ככה רואים במסך החוקים אם המנוע חי
   await db.settings
@@ -310,14 +346,31 @@ async function sendTaskReminders(summary: RunSummary) {
 
     lines.push("", "— העוזר של רובי");
 
-    await sendEmail({
+    const emailed = await sendEmail({
       subject: task.urgent ? `🔥 ${task.title}` : `תזכורת: ${task.title}`,
       body: lines.join("\n"),
     });
 
-    await db.task
-      .update({ where: { id: task.id }, data: { notifiedAt: new Date() } })
-      .catch(() => null);
+    /**
+     * מסמנים כנשלח רק אם המייל באמת יצא.
+     *
+     * קודם סימנו תמיד - ולכן משימה שהמייל שלה נכשל לא ניסתה
+     * שוב לעולם, והתזכורת פשוט נעלמה.
+     *
+     * אם המייל לא מוגדר בכלל, אין טעם לנסות שוב: מסמנים,
+     * וההתראה נשארת במסך.
+     */
+    const configured = Boolean(
+      process.env.RESEND_API_KEY?.trim() && process.env.ALERT_EMAIL?.trim()
+    );
+
+    if (emailed || !configured) {
+      await db.task
+        .update({ where: { id: task.id }, data: { notifiedAt: new Date() } })
+        .catch(() => null);
+    } else {
+      console.error("[מנוע] תזכורת לא נשלחה, ננסה שוב:", task.title);
+    }
 
     if (task.leadId) {
       await db.alert
