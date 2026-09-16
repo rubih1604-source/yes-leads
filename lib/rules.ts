@@ -11,7 +11,6 @@
 import { db } from "./db";
 import { shiftToWorkingHours } from "./working-hours";
 import { queueForCallback } from "./callback-list";
-import { SALE_ORIGIN } from "./sales-campaigns";
 
 /** מבטל את כל המשימות הממתינות של ליד. נקרא בכל שינוי ובכל תגובה. */
 export async function cancelPendingJobs(leadId: string, reason: string) {
@@ -33,26 +32,19 @@ export async function scheduleForStatus(
    * מי גרם לשינוי.
    *
    * "user" - אתה שינית סטטוס בעצמך. אתה עובד עכשיו, ולכן
-   * ההודעה יוצאת מיד, גם ב-22:00. זו החלטה שלך.
+   * ההודעה יוצאת בדיוק אחרי העיכוב שהגדרת בחוק, גם ב-22:00.
    *
-   * "bot" / "system" - השינוי קרה אוטומטית. כאן כן מכבדים
-   * שעות עבודה, כדי שרצף לא יתעורר באמצע הלילה.
+   * "bot" / "system" - שינוי אוטומטי. כאן כן מכבדים שעות
+   * עבודה, כדי שרצף לא יתעורר באמצע הלילה.
    */
   actor: "user" | "system" | "bot" = "system"
 ) {
-  /**
-   * ליד מכירה לא מקבל שום אוטומציה. אף פעם.
-   *
-   * החסימה כאן ולא רק בקליטה, כי שינוי סטטוס יכול להגיע
-   * מהמסך, מייבוא, מדוח מכירות או מתיקון - וכל אחד מהם
-   * היה מתזמן הודעות ללקוחות של הקונה.
-   */
+  // ליד מכירה לא מקבל שום אוטומציה, מאיזה מסלול שלא יגיע
   const owner = await db.lead.findUnique({
     where: { id: leadId },
     select: { origin: true },
   });
-
-  if (owner?.origin === SALE_ORIGIN) return;
+  if (owner?.origin === "sale") return 0;
 
   const rules = await db.rule.findMany({
     where: { triggerStatus: status, active: true },
@@ -66,6 +58,11 @@ export async function scheduleForStatus(
 
   for (const rule of rules) {
     const rawRunAt = new Date(now + rule.delayMinutes * 60000);
+
+    /**
+     * שינוי שאתה עשית יוצא בדיוק לפי העיכוב בחוק.
+     * בלי דחייה לשעות פעילות ובלי הפתעות.
+     */
     const runAt = actor === "user" ? rawRunAt : shiftToWorkingHours(rawRunAt);
 
     try {
@@ -139,14 +136,10 @@ export async function applyStatusChange(params: {
   });
 
   await cancelPendingJobs(lead.id, `הסטטוס שונה ל${params.toStatus}`);
-  /**
-   * ה-actor עובר הלאה: שינוי שאתה עשית יוצא מיד,
-   * שינוי אוטומטי מכבד שעות עבודה.
-   */
   await scheduleForStatus(lead.id, params.toStatus, params.actor);
 
   // ליד בסטטוס שדורש חזרה נכנס לרשימה של פעמיים ביום
-  await queueForCallback(lead.id, params.toStatus);
+  await queueForCallback(params.leadId, params.toStatus);
 
   return updated;
 }

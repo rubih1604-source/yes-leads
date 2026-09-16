@@ -5,37 +5,47 @@
  *
  *  **הכלל היחיד: שאלת הספק בטופס.**
  *
- *  ליד הוא לקוח קיים אם ורק אם בשאלת הספק כתוב
- *  yes / sting / Yes / Sting / יס / סטינג.
+ *  אם בשאלת הספק מופיע yes / sting / יס / סטינג - בכל צורת
+ *  כתיבה שהיא - הליד הוא לקוח קיים.
  *
  *  ------------------------------------------------------------
  *  אזהרה למי שיערוך את הקובץ הזה בעתיד:
  *
  *  אסור לסרוק שדות אחרים. שמות הקמפיינים, העמודים והטפסים
  *  של העסק מכילים את המילה yes כמעט תמיד - "מצטרפים ל-yes",
- *  "yes גיאוגרפי" וכו'. סריקה רחבה מסמנת כמעט כל ליד
- *  כלקוח קיים. זה קרה, וזה שבר את כל הפילוחים.
+ *  "yes גיאוגרפי" וכו'. סריקה רחבה סימנה כמעט כל ליד
+ *  כלקוח קיים ושברה את כל הפילוחים. זה קרה.
  *  ------------------------------------------------------------
  */
 
-/** רק שדות שהם באמת שאלת הספק */
+/** השדות שנחשבים שאלת ספק */
 const SUPPLIER_KEYS = [
   "supplier_question",
   "supplier",
   "ספק",
   "ספק נוכחי",
   "שאלת ספק",
+  "מי הספק",
   "חברה נוכחית",
+  "חברת הכבלים",
   "current_provider",
   "provider",
+  "company",
 ];
 
 /**
- * התשובה חייבת להיות המילה עצמה, לא חלק ממשפט ארוך.
- * "yes\\sting" נתפס. "מצטרפים ל-yes" לא רלוונטי כי
- * הוא לעולם לא יגיע משדה ספק.
+ * המילה צריכה לעמוד בפני עצמה, אבל כל סימן מפריד מתקבל:
+ * רווח, לוכסן, סוגריים, מקף, פסיק, כוכבית, מה שלא יהיה.
+ *
+ * הגבול נמדד מול אותיות ולא מול רשימת סימנים, כדי שלא
+ * נצטרך לנחש איך בדיוק הלקוח כתב. "פיסיקה" לא נתפס כי
+ * יס שם בתוך מילה, וכך גם "yesterday".
  */
-const YES_ANSWER = /(^|[\s,\/\\|+&·־-])(yes|sting|יס|סטינג)([\s,\/\\|+&·־-]|$)/i;
+const LETTER = "a-zA-Z\\u0590-\\u05FF";
+const YES_ANSWER = new RegExp(
+  `(^|[^${LETTER}])(yes|sting|יס|סטינג)([^${LETTER}]|$)`,
+  "i"
+);
 
 function supplierAnswerOf(extra: unknown): string | null {
   if (!extra || typeof extra !== "object" || Array.isArray(extra)) return null;
@@ -48,7 +58,8 @@ function supplierAnswerOf(extra: unknown): string | null {
 
     const normalized = key.trim().toLowerCase();
     const isSupplierField = SUPPLIER_KEYS.some(
-      (k) => normalized === k.toLowerCase() || normalized.includes(k.toLowerCase())
+      (k) =>
+        normalized === k.toLowerCase() || normalized.includes(k.toLowerCase())
     );
 
     if (isSupplierField) return value.trim();
@@ -65,9 +76,9 @@ export function supplierAnswer(extra: unknown): string | null {
 /**
  * האם הליד לקוח קיים.
  *
- * הסטטוס נלקח בחשבון רק כדי שליד שסימנת ידנית לא ייעלם
- * מהספירה - אבל הוא לעולם לא הופך ליד לקיים מעצמו אם
- * שאלת הספק אומרת אחרת.
+ * הסטטוס נלקח בחשבון רק כשאין שאלת ספק בכלל - כדי שליד
+ * שסימנת ידנית לא ייעלם מהספירה. כשיש שאלת ספק, היא
+ * קובעת ולא הסטטוס.
  */
 export function isExistingCustomer(
   extra: unknown,
@@ -76,7 +87,6 @@ export function isExistingCustomer(
   const answer = supplierAnswerOf(extra);
   if (answer) return YES_ANSWER.test(answer);
 
-  // אין שאלת ספק בכלל - נסמכים על מה שקבעת ידנית
   return status === "לקוח קיים";
 }
 

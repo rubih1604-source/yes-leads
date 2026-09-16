@@ -13,6 +13,7 @@ import { applyStatusChange } from "./rules";
 import { displayPhone } from "./phone";
 import { sendEmail } from "./email";
 import { runCampaignChecks } from "./campaign-monitor";
+import { isExistingCustomer, supplierAnswer } from "./existing-customer";
 import { getSettings } from "./settings";
 import { leadsForSlot, markSent, type Slot } from "./callback-list";
 import { israelParts } from "./working-hours";
@@ -282,6 +283,7 @@ export async function runDueJobs(limit = 50): Promise<RunSummary> {
    */
   const steps: Array<[string, () => Promise<unknown>]> = [
     ["תזכורות משימות", () => sendTaskReminders(summary)],
+    ["סימון לקוחות קיימים", () => enforceExistingCustomer()],
     ["רשימת חזרה", () => sendCallbackList()],
     ["סנכרון לידי מכירה", () => syncSaleLeads()],
     ["בדיקת קמפיינים", () => checkCampaigns()],
@@ -621,5 +623,71 @@ async function bumpReturningLeads() {
     await db.lead
       .update({ where: { id: lead.id }, data: { intakeAt: latest } })
       .catch(() => null);
+  }
+}
+
+
+/**
+ * אוכף את הכלל: שאלת ספק עם yes/sting = לקוח קיים.
+ *
+ * למה כאן ולא רק בקליטה: הקליטה משתנה בין גרסאות, ויש
+ * מסלולים שעוקפים אותה - ייבוא, דוח מכירות, עדכון ליד
+ * קיים. השכבה הזו מבטיחה שהכלל תקף תמיד, בלי קשר לאיך
+ * הליד נכנס.
+ *
+ * סורקים רק את הטרי. את הישן מתקנים פעם אחת מההגדרות,
+ * כדי שלא ייווצרו מאות הודעות בבת אחת.
+ */
+async function enforceExistingCustomer() {
+  const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+
+  const leads = await db.lead
+    .findMany({
+      where: {
+        status: { not: "לקוח קיים" },
+        updatedAt: { gte: since },
+      },
+      select: { id: true, status: true, origin: true, extra: true },
+      orderBy: { updatedAt: "desc" },
+      take: 300,
+    })
+    .catch(() => []);
+
+  for (const lead of leads) {
+    const answer = supplierAnswer(lead.extra);
+    if (!answer) continue;
+    if (!isExistingCustomer(lead.extra, lead.status)) continue;
+
+    if (lead.origin === "sale") {
+      /**
+       * ליד מכירה: משנים סטטוס בלבד, בלי מנוע החוקים.
+       * אתה רוצה לראות את התמונה של הקמפיין - לא לשלוח
+       * הודעות ללקוחות של הקונה.
+       */
+      await db.lead
+        .update({ where: { id: lead.id }, data: { status: "לקוח קיים" } })
+        .catch(() => null);
+
+      await db.leadEvent
+        .create({
+          data: {
+            leadId: lead.id,
+            type: "status_changed",
+            actor: "system",
+            fromStatus: lead.status,
+            toStatus: "לקוח קיים",
+            payload: { note: `שאלת ספק: ${answer}` },
+          },
+        })
+        .catch(() => null);
+    } else {
+      // ליד רגיל: דרך מנוע החוקים, כדי שהרצף שהגדרת יפעל
+      await applyStatusChange({
+        leadId: lead.id,
+        toStatus: "לקוח קיים",
+        actor: "system",
+        note: `שאלת ספק: ${answer}`,
+      }).catch(() => null);
+    }
   }
 }

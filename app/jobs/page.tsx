@@ -41,12 +41,35 @@ function ago(d: Date | null): string {
   return `לפני ${Math.floor(hours / 24)} ימים`;
 }
 
+/** עיכוב בשפה אנושית */
+function describeDelay(minutes: number): string {
+  if (minutes < 60) return `${minutes} דקות`;
+  if (minutes < 60 * 24) {
+    const h = Math.round((minutes / 60) * 10) / 10;
+    return `${h} שעות`;
+  }
+  return `${Math.round(minutes / (60 * 24))} ימים`;
+}
+
+/**
+ * כמה זמן באמת עבר בין היצירה לזמן הריצה.
+ *
+ * אם זה שונה מהעיכוב שהוגדר, סימן שהמשימה נדחתה לשעות
+ * הפעילות - וככה רואים את זה מיד במקום לתהות.
+ */
+function actualDelay(job: { createdAt: Date; runAt: Date }): string {
+  const minutes = Math.round(
+    (job.runAt.getTime() - job.createdAt.getTime()) / 60000
+  );
+  return describeDelay(Math.max(minutes, 0));
+}
+
 export default async function JobsPage() {
   const [jobs, settings] = await Promise.all([
     db.scheduledJob.findMany({
       orderBy: { createdAt: "desc" },
       take: 60,
-      include: { lead: true },
+      include: { lead: true, rule: true },
     }),
     db.settings.findUnique({ where: { id: "main" } }).catch(() => null),
   ]);
@@ -123,8 +146,29 @@ export default async function JobsPage() {
                 </div>
               )}
 
+              {/* מאיפה המשימה הזו הגיעה ומה העיכוב שהוגדר בה */}
+              {job.rule && (
+                <div
+                  style={{
+                    fontSize: 12.5,
+                    color: "#475467",
+                    marginTop: 3,
+                  }}
+                >
+                  חוק: {job.rule.triggerStatus}
+                  {job.rule.stepIndex > 0
+                    ? ` · שלב ${job.rule.stepIndex + 1}`
+                    : ""}
+                  {" · עיכוב מוגדר: "}
+                  {describeDelay(job.rule.delayMinutes)}
+                </div>
+              )}
+
               <div className="when">
-                אמורה לרוץ {formatDate(job.runAt)}
+                נוצרה {formatDate(job.createdAt)}
+                {" · אמורה לרוץ "}
+                {formatDate(job.runAt)}
+                {job.rule ? ` · בפועל ${actualDelay(job)}` : ""}
                 {job.lastError ? ` · ${job.lastError}` : ""}
               </div>
             </div>
