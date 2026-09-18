@@ -9,6 +9,7 @@ import CallbackSettings from "@/components/CallbackSettings";
 import BotSettings from "@/components/BotSettings";
 import { db } from "@/lib/db";
 import { getStatuses } from "@/lib/status-store";
+import PushSetup from "@/components/PushSetup";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,9 @@ export default async function SettingsPage() {
       <div className="topbar">
         <h1>הגדרות</h1>
       </div>
+
+      <div className="section-title">התראות בנייד</div>
+      <PushSetup />
 
       <div className="section-title">העוזר</div>
       <BotSettings

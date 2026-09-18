@@ -168,6 +168,18 @@ async function handle(request: Request) {
         },
       });
 
+      // כל כניסה נרשמת, כדי שנדע מתי הליד הגיע ומאיזה קמפיין
+      await db.leadEntry
+        .create({
+          data: {
+            leadId: lead.id,
+            campaign: extra.fb_campaign || extra.campaign || null,
+            source: mapped.source,
+            at: new Date(),
+          },
+        })
+        .catch(() => null);
+
       // אם יש חוקים לסטטוס שבו הליד נכנס - מתזמנים אותם
       await scheduleForStatus(lead.id, lead.status);
     } else {
@@ -181,6 +193,18 @@ async function handle(request: Request) {
           lastName: mapped.lastName ?? existing.lastName,
           source: mapped.source ?? existing.source,
           status: incomingStatus ?? existing.status,
+
+          /**
+           * הליד נכנס שוב עכשיו - ולכן הוא צף לראש הרשימה
+           * עם התאריך של היום.
+           *
+           * עד היום הוא נשאר עם התאריך הישן ופשוט נעלם
+           * בתחתית, ונראה כאילו הוא לא הגיע בכלל. התאריכים
+           * הקודמים לא אובדים: כל כניסה נשמרת בנפרד ומוצגת
+           * בכרטיס הליד.
+           */
+          intakeAt: new Date(),
+
           // אם הוא נוצר קודם מהודעת וואטסאפ - עכשיו הוא ליד אמיתי
           origin: "leadmanager",
           extra: Object.keys(extra).length
@@ -193,6 +217,18 @@ async function handle(request: Request) {
             : undefined,
         },
       });
+
+      // הכניסה הנוספת נרשמת - זה מה שמפעיל את תגית "כפול"
+      await db.leadEntry
+        .create({
+          data: {
+            leadId: existing.id,
+            campaign: extra.fb_campaign || extra.campaign || null,
+            source: mapped.source,
+            at: new Date(),
+          },
+        })
+        .catch(() => null);
 
       await db.leadEvent.create({
         data: {

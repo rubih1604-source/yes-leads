@@ -69,6 +69,12 @@ export default async function MorePage() {
       title: "כסף ודוחות",
       items: [
         {
+          href: "/tasks",
+          glyph: "✓",
+          label: "משימות עסק",
+          desc: "תזכורות שלא קשורות לליד - ספקים, תשלומים, תקציב",
+        },
+        {
           href: "/callbacks",
           glyph: "↻",
           label: "רשימת חזרה",

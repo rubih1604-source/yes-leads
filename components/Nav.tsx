@@ -48,6 +48,7 @@ export default function Nav({
         "/insights",
         "/campaign-alerts",
         "/callbacks",
+        "/tasks",
         "/expenses",
         "/rules",
         "/templates",

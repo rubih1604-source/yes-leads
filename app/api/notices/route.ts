@@ -22,10 +22,12 @@ export async function GET() {
     ok: true,
     notices: notices.map((n) => ({
       id: n.id,
+      kind: n.kind,
       level: n.level,
       title: n.title,
       body: n.body,
       campaignName: n.campaignName,
+      leadId: n.leadId ?? null,
     })),
   });
 }

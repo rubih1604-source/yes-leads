@@ -421,6 +421,7 @@ model CampaignCheck {
 model Notice {
   id           String    @id @default(cuid())
   kind         String    @default("campaign")
+  leadId       String?
   level        String    @default("bad")
   title        String
   body         String?
@@ -429,4 +430,14 @@ model Notice {
   dismissedAt  DateTime?
 
   @@index([dismissedAt, createdAt])
+}
+
+/// מכשיר שרשום לקבל התראות דחיפה
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  label     String?
+  createdAt DateTime @default(now())
 }

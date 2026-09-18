@@ -12,6 +12,7 @@ import { sendTemplate } from "./texter";
 import { applyStatusChange } from "./rules";
 import { displayPhone } from "./phone";
 import { sendEmail } from "./email";
+import { sendPush } from "./push";
 import { runCampaignChecks } from "./campaign-monitor";
 import { isExistingCustomer, supplierAnswer } from "./existing-customer";
 import { getSettings } from "./settings";
@@ -348,31 +349,57 @@ async function sendTaskReminders(summary: RunSummary) {
 
     lines.push("", "— העוזר של רובי");
 
-    const emailed = await sendEmail({
-      subject: task.urgent ? `🔥 ${task.title}` : `תזכורת: ${task.title}`,
-      body: lines.join("\n"),
-    });
+    /**
+     * ------------------------------------------------------------
+     *  ההתראה לא תלויה במייל
+     * ------------------------------------------------------------
+     *
+     *  עד היום התזכורת הייתה מייל בלבד. אם Resend נחסם, אם
+     *  המפתח פג, אם המייל נחת בספאם - פשוט לא ידעת. וכשזה
+     *  קורה אתה מפספס מכירה.
+     *
+     *  מעכשיו: הבאנר במערכת הוא ההתראה. הוא נוצר תמיד,
+     *  נשאר על המסך עד שתסיר אותו, ולא תלוי באף שירות חיצוני.
+     *  המייל הוא תוספת בלבד.
+     */
+    await db.notice
+      .create({
+        data: {
+          kind: "task",
+          leadId: task.leadId,
+          level: task.urgent ? "bad" : "good",
+          title: task.urgent ? `🔥 ${task.title}` : task.title,
+          body: task.lead
+            ? `${task.lead.firstName ?? displayPhone(task.lead.phone)} · ${displayPhone(task.lead.phone)} · ${task.lead.status}`
+            : task.body,
+          campaignName: null,
+        },
+      })
+      .catch(() => null);
 
     /**
-     * מסמנים כנשלח רק אם המייל באמת יצא.
-     *
-     * קודם סימנו תמיד - ולכן משימה שהמייל שלה נכשל לא ניסתה
-     * שוב לעולם, והתזכורת פשוט נעלמה.
-     *
-     * אם המייל לא מוגדר בכלל, אין טעם לנסות שוב: מסמנים,
-     * וההתראה נשארת במסך.
+     * התראה לנייד. קופצת על המסך הנעול תוך שניות, ולכן
+     * זו הדרך האמינה ביותר שלא תפספס תזכורת.
      */
-    const configured = Boolean(
-      process.env.RESEND_API_KEY?.trim() && process.env.ALERT_EMAIL?.trim()
-    );
+    await sendPush({
+      title: task.urgent ? `🔥 ${task.title}` : task.title,
+      body: task.lead
+        ? `${task.lead.firstName ?? displayPhone(task.lead.phone)} · ${displayPhone(task.lead.phone)}`
+        : task.body ?? "",
+      url: task.leadId ? `/leads/${task.leadId}` : "/tasks",
+      urgent: task.urgent,
+      tag: `task-${task.id}`,
+    }).catch(() => 0);
 
-    if (emailed || !configured) {
-      await db.task
-        .update({ where: { id: task.id }, data: { notifiedAt: new Date() } })
-        .catch(() => null);
-    } else {
-      console.error("[מנוע] תזכורת לא נשלחה, ננסה שוב:", task.title);
-    }
+    // המייל נשלח בנוסף, ואם הוא נכשל זה כבר לא קריטי
+    await sendEmail({
+      subject: task.urgent ? `🔥 ${task.title}` : `תזכורת: ${task.title}`,
+      body: lines.join("\n"),
+    }).catch(() => false);
+
+    await db.task
+      .update({ where: { id: task.id }, data: { notifiedAt: new Date() } })
+      .catch(() => null);
 
     if (task.leadId) {
       await db.alert

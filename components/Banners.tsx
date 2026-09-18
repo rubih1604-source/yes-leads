@@ -12,10 +12,12 @@ import Link from "next/link";
 
 type Notice = {
   id: string;
+  kind: string;
   level: string;
   title: string;
   body: string | null;
   campaignName: string | null;
+  leadId: string | null;
 };
 
 export default function Banners() {
@@ -54,7 +56,16 @@ export default function Banners() {
           role="status"
         >
           <div className="banner-body">
-            <Link href="/campaign-alerts" className="banner-title">
+            <Link
+              href={
+                n.leadId
+                  ? `/leads/${n.leadId}`
+                  : n.kind === "task"
+                  ? "/today"
+                  : "/campaign-alerts"
+              }
+              className="banner-title"
+            >
               {n.title}
             </Link>
             {n.body && <div className="banner-sub">{n.body}</div>}
