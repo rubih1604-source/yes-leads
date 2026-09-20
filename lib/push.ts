@@ -13,7 +13,14 @@
  *    VAPID_SUBJECT      - mailto של בעל האפליקציה
  */
 
-import crypto from "crypto";
+/**
+ * node: במפורש.
+ *
+ * בלי הקידומת Next מנסה לפתור את crypto כמודול דפדפן
+ * כשהקובץ נטען דרך instrumentation, והבנייה נופלת עם
+ * "Can't resolve 'crypto'".
+ */
+import crypto from "node:crypto";
 import { db } from "./db";
 
 export type PushMessage = {
