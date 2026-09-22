@@ -58,24 +58,60 @@ export async function GET(request: Request) {
   const period = url.searchParams.get("period");
   const query = (url.searchParams.get("q") ?? "").trim();
 
-  // חלון זמן, אותו היגיון כמו במסך
+  /**
+   * אותו חלון זמן בדיוק כמו במסך.
+   *
+   * חשוב שיהיה זהה: אם תסנן "אתמול" ותוריד קובץ, הוא חייב
+   * להכיל בדיוק את מה שראית - לא יותר ולא פחות.
+   */
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
+
   let since: Date | null = null;
+  let until: Date | null = null;
   const now = new Date();
+
+  const startOfDay = (d: Date) => {
+    const copy = new Date(d);
+    copy.setHours(0, 0, 0, 0);
+    return copy;
+  };
+
   if (period === "today") {
-    const d = new Date(now);
-    d.setHours(0, 0, 0, 0);
-    since = d;
+    since = startOfDay(now);
+  } else if (period === "yesterday") {
+    const todayStart = startOfDay(now);
+    since = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
+    until = todayStart;
   } else if (period === "week") {
     since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   } else if (period === "month") {
     since = new Date(now.getFullYear(), now.getMonth(), 1);
+  } else if (period === "last_month") {
+    since = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    until = new Date(now.getFullYear(), now.getMonth(), 1);
+  } else if (period === "custom" && from) {
+    const start = new Date(`${from}T00:00:00`);
+    if (!Number.isNaN(start.getTime())) since = start;
+
+    if (to) {
+      const end = new Date(`${to}T23:59:59`);
+      if (!Number.isNaN(end.getTime())) until = end;
+    }
   }
 
   const leads = await db.lead.findMany({
     where: {
       origin: "leadmanager",
       ...(statuses.length ? { status: { in: statuses } } : {}),
-      ...(since ? { intakeAt: { gte: since } } : {}),
+      ...(since || until
+        ? {
+            intakeAt: {
+              ...(since ? { gte: since } : {}),
+              ...(until ? { lt: until } : {}),
+            },
+          }
+        : {}),
     },
     orderBy: { intakeAt: "desc" },
     take: 5000,

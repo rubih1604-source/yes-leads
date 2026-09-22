@@ -32,7 +32,9 @@ const SCROLL_KEY = "leads:scroll";
 type SavedFilters = {
   status: string[];
   campaign: string | null;
-  period: "all" | "today" | "week" | "month";
+  period: PeriodKey;
+  dateFrom: string;
+  dateTo: string;
   q: string;
 };
 
@@ -40,6 +42,8 @@ const EMPTY_FILTERS: SavedFilters = {
   status: [],
   campaign: null,
   period: "all",
+  dateFrom: "",
+  dateTo: "",
   q: "",
 };
 
@@ -54,8 +58,9 @@ function readSaved(params: URLSearchParams): SavedFilters {
       .map((x) => x.trim())
       .filter(Boolean),
     campaign: params.get("campaign"),
-    period:
-      (params.get("period") as SavedFilters["period"]) ?? "all",
+    period: (params.get("period") as PeriodKey) ?? "all",
+    dateFrom: params.get("from") ?? "",
+    dateTo: params.get("to") ?? "",
     q: params.get("q") ?? "",
   };
 
@@ -81,11 +86,11 @@ function readSaved(params: URLSearchParams): SavedFilters {
         ? [parsed.status]
         : [],
       campaign: typeof parsed.campaign === "string" ? parsed.campaign : null,
-      period: ["all", "today", "week", "month"].includes(
-        parsed.period as string
-      )
-        ? (parsed.period as SavedFilters["period"])
+      period: PERIODS.some((x) => x.key === parsed.period)
+        ? (parsed.period as PeriodKey)
         : "all",
+      dateFrom: typeof parsed.dateFrom === "string" ? parsed.dateFrom : "",
+      dateTo: typeof parsed.dateTo === "string" ? parsed.dateTo : "",
       q: typeof parsed.q === "string" ? parsed.q : "",
     };
   } catch {
@@ -94,24 +99,79 @@ function readSaved(params: URLSearchParams): SavedFilters {
 }
 
 /** מרגע מתי לספור, לפי התקופה שנבחרה */
-function periodStart(period: string): number | null {
+type PeriodKey =
+  | "all"
+  | "today"
+  | "yesterday"
+  | "week"
+  | "month"
+  | "last_month"
+  | "custom";
+
+const PERIODS: Array<{ key: PeriodKey; label: string }> = [
+  { key: "all", label: "הכל" },
+  { key: "today", label: "היום" },
+  { key: "yesterday", label: "אתמול" },
+  { key: "week", label: "שבוע אחרון" },
+  { key: "month", label: "החודש" },
+  { key: "last_month", label: "חודש שעבר" },
+  { key: "custom", label: "טווח תאריכים" },
+];
+
+/**
+ * הטווח שבו הליד צריך להיכנס.
+ *
+ * null בשני הצדדים = בלי הגבלה. הזמנים מחושבים בשעון
+ * המכשיר, שהוא ממילא שעון ישראל אצלך.
+ */
+function periodRange(
+  period: PeriodKey,
+  from?: string,
+  to?: string
+): { start: number | null; end: number | null } {
   const now = new Date();
 
+  const startOfDay = (d: Date) => {
+    const copy = new Date(d);
+    copy.setHours(0, 0, 0, 0);
+    return copy.getTime();
+  };
+
   if (period === "today") {
-    const d = new Date(now);
-    d.setHours(0, 0, 0, 0);
-    return d.getTime();
+    return { start: startOfDay(now), end: null };
+  }
+
+  if (period === "yesterday") {
+    const todayStart = startOfDay(now);
+    return { start: todayStart - 24 * 60 * 60 * 1000, end: todayStart };
   }
 
   if (period === "week") {
-    return now.getTime() - 7 * 24 * 60 * 60 * 1000;
+    return { start: now.getTime() - 7 * 24 * 60 * 60 * 1000, end: null };
   }
 
   if (period === "month") {
-    return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    return {
+      start: new Date(now.getFullYear(), now.getMonth(), 1).getTime(),
+      end: null,
+    };
   }
 
-  return null;
+  if (period === "last_month") {
+    const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return { start: lastMonth.getTime(), end: thisMonth.getTime() };
+  }
+
+  if (period === "custom" && from) {
+    const start = new Date(`${from}T00:00:00`).getTime();
+    const end = to ? new Date(`${to}T23:59:59`).getTime() : null;
+    if (!Number.isNaN(start)) {
+      return { start, end: end && !Number.isNaN(end) ? end : null };
+    }
+  }
+
+  return { start: null, end: null };
 }
 
 /** חותמת הכניסה המדויקת - תאריך ושעה */
@@ -160,9 +220,9 @@ export default function LeadList({
   const [query, setQuery] = useState(initial.q);
   const [filter, setFilter] = useState<string[]>(initial.status);
   const [campaign, setCampaign] = useState<string | null>(initial.campaign);
-  const [period, setPeriod] = useState<"all" | "today" | "week" | "month">(
-    initial.period
-  );
+  const [period, setPeriod] = useState<PeriodKey>(initial.period);
+  const [dateFrom, setDateFrom] = useState(initial.dateFrom);
+  const [dateTo, setDateTo] = useState(initial.dateTo);
 
   const [campaignOpen, setCampaignOpen] = useState(false);
   const [sheetFor, setSheetFor] = useState<LeadRow | null>(null);
@@ -188,6 +248,8 @@ export default function LeadList({
       status: filter,
       campaign,
       period,
+      dateFrom,
+      dateTo,
       q: query.trim(),
     };
 
@@ -201,6 +263,8 @@ export default function LeadList({
     if (state.status.length) next.set("status", state.status.join(","));
     if (state.campaign) next.set("campaign", state.campaign);
     if (state.period !== "all") next.set("period", state.period);
+    if (state.dateFrom) next.set("from", state.dateFrom);
+    if (state.dateTo) next.set("to", state.dateTo);
     if (state.q) next.set("q", state.q);
 
     const qs = next.toString();
@@ -209,7 +273,7 @@ export default function LeadList({
     if (`${window.location.search}` !== (qs ? `?${qs}` : "")) {
       window.history.replaceState(null, "", target);
     }
-  }, [filter, campaign, period, query]);
+  }, [filter, campaign, period, dateFrom, dateTo, query]);
 
   /** שומר את מיקום הגלילה, כדי לחזור בדיוק לאותו מקום ברשימה */
   useEffect(() => {
@@ -261,6 +325,8 @@ export default function LeadList({
     setFilter([]);
     setCampaign(null);
     setPeriod("all");
+    setDateFrom("");
+    setDateTo("");
     setQuery("");
     try {
       sessionStorage.removeItem(SAVE_KEY);
@@ -345,11 +411,12 @@ export default function LeadList({
 
   const visible = useMemo(() => {
     const q = query.trim();
-    const since = periodStart(period);
+    const { start, end } = periodRange(period, dateFrom, dateTo);
 
     return leads.filter((lead) => {
-      if (since !== null && new Date(lead.intakeAt).getTime() < since)
-        return false;
+      const at = new Date(lead.intakeAt).getTime();
+      if (start !== null && at < start) return false;
+      if (end !== null && at >= end) return false;
       if (campaign && lead.campaign !== campaign) return false;
       if (filter.length > 0 && !filter.includes(lead.status)) return false;
 
@@ -358,7 +425,7 @@ export default function LeadList({
       const name = `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim();
       return name.includes(q) || phoneMatches(lead.phone, q);
     });
-  }, [leads, query, filter, campaign, period]);
+  }, [leads, query, filter, campaign, period, dateFrom, dateTo]);
 
   /** הקמפיינים שיש בפועל, לפי כמות לידים */
   const campaigns = useMemo(() => {
@@ -472,14 +539,7 @@ export default function LeadList({
       )}
 
       <div className="filters periods">
-        {(
-          [
-            { key: "all", label: "הכל" },
-            { key: "today", label: "היום" },
-            { key: "week", label: "7 ימים" },
-            { key: "month", label: "החודש" },
-          ] as const
-        ).map((opt) => (
+        {PERIODS.map((opt) => (
           <button
             key={opt.key}
             className="chip period-chip"
@@ -490,6 +550,36 @@ export default function LeadList({
           </button>
         ))}
       </div>
+
+      {period === "custom" && (
+        <div className="card" style={{ padding: 14 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+            מאיזה תאריך עד איזה
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              className="field"
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              style={{ marginBottom: 0, flex: 1 }}
+            />
+            <span style={{ fontSize: 14 }}>עד</span>
+            <input
+              className="field"
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              style={{ marginBottom: 0, flex: 1 }}
+            />
+          </div>
+          {!dateFrom && (
+            <div style={{ fontSize: 12.5, color: "#98a2b3", marginTop: 8 }}>
+              בחר תאריך התחלה. בלי תאריך סיום — עד היום.
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="filters">
         {campaigns.length > 0 && (
@@ -723,6 +813,8 @@ export default function LeadList({
                 ...(filter.length ? { status: filter.join(",") } : {}),
                 ...(campaign ? { campaign } : {}),
                 ...(period !== "all" ? { period } : {}),
+                ...(dateFrom ? { from: dateFrom } : {}),
+                ...(dateTo ? { to: dateTo } : {}),
                 ...(query.trim() ? { q: query.trim() } : {}),
               }).toString()}`}
               style={{
