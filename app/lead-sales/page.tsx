@@ -11,6 +11,9 @@ export default async function LeadSalesPage({
   searchParams?: { period?: string; from?: string; to?: string };
 }) {
   const VALID: PeriodKey[] = [
+    "today",
+    "yesterday",
+    "last_7",
     "this_month",
     "last_month",
     "last_3",

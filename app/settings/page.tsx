@@ -10,6 +10,7 @@ import BotSettings from "@/components/BotSettings";
 import { db } from "@/lib/db";
 import { getStatuses } from "@/lib/status-store";
 import PushSetup from "@/components/PushSetup";
+import NotifyChannels from "@/components/NotifyChannels";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +51,12 @@ export default async function SettingsPage() {
         <h1>הגדרות</h1>
       </div>
 
-      <div className="section-title">התראות בנייד</div>
+      <div className="section-title">התראות</div>
+      <NotifyChannels
+        email={settings.notifyEmail}
+        push={settings.notifyPush}
+        banner={settings.notifyBanner}
+      />
       <PushSetup />
 
       <div className="section-title">העוזר</div>

@@ -7,9 +7,12 @@
  *  כדי שהמספרים תמיד ידברו באותה שפה.
  */
 
-import { israelParts, fromIsrael } from "./working-hours";
+import { israelParts, fromIsrael, startOfIsraelDay } from "./working-hours";
 
 export type PeriodKey =
+  | "today"
+  | "yesterday"
+  | "last_7"
   | "this_month"
   | "last_month"
   | "last_3"
@@ -19,6 +22,9 @@ export type PeriodKey =
   | "custom";
 
 export const PERIOD_LABELS: Record<PeriodKey, string> = {
+  today: "היום",
+  yesterday: "אתמול",
+  last_7: "שבוע אחרון",
   this_month: "החודש",
   last_month: "חודש קודם",
   last_3: "3 חודשים",
@@ -46,6 +52,30 @@ export function resolveRange(
   now = new Date()
 ): Range {
   const p = israelParts(now);
+
+  /**
+   * ימים נמדדים לפי חצות בשעון ישראל, לא לפי השרת.
+   * השרת רץ ב-UTC, ו"היום" שלו מתחיל ב-3 לפנות בוקר שלך.
+   */
+  if (key === "today") {
+    return { from: startOfIsraelDay(now), to: now, label: "היום" };
+  }
+
+  if (key === "yesterday") {
+    const todayStart = startOfIsraelDay(now);
+    const yesterdayStart = startOfIsraelDay(
+      new Date(todayStart.getTime() - 12 * 60 * 60 * 1000)
+    );
+    return { from: yesterdayStart, to: todayStart, label: "אתמול" };
+  }
+
+  if (key === "last_7") {
+    return {
+      from: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
+      to: now,
+      label: "7 הימים האחרונים",
+    };
+  }
 
   if (key === "custom" && from) {
     const start = new Date(`${from}T00:00:00+03:00`);

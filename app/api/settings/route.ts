@@ -58,6 +58,10 @@ export async function PATCH(request: Request) {
     }
   }
 
+  for (const key of ["notifyEmail", "notifyPush", "notifyBanner"]) {
+    if (typeof body[key] === "boolean") data[key] = body[key];
+  }
+
   if (typeof body.callbackEnabled === "boolean") {
     data.callbackEnabled = body.callbackEnabled;
   }

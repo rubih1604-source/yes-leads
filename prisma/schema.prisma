@@ -199,6 +199,11 @@ model Settings {
   callbackCutoffHour   Int       @default(18)
   callbackEnabled      Boolean   @default(false)
 
+  // לאן מגיעות התראות: מייל, נייד, באנר במערכת
+  notifyEmail          Boolean   @default(true)
+  notifyPush           Boolean   @default(true)
+  notifyBanner         Boolean   @default(true)
+
   // הבוט: מתי הוא פעיל ועל אילו סטטוסים הוא עונה
   botFromHour          Int       @default(8)
   botToHour            Int       @default(21)

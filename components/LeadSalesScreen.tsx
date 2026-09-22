@@ -152,12 +152,13 @@ export default function LeadSalesScreen({
       <div className="filters periods">
         {(
           [
+            { key: "today", label: "היום" },
+            { key: "yesterday", label: "אתמול" },
+            { key: "last_7", label: "שבוע אחרון" },
             { key: "this_month", label: "החודש" },
-            { key: "last_month", label: "חודש קודם" },
-            { key: "last_3", label: "3 חודשים" },
-            { key: "this_year", label: "השנה" },
+            { key: "last_month", label: "חודש שעבר" },
             { key: "all", label: "הכל" },
-            { key: "custom", label: "טווח" },
+            { key: "custom", label: "טווח תאריכים" },
           ] as const
         ).map((opt) => (
           <Link

@@ -317,6 +317,15 @@ export async function runDueJobs(limit = 50): Promise<RunSummary> {
  * כל משימה מקבלת תזכורת אחת בלבד.
  */
 async function sendTaskReminders(summary: RunSummary) {
+  /**
+   * לאן לשלוח - לפי מה שבחרת בהגדרות.
+   * כל ערוץ עצמאי: כיבוי אחד לא משפיע על השאר.
+   */
+  const channels = await getSettings().catch(() => null);
+  const toBanner = channels?.notifyBanner ?? true;
+  const toPush = channels?.notifyPush ?? true;
+  const toEmail = channels?.notifyEmail ?? true;
+
   const appUrl = process.env.APP_URL?.trim() || "";
 
   const dueTasks = await db.task.findMany({
@@ -362,7 +371,7 @@ async function sendTaskReminders(summary: RunSummary) {
      *  נשאר על המסך עד שתסיר אותו, ולא תלוי באף שירות חיצוני.
      *  המייל הוא תוספת בלבד.
      */
-    await db.notice
+    if (toBanner) await db.notice
       .create({
         data: {
           kind: "task",
@@ -381,7 +390,7 @@ async function sendTaskReminders(summary: RunSummary) {
      * התראה לנייד. קופצת על המסך הנעול תוך שניות, ולכן
      * זו הדרך האמינה ביותר שלא תפספס תזכורת.
      */
-    await sendPush({
+    if (toPush) await sendPush({
       title: task.urgent ? `🔥 ${task.title}` : task.title,
       body: task.lead
         ? `${task.lead.firstName ?? displayPhone(task.lead.phone)} · ${displayPhone(task.lead.phone)}`
@@ -392,7 +401,7 @@ async function sendTaskReminders(summary: RunSummary) {
     }).catch(() => 0);
 
     // המייל נשלח בנוסף, ואם הוא נכשל זה כבר לא קריטי
-    await sendEmail({
+    if (toEmail) await sendEmail({
       subject: task.urgent ? `🔥 ${task.title}` : `תזכורת: ${task.title}`,
       body: lines.join("\n"),
     }).catch(() => false);

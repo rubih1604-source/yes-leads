@@ -186,6 +186,36 @@ async function handle(request: Request) {
       const statusChanged =
         incomingStatus !== null && incomingStatus !== existing.status;
 
+      /**
+       * אותה הגשה שהגיעה פעמיים - לא ליד כפול.
+       *
+       * בזמן שליד מנגר ופייסבוק רצים במקביל, כל ליד מגיע
+       * משני המקורות. בלי הבדיקה הזו כל ליד היה מסומן
+       * "כפול" וקופץ פעמיים.
+       *
+       * אותה הגשה = אותו מזהה ליד של פייסבוק, או כניסה
+       * שכבר נרשמה ב-15 הדקות האחרונות.
+       */
+      const previousExtra =
+        typeof existing.extra === "object" && existing.extra
+          ? (existing.extra as Record<string, string>)
+          : {};
+
+      const incomingFbId = extra.fb_leadid?.trim() || null;
+
+      const recentEntry = await db.leadEntry
+        .findFirst({
+          where: {
+            leadId: existing.id,
+            at: { gte: new Date(Date.now() - 15 * 60 * 1000) },
+          },
+        })
+        .catch(() => null);
+
+      const sameSubmission =
+        (incomingFbId !== null && previousExtra.fb_leadid === incomingFbId) ||
+        recentEntry !== null;
+
       await db.lead.update({
         where: { id: existing.id },
         data: {
@@ -203,10 +233,13 @@ async function handle(request: Request) {
            * הקודמים לא אובדים: כל כניסה נשמרת בנפרד ומוצגת
            * בכרטיס הליד.
            */
-          intakeAt: new Date(),
+          intakeAt: sameSubmission ? undefined : new Date(),
 
-          // אם הוא נוצר קודם מהודעת וואטסאפ - עכשיו הוא ליד אמיתי
-          origin: "leadmanager",
+          /**
+           * ליד מכירה נשאר במכירה. אחרת - מי שנוצר מהודעת
+           * וואטסאפ משתדרג עכשיו לליד אמיתי.
+           */
+          origin: existing.origin === "sale" ? "sale" : "leadmanager",
           extra: Object.keys(extra).length
             ? ({
                 ...(typeof existing.extra === "object" && existing.extra
@@ -218,17 +251,19 @@ async function handle(request: Request) {
         },
       });
 
-      // הכניסה הנוספת נרשמת - זה מה שמפעיל את תגית "כפול"
-      await db.leadEntry
-        .create({
-          data: {
-            leadId: existing.id,
-            campaign: extra.fb_campaign || extra.campaign || null,
-            source: mapped.source,
-            at: new Date(),
-          },
-        })
-        .catch(() => null);
+      // כניסה אמיתית נוספת נרשמת - זה מה שמפעיל את תגית "כפול"
+      if (!sameSubmission) {
+        await db.leadEntry
+          .create({
+            data: {
+              leadId: existing.id,
+              campaign: extra.fb_campaign || extra.campaign || null,
+              source: mapped.source,
+              at: new Date(),
+            },
+          })
+          .catch(() => null);
+      }
 
       await db.leadEvent.create({
         data: {

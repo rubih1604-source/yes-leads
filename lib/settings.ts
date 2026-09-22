@@ -13,6 +13,9 @@ export type AppSettings = {
   callbackAfternoonHour: number;
   callbackCutoffHour: number;
   callbackEnabled: boolean;
+  notifyEmail: boolean;
+  notifyPush: boolean;
+  notifyBanner: boolean;
   botFromHour: number;
   botToHour: number;
   botStatuses: string[];
@@ -39,6 +42,9 @@ const DEFAULTS: AppSettings = {
   callbackAfternoonHour: 13,
   callbackCutoffHour: 18,
   callbackEnabled: false,
+  notifyEmail: true,
+  notifyPush: true,
+  notifyBanner: true,
   botFromHour: 8,
   botToHour: 21,
   botStatuses: [],
@@ -76,6 +82,9 @@ export async function getSettings(): Promise<AppSettings> {
       callbackAfternoonHour: row.callbackAfternoonHour,
       callbackCutoffHour: row.callbackCutoffHour,
       callbackEnabled: row.callbackEnabled,
+      notifyEmail: row.notifyEmail ?? true,
+      notifyPush: row.notifyPush ?? true,
+      notifyBanner: row.notifyBanner ?? true,
       botFromHour: row.botFromHour,
       botToHour: row.botToHour,
       closeStatuses: Array.isArray(row.closeStatuses)
