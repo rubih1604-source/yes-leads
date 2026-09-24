@@ -84,10 +84,19 @@ export function isExistingCustomer(
   extra: unknown,
   status?: string | null
 ): boolean {
-  const answer = supplierAnswerOf(extra);
-  if (answer) return YES_ANSWER.test(answer);
+  /**
+   * הסטטוס שקבעת ידנית תמיד קובע.
+   *
+   * קודם היה כתוב כאן שתשובת הספק גוברת על הסטטוס, ולכן
+   * ליד שסימן "הוט" בטופס ואתה שינית לו ידנית ל"לקוח קיים"
+   * פשוט לא נספר בפילוח. הסימון הידני שלך נדרס - וזו טעות.
+   * אתה יודע דברים שהטופס לא.
+   */
+  if (status === "לקוח קיים") return true;
 
-  return status === "לקוח קיים";
+  // ואם לא סימנת - שאלת הספק מחליטה
+  const answer = supplierAnswerOf(extra);
+  return answer ? YES_ANSWER.test(answer) : false;
 }
 
 /** מה בדיוק גרם לזיהוי - לאבחון */
@@ -95,11 +104,10 @@ export function existingCustomerReason(
   extra: unknown,
   status?: string | null
 ): string | null {
+  if (status === "לקוח קיים") return "סומן ידנית בסטטוס";
+
   const answer = supplierAnswerOf(extra);
+  if (answer && YES_ANSWER.test(answer)) return `שאלת ספק: ${answer}`;
 
-  if (answer) {
-    return YES_ANSWER.test(answer) ? `שאלת ספק: ${answer}` : null;
-  }
-
-  return status === "לקוח קיים" ? "סומן ידנית בסטטוס" : null;
+  return null;
 }

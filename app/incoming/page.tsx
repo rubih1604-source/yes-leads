@@ -27,10 +27,17 @@ export default async function IncomingPage({
 }) {
   const q = (searchParams?.q ?? "").trim();
 
-  const all = await db.webhookLog.findMany({
-    orderBy: { createdAt: "desc" },
-    take: q ? 500 : 40,
-  });
+  /**
+   * כל מה שהגיע - בלי קשר לסטטוס, לשגיאה או למקור.
+   * זה המסך שאמור לענות על "הליד הגיע או לא", ולכן הוא
+   * לא מסנן כלום ולא נופל על שגיאה.
+   */
+  const all = await db.webhookLog
+    .findMany({
+      orderBy: { createdAt: "desc" },
+      take: q ? 1000 : 60,
+    })
+    .catch(() => []);
 
   /**
    * חיפוש בתוך התוכן הגולמי. ככה אפשר לאתר אדם מסוים
@@ -41,7 +48,12 @@ export default async function IncomingPage({
    * מיישרים את שני הצדדים לאותן ספרות לפני ההשוואה, כדי
    * ש-052-123-4567 ימצא גם כשנשמר כ-+972521234567.
    */
-  const digits = phoneDigits(q);
+  let digits = "";
+  try {
+    digits = phoneDigits(q);
+  } catch {
+    digits = q.replace(/\D/g, "");
+  }
 
   const logs = q
     ? all.filter((log) => {
@@ -60,7 +72,7 @@ export default async function IncomingPage({
         <h1>
           יומן קליטה
           <span className="count">
-            {q ? `${logs.length} תוצאות` : "גרסה 86"}
+            {q ? `${logs.length} תוצאות` : "גרסה 88"}
           </span>
         </h1>
         <form>

@@ -9,6 +9,7 @@ import {
 import { isExistingCustomer } from "@/lib/existing-customer";
 import { isKnownStatus } from "@/lib/status-store";
 import { scheduleForStatus } from "@/lib/rules";
+import { salesPriceFor } from "@/lib/sales-campaigns";
 
 export const dynamic = "force-dynamic";
 
@@ -183,6 +184,21 @@ async function handle(request: Request) {
       // אם יש חוקים לסטטוס שבו הליד נכנס - מתזמנים אותם
       await scheduleForStatus(lead.id, lead.status);
     } else {
+      /**
+       * המקור נקבע לפי הכניסה הנוכחית, לא לפי העבר.
+       *
+       * הכלל הקודם היה "מי שנכנס למכירה נשאר במכירה לנצח",
+       * וזה גרם לכך שאדם שקנה פעם דרך קמפיין מכירה ואז
+       * נכנס מקמפיין שלך - נעלם לך מהרשימה.
+       *
+       * הכלל הנכון: הקמפיין שממנו הוא נכנס עכשיו הוא
+       * שקובע של מי הליד.
+       */
+      const salePrice = await salesPriceFor(
+        extra.fb_campaign || extra.campaign || null
+      );
+      const isSaleNow = salePrice !== null;
+
       const statusChanged =
         incomingStatus !== null && incomingStatus !== existing.status;
 
@@ -239,7 +255,7 @@ async function handle(request: Request) {
            * ליד מכירה נשאר במכירה. אחרת - מי שנוצר מהודעת
            * וואטסאפ משתדרג עכשיו לליד אמיתי.
            */
-          origin: existing.origin === "sale" ? "sale" : "leadmanager",
+          origin: isSaleNow ? "sale" : "leadmanager",
           extra: Object.keys(extra).length
             ? ({
                 ...(typeof existing.extra === "object" && existing.extra
