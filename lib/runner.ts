@@ -12,7 +12,6 @@ import { sendTemplate } from "./texter";
 import { applyStatusChange } from "./rules";
 import { displayPhone } from "./phone";
 import { sendEmail } from "./email";
-import { sendPush } from "./push";
 import { runCampaignChecks } from "./campaign-monitor";
 import { isExistingCustomer, supplierAnswer } from "./existing-customer";
 import { getSettings } from "./settings";
@@ -317,15 +316,6 @@ export async function runDueJobs(limit = 50): Promise<RunSummary> {
  * כל משימה מקבלת תזכורת אחת בלבד.
  */
 async function sendTaskReminders(summary: RunSummary) {
-  /**
-   * לאן לשלוח - לפי מה שבחרת בהגדרות.
-   * כל ערוץ עצמאי: כיבוי אחד לא משפיע על השאר.
-   */
-  const channels = await getSettings().catch(() => null);
-  const toBanner = channels?.notifyBanner ?? true;
-  const toPush = channels?.notifyPush ?? true;
-  const toEmail = channels?.notifyEmail ?? true;
-
   const appUrl = process.env.APP_URL?.trim() || "";
 
   const dueTasks = await db.task.findMany({
@@ -358,57 +348,31 @@ async function sendTaskReminders(summary: RunSummary) {
 
     lines.push("", "— העוזר של רובי");
 
-    /**
-     * ------------------------------------------------------------
-     *  ההתראה לא תלויה במייל
-     * ------------------------------------------------------------
-     *
-     *  עד היום התזכורת הייתה מייל בלבד. אם Resend נחסם, אם
-     *  המפתח פג, אם המייל נחת בספאם - פשוט לא ידעת. וכשזה
-     *  קורה אתה מפספס מכירה.
-     *
-     *  מעכשיו: הבאנר במערכת הוא ההתראה. הוא נוצר תמיד,
-     *  נשאר על המסך עד שתסיר אותו, ולא תלוי באף שירות חיצוני.
-     *  המייל הוא תוספת בלבד.
-     */
-    if (toBanner) await db.notice
-      .create({
-        data: {
-          kind: "task",
-          leadId: task.leadId,
-          level: task.urgent ? "bad" : "good",
-          title: task.urgent ? `🔥 ${task.title}` : task.title,
-          body: task.lead
-            ? `${task.lead.firstName ?? displayPhone(task.lead.phone)} · ${displayPhone(task.lead.phone)} · ${task.lead.status}`
-            : task.body,
-          campaignName: null,
-        },
-      })
-      .catch(() => null);
-
-    /**
-     * התראה לנייד. קופצת על המסך הנעול תוך שניות, ולכן
-     * זו הדרך האמינה ביותר שלא תפספס תזכורת.
-     */
-    if (toPush) await sendPush({
-      title: task.urgent ? `🔥 ${task.title}` : task.title,
-      body: task.lead
-        ? `${task.lead.firstName ?? displayPhone(task.lead.phone)} · ${displayPhone(task.lead.phone)}`
-        : task.body ?? "",
-      url: task.leadId ? `/leads/${task.leadId}` : "/tasks",
-      urgent: task.urgent,
-      tag: `task-${task.id}`,
-    }).catch(() => 0);
-
-    // המייל נשלח בנוסף, ואם הוא נכשל זה כבר לא קריטי
-    if (toEmail) await sendEmail({
+    const emailed = await sendEmail({
       subject: task.urgent ? `🔥 ${task.title}` : `תזכורת: ${task.title}`,
       body: lines.join("\n"),
-    }).catch(() => false);
+    });
 
-    await db.task
-      .update({ where: { id: task.id }, data: { notifiedAt: new Date() } })
-      .catch(() => null);
+    /**
+     * מסמנים כנשלח רק אם המייל באמת יצא.
+     *
+     * קודם סימנו תמיד - ולכן משימה שהמייל שלה נכשל לא ניסתה
+     * שוב לעולם, והתזכורת פשוט נעלמה.
+     *
+     * אם המייל לא מוגדר בכלל, אין טעם לנסות שוב: מסמנים,
+     * וההתראה נשארת במסך.
+     */
+    const configured = Boolean(
+      process.env.RESEND_API_KEY?.trim() && process.env.ALERT_EMAIL?.trim()
+    );
+
+    if (emailed || !configured) {
+      await db.task
+        .update({ where: { id: task.id }, data: { notifiedAt: new Date() } })
+        .catch(() => null);
+    } else {
+      console.error("[מנוע] תזכורת לא נשלחה, ננסה שוב:", task.title);
+    }
 
     if (task.leadId) {
       await db.alert
@@ -502,77 +466,82 @@ async function syncSaleLeads() {
     })
     .catch(() => []);
 
-  if (campaigns.length === 0) return;
-
+  const key = (v: string) => v.trim().replace(/\s+/g, " ").toLowerCase();
   const priceByKey = new Map<string, number>(
-    campaigns.map((c) => [
-      c.name.trim().replace(/\s+/g, " ").toLowerCase(),
-      Number(c.pricePerLead ?? 0),
-    ])
+    campaigns.map((c) => [key(c.name), Number(c.pricePerLead ?? 0)])
   );
 
   /**
-   * סורקים רק את מה שנגע לאחרונה. סריקה מלאה כל דקה מיותרת,
-   * והכפתור בהגדרות עושה מעבר על הכל כשצריך.
+   * מיישר בעלות בשני הכיוונים, לפי הכניסה האחרונה שיש בה
+   * קמפיין.
+   *
+   * קודם זה עבד רק לכיוון אחד - לתוך המכירה - ולכן ליד
+   * שנכנס פעם מקמפיין של הקונה נשאר שלו לנצח, גם כשהוא
+   * חזר מקמפיין שלך. ככה לידים נעלמו מהרשימה.
    */
   const since = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
 
   const leads = await db.lead
     .findMany({
-      where: { origin: { not: "sale" }, updatedAt: { gte: since } },
-      select: { id: true, extra: true, intakeAt: true, source: true },
+      where: { updatedAt: { gte: since }, origin: { not: "whatsapp" } },
+      select: {
+        id: true,
+        origin: true,
+        source: true,
+        intakeAt: true,
+        entries: {
+          where: { campaign: { not: null } },
+          orderBy: { at: "desc" },
+          take: 1,
+          select: { campaign: true },
+        },
+      },
       orderBy: { updatedAt: "desc" },
       take: 500,
     })
     .catch(() => []);
 
   for (const lead of leads) {
-    const extra =
-      lead.extra && typeof lead.extra === "object" && !Array.isArray(lead.extra)
-        ? (lead.extra as Record<string, string>)
-        : {};
+    const campaign = lead.entries[0]?.campaign;
+    if (!campaign) continue;
 
-    const name = extra.fb_campaign || extra.campaign;
-    if (!name) continue;
+    const price = priceByKey.get(key(campaign));
+    const shouldBe = price === undefined ? "leadmanager" : "sale";
 
-    const key = name.trim().replace(/\s+/g, " ").toLowerCase();
-    const price = priceByKey.get(key);
-    if (price === undefined) continue;
+    if (lead.origin === shouldBe) continue;
 
     await db.lead
-      .update({ where: { id: lead.id }, data: { origin: "sale" } })
+      .update({ where: { id: lead.id }, data: { origin: shouldBe } })
       .catch(() => null);
 
-    /**
-     * בלי כניסת מכירה הליד לא יופיע ברשימה של הקונה ולא
-     * ייספר בהכנסה. הזמן נלקח מתאריך הכניסה המקורי, כדי
-     * שהמיון בסוף יהיה לפי מתי הליד באמת נכנס.
-     */
-    const already = await db.leadEntry.findFirst({
-      where: { leadId: lead.id, campaign: name, isSale: true },
-    });
+    if (shouldBe === "sale") {
+      // כניסת מכירה, אם עוד אין כזו
+      const already = await db.leadEntry.findFirst({
+        where: { leadId: lead.id, campaign, isSale: true },
+      });
 
-    if (!already) {
-      await db.leadEntry
-        .create({
-          data: {
-            leadId: lead.id,
-            campaign: name,
-            source: lead.source,
-            isSale: true,
-            price,
-            at: lead.intakeAt,
-          },
+      if (!already) {
+        await db.leadEntry
+          .create({
+            data: {
+              leadId: lead.id,
+              campaign,
+              source: lead.source,
+              isSale: true,
+              price: price ?? 0,
+              at: lead.intakeAt,
+            },
+          })
+          .catch(() => null);
+      }
+
+      await db.scheduledJob
+        .updateMany({
+          where: { leadId: lead.id, state: "pending" },
+          data: { state: "cancelled", lastError: "ליד מכירה - הוחזר אוטומטית" },
         })
         .catch(() => null);
     }
-
-    await db.scheduledJob
-      .updateMany({
-        where: { leadId: lead.id, state: "pending" },
-        data: { state: "cancelled", lastError: "ליד מכירה - הוחזר אוטומטית" },
-      })
-      .catch(() => null);
   }
 }
 

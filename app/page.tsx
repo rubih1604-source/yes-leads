@@ -28,7 +28,14 @@ export default async function HomePage() {
     // ההתכתבויות יושבות במסך נפרד ולא משנות את הסדר כאן.
     // רק לידים אמיתיים. מי שכתב בוואטסאפ בלי להיות ליד
     // יושב במסך השיחות בלבד.
-    where: { origin: "leadmanager" },
+    /**
+     * כל ליד שהגיע מליד מנגר מופיע כאן - כולל לידים
+     * מקמפייני מכירה. שום ליד לא נשאר מאחורה.
+     *
+     * ההפרדה נשמרת בתווית ובחישוב ההכנסה, לא בהסתרה.
+     * אוטומציות עדיין לא רצות על לידי מכירה.
+     */
+    where: { origin: { in: ["leadmanager", "sale"] } },
     /**
      * הליד האחרון שנכנס תמיד בראש.
      * createdAt כגיבוי, כדי שליד עם תאריך כניסה חריג
@@ -49,6 +56,7 @@ export default async function HomePage() {
       firstName: true,
       lastName: true,
       status: true,
+      origin: true,
       source: true,
       subStatus: true,
       duplicateOf: true,
@@ -77,6 +85,7 @@ export default async function HomePage() {
       campaign: extra.fb_campaign || extra.campaign || null,
       supplier: extra.supplier_question || null,
       existingCustomer: isExistingCustomer(l.extra, l.status),
+      isSale: l.origin === "sale",
       source: l.source,
       package: extra.package || null,
       price: extra.price || null,

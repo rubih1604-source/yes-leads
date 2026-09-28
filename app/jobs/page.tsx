@@ -21,6 +21,12 @@ const STATE_COLORS: Record<string, string> = {
   failed: "#b42318",
 };
 
+type RuleInfo = {
+  triggerStatus: string;
+  stepIndex: number;
+  delayMinutes: number;
+};
+
 function formatDate(d: Date): string {
   return d.toLocaleString("he-IL", {
     timeZone: "Asia/Jerusalem",
@@ -64,15 +70,54 @@ function actualDelay(job: { createdAt: Date; runAt: Date }): string {
   return describeDelay(Math.max(minutes, 0));
 }
 
+/**
+ * החוקים נשלפים בשאילתה נפרדת ולא ב-include.
+ *
+ * ל-ScheduledJob יש עמודת ruleId אבל אין קשר (relation) מוגדר אליה
+ * בסכימה, ולכן include:{rule:true} היה מפיל את כל המסך בשגיאה.
+ * שליפה נפרדת נותנת בדיוק את אותו מידע בלי לגעת במסד.
+ */
+async function rulesFor(ids: string[]): Promise<Map<string, RuleInfo>> {
+  const map = new Map<string, RuleInfo>();
+  const unique = Array.from(new Set(ids));
+  if (unique.length === 0) return map;
+
+  try {
+    const rules = await db.rule.findMany({
+      where: { id: { in: unique } },
+      select: {
+        id: true,
+        triggerStatus: true,
+        stepIndex: true,
+        delayMinutes: true,
+      },
+    });
+    for (const r of rules) {
+      map.set(r.id, {
+        triggerStatus: r.triggerStatus,
+        stepIndex: r.stepIndex,
+        delayMinutes: r.delayMinutes,
+      });
+    }
+  } catch {
+    // אם השליפה נכשלת - המסך עדיין נפתח, פשוט בלי שורת החוק
+  }
+  return map;
+}
+
 export default async function JobsPage() {
   const [jobs, settings] = await Promise.all([
     db.scheduledJob.findMany({
       orderBy: { createdAt: "desc" },
       take: 60,
-      include: { lead: true, rule: true },
+      include: { lead: true },
     }),
     db.settings.findUnique({ where: { id: "main" } }).catch(() => null),
   ]);
+
+  const rules = await rulesFor(
+    jobs.map((j) => j.ruleId).filter((id): id is string => Boolean(id))
+  );
 
   const lastRun = settings?.lastRunAt ?? null;
   // המנוע רץ כל דקה. שלוש דקות בלי סימן חיים = משהו לא בסדר.
@@ -88,7 +133,10 @@ export default async function JobsPage() {
         </h1>
       </div>
 
-      <div className="card" style={{ borderInlineStart: `4px solid ${stale ? "#b42318" : "#12805c"}` }}>
+      <div
+        className="card"
+        style={{ borderInlineStart: `4px solid ${stale ? "#b42318" : "#12805c"}` }}
+      >
         <div style={{ fontWeight: 600 }}>
           {stale ? "המנוע לא רץ לאחרונה" : "המנוע פעיל"}
         </div>
@@ -111,68 +159,72 @@ export default async function JobsPage() {
         </div>
       ) : (
         <div className="timeline">
-          {jobs.map((job) => (
-            <div
-              className="event"
-              key={job.id}
-              style={{ borderInlineStartColor: STATE_COLORS[job.state] ?? "#dbe3ea" }}
-            >
-              <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
-                <strong style={{ color: STATE_COLORS[job.state] }}>
-                  {STATE_LABELS[job.state] ?? job.state}
-                </strong>
-                <span>
-                  {job.action === "send_template"
-                    ? `שליחת ${job.templateName ?? "תבנית"}`
-                    : job.action === "notify"
-                    ? "התראה"
-                    : `העברה ל"${job.targetStatus}"`}
-                </span>
-              </div>
+          {jobs.map((job) => {
+            const rule = job.ruleId ? rules.get(job.ruleId) : undefined;
 
-              {job.lead && (
-                <Link
-                  href={`/leads/${job.lead.id}`}
-                  style={{ fontSize: 13.5, color: "#1b4d8f" }}
-                >
-                  {job.lead.firstName || displayPhone(job.lead.phone)} ·{" "}
-                  {job.lead.status}
-                </Link>
-              )}
-
-              {job.note && (
-                <div style={{ fontSize: 13, color: "#475467", marginTop: 2 }}>
-                  {job.note}
+            return (
+              <div
+                className="event"
+                key={job.id}
+                style={{
+                  borderInlineStartColor: STATE_COLORS[job.state] ?? "#dbe3ea",
+                }}
+              >
+                <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+                  <strong style={{ color: STATE_COLORS[job.state] }}>
+                    {STATE_LABELS[job.state] ?? job.state}
+                  </strong>
+                  <span>
+                    {job.action === "send_template"
+                      ? `שליחת ${job.templateName ?? "תבנית"}`
+                      : job.action === "notify"
+                      ? "התראה"
+                      : `העברה ל"${job.targetStatus}"`}
+                  </span>
                 </div>
-              )}
 
-              {/* מאיפה המשימה הזו הגיעה ומה העיכוב שהוגדר בה */}
-              {job.rule && (
-                <div
-                  style={{
-                    fontSize: 12.5,
-                    color: "#475467",
-                    marginTop: 3,
-                  }}
-                >
-                  חוק: {job.rule.triggerStatus}
-                  {job.rule.stepIndex > 0
-                    ? ` · שלב ${job.rule.stepIndex + 1}`
-                    : ""}
-                  {" · עיכוב מוגדר: "}
-                  {describeDelay(job.rule.delayMinutes)}
+                {job.lead && (
+                  <Link
+                    href={`/leads/${job.lead.id}`}
+                    style={{ fontSize: 13.5, color: "#1b4d8f" }}
+                  >
+                    {job.lead.firstName || displayPhone(job.lead.phone)} ·{" "}
+                    {job.lead.status}
+                  </Link>
+                )}
+
+                {job.note && (
+                  <div style={{ fontSize: 13, color: "#475467", marginTop: 2 }}>
+                    {job.note}
+                  </div>
+                )}
+
+                {/* מאיפה המשימה הזו הגיעה ומה העיכוב שהוגדר בה */}
+                {rule && (
+                  <div
+                    style={{
+                      fontSize: 12.5,
+                      color: "#475467",
+                      marginTop: 3,
+                    }}
+                  >
+                    חוק: {rule.triggerStatus}
+                    {rule.stepIndex > 0 ? ` · שלב ${rule.stepIndex + 1}` : ""}
+                    {" · עיכוב מוגדר: "}
+                    {describeDelay(rule.delayMinutes)}
+                  </div>
+                )}
+
+                <div className="when">
+                  נוצרה {formatDate(job.createdAt)}
+                  {" · אמורה לרוץ "}
+                  {formatDate(job.runAt)}
+                  {rule ? ` · בפועל ${actualDelay(job)}` : ""}
+                  {job.lastError ? ` · ${job.lastError}` : ""}
                 </div>
-              )}
-
-              <div className="when">
-                נוצרה {formatDate(job.createdAt)}
-                {" · אמורה לרוץ "}
-                {formatDate(job.runAt)}
-                {job.rule ? ` · בפועל ${actualDelay(job)}` : ""}
-                {job.lastError ? ` · ${job.lastError}` : ""}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
