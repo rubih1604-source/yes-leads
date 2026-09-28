@@ -492,8 +492,7 @@ async function syncSaleLeads() {
         entries: {
           where: { campaign: { not: null } },
           orderBy: { at: "desc" },
-          take: 1,
-          select: { campaign: true },
+          select: { id: true, campaign: true, isSale: true },
         },
       },
       orderBy: { updatedAt: "desc" },
@@ -502,39 +501,67 @@ async function syncSaleLeads() {
     .catch(() => []);
 
   for (const lead of leads) {
-    const campaign = lead.entries[0]?.campaign;
-    if (!campaign) continue;
+    if (lead.entries.length === 0) continue;
 
-    const price = priceByKey.get(key(campaign));
-    const shouldBe = price === undefined ? "leadmanager" : "sale";
+    /**
+     * --- שלב א': לחתום ערוץ על כניסות שנרשמו בלי חותמת ---
+     *
+     * זה היה הבאג המרכזי: הוובוק רשם כניסה בלי isSale,
+     * והתהליך הזה יצר כניסה *שנייה* כדי לסמן שזו מכירה.
+     * הגעה אחת של אלעד נספרה כשתי כניסות, ולכן הליד הופיע
+     * אצלך עם התווית "כפול 2".
+     *
+     * עכשיו לא נוצרת שום כניסה חדשה. הכניסה הקיימת רק
+     * מקבלת את החותמת הנכונה, פעם אחת.
+     */
+    let stampedAny = false;
 
-    if (lead.origin === shouldBe) continue;
+    for (const entry of lead.entries) {
+      if (!entry.campaign || entry.isSale) continue;
 
-    await db.lead
-      .update({ where: { id: lead.id }, data: { origin: shouldBe } })
-      .catch(() => null);
+      const price = priceByKey.get(key(entry.campaign));
+      if (price === undefined) continue; // קמפיין שלך - נשאר שלך
 
-    if (shouldBe === "sale") {
-      // כניסת מכירה, אם עוד אין כזו
-      const already = await db.leadEntry.findFirst({
-        where: { leadId: lead.id, campaign, isSale: true },
-      });
+      await db.leadEntry
+        .update({
+          where: { id: entry.id },
+          data: { isSale: true, price },
+        })
+        .catch(() => null);
 
-      if (!already) {
-        await db.leadEntry
-          .create({
-            data: {
-              leadId: lead.id,
-              campaign,
-              source: lead.source,
-              isSale: true,
-              price: price ?? 0,
-              at: lead.intakeAt,
-            },
-          })
-          .catch(() => null);
-      }
+      entry.isSale = true;
+      stampedAny = true;
+    }
 
+    /**
+     * --- שלב ב': למי הליד שייך ---
+     *
+     * ליד ששייך גם למערכת שלך נשאר שלך. קודם הכלל היה
+     * "הכניסה האחרונה קובעת", ולכן ליד שעבדת עליו עבר
+     * לאלעד ברגע שהוא נכנס אצלו - ונעלם לך מהרשימה.
+     *
+     * שתי המערכות מחזיקות אותו במקביל: ליד רגיל אצלך,
+     * וליד רגיל אצלו. רק ליד שאין לו **אף כניסה** בערוץ
+     * שלך שייך לו בלבד.
+     *
+     * הספירה רצה אחרי החתימה, כדי שכניסה שזה עתה סומנה
+     * כמכירה לא תיחשב בטעות ככניסה שלך.
+     */
+    const mineCount = lead.entries.filter((e) => !e.isSale).length;
+    const shouldBe = mineCount === 0 ? "sale" : "leadmanager";
+
+    if (lead.origin !== shouldBe) {
+      await db.lead
+        .update({ where: { id: lead.id }, data: { origin: shouldBe } })
+        .catch(() => null);
+    }
+
+    /**
+     * ליד שאין לו שום נגיעה אצלך לא מקבל ממך הודעות.
+     * רץ גם כשהבעלות לא השתנתה, כדי שמשימה שנוצרה לפני
+     * שהקמפיין הוגדר כמכירה לא תישאר תלויה ותצא.
+     */
+    if (shouldBe === "sale" && (stampedAny || lead.origin !== shouldBe)) {
       await db.scheduledJob
         .updateMany({
           where: { leadId: lead.id, state: "pending" },

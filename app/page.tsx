@@ -29,13 +29,34 @@ export default async function HomePage() {
     // רק לידים אמיתיים. מי שכתב בוואטסאפ בלי להיות ליד
     // יושב במסך השיחות בלבד.
     /**
-     * כל ליד שהגיע מליד מנגר מופיע כאן - כולל לידים
-     * מקמפייני מכירה. שום ליד לא נשאר מאחורה.
+     * ============================================================
+     *  כאן מופיע **רק הערוץ שלך**
+     * ============================================================
      *
-     * ההפרדה נשמרת בתווית ובחישוב ההכנסה, לא בהסתרה.
-     * אוטומציות עדיין לא רצות על לידי מכירה.
+     *  ערוץ המכירה הוא מערכת לידים נפרדת שחיה לצד שלך,
+     *  והוא יושב במסך "מכירת לידים" בלבד. הנתונים שלו לא
+     *  מתערבבים כאן.
+     *
+     *  ליד מופיע ברשימה הזו אם יש לו לפחות **כניסה אחת
+     *  בערוץ שלך**. אדם שנכנס גם אצלך וגם אצל אלעד מופיע
+     *  בשני המקומות - ליד רגיל בכל אחד מהם, בלי שום תלות
+     *  ביניהם.
+     *
+     *  התנאי השני הוא לידים ותיקים שנוצרו לפני שהתחלנו
+     *  לרשום כניסות בנפרד. אין להם אף כניסה, ולכן הם
+     *  נמדדים לפי הבעלות הישנה - כדי ששום ליד לא ייעלם.
      */
-    where: { origin: { in: ["leadmanager", "sale"] } },
+    where: {
+      OR: [
+        { entries: { some: { isSale: false } } },
+        {
+          AND: [
+            { entries: { none: {} } },
+            { origin: { in: ["leadmanager", "sale"] } },
+          ],
+        },
+      ],
+    },
     /**
      * הליד האחרון שנכנס תמיד בראש.
      * createdAt כגיבוי, כדי שליד עם תאריך כניסה חריג
@@ -62,7 +83,27 @@ export default async function HomePage() {
       duplicateOf: true,
       intakeAt: true,
       extra: true,
-      _count: { select: { entries: true } },
+
+      /**
+       * נספרות רק הכניסות של הערוץ שלך.
+       *
+       * זו התווית "כפול·N", וזו בדיוק הסיבה שהיא הופיעה
+       * בטעות: היא ספרה גם את הכניסה של אלעד. רינת נכנסה
+       * פעם אחת אצלך ופעם אחת אצלו - שתי מערכות שונות,
+       * לא כפילות.
+       */
+      _count: { select: { entries: { where: { isSale: false } } } },
+
+      /**
+       * הכניסה האחרונה שלך, לקביעת מקום הליד ברשימה.
+       * כניסה אצל אלעד לא מקפיצה ליד לראש הרשימה שלך.
+       */
+      entries: {
+        where: { isSale: false },
+        orderBy: { at: "desc" },
+        take: 1,
+        select: { at: true },
+      },
     },
   });
 
@@ -71,6 +112,13 @@ export default async function HomePage() {
       l.extra && typeof l.extra === "object" && !Array.isArray(l.extra)
         ? (l.extra as Record<string, string>)
         : {};
+
+    /**
+     * התאריך שמוצג ושלפיו הרשימה מסודרת הוא תאריך הכניסה
+     * **שלך**. אם אין כניסה רשומה (ליד ותיק) - התאריך
+     * הכללי של הליד.
+     */
+    const mineAt = l.entries[0]?.at ?? l.intakeAt;
 
     return {
       id: l.id,
@@ -81,11 +129,19 @@ export default async function HomePage() {
       subStatus: l.subStatus,
       duplicateOf: l.duplicateOf,
       entryCount: l._count.entries,
-      intakeAt: l.intakeAt.toISOString(),
+      intakeAt: mineAt.toISOString(),
       campaign: extra.fb_campaign || extra.campaign || null,
       supplier: extra.supplier_question || null,
       existingCustomer: isExistingCustomer(l.extra, l.status),
-      isSale: l.origin === "sale",
+
+      /**
+       * אין תווית "מכירה" ברשימה שלך.
+       *
+       * הרשימה הזו מציגה את הערוץ שלך בלבד, ולכן כל מה
+       * שמופיע בה הוא ליד שלך - אין מה לתייג. לידי המכירה
+       * נמצאים במסך שלהם.
+       */
+      isSale: false,
       source: l.source,
       package: extra.package || null,
       price: extra.price || null,
@@ -93,6 +149,16 @@ export default async function HomePage() {
       address: extra.address || null,
     };
   });
+
+  /**
+   * סידור סופי לפי **תאריך הכניסה שלך**.
+   *
+   * המסד מסדר לפי intakeAt הכללי, ובלידים ותיקים התאריך
+   * הזה הוקפץ בעבר בגלל כניסה של אלעד. מיון כאן מבטיח
+   * שסדר הרשימה שלך נקבע רק לפי מה שקרה אצלך.
+   * ISO נשמר כמחרוזת, ולכן השוואת מחרוזות היא גם השוואת זמן.
+   */
+  rows.sort((a, b) => (a.intakeAt < b.intakeAt ? 1 : a.intakeAt > b.intakeAt ? -1 : 0));
 
   return (
     <div className="app">

@@ -9,7 +9,7 @@ import {
 import { isExistingCustomer } from "@/lib/existing-customer";
 import { isKnownStatus } from "@/lib/status-store";
 import { scheduleForStatus } from "@/lib/rules";
-import { salesPriceFor } from "@/lib/sales-campaigns";
+import { channelForIncoming, isSameSubmission } from "@/lib/channel";
 
 export const dynamic = "force-dynamic";
 
@@ -135,6 +135,16 @@ async function handle(request: Request) {
 
     const existing = await db.lead.findUnique({ where: { phone } });
 
+    /**
+     * לאיזו מערכת הכניסה הזו שייכת - שלך או של המכירה.
+     *
+     * נקבע פעם אחת, כאן, לפי הקמפיין שממנו היא הגיעה,
+     * ונחתם על הכניסה. כל השאר במערכת קורא את החותמת הזו
+     * ולא מנחש מחדש.
+     */
+    const incomingCampaign = extra.fb_campaign || extra.campaign || null;
+    const channel = await channelForIncoming(incomingCampaign);
+
     if (!existing) {
       const lead = await db.lead.create({
         data: {
@@ -143,6 +153,16 @@ async function handle(request: Request) {
           lastName: mapped.lastName,
           status: incomingStatus ?? (alreadyCustomer ? "לקוח קיים" : "חדש"),
           source: mapped.source,
+
+          /**
+           * ליד שנולד מקמפיין מכירה נולד **כשל המכירה**.
+           *
+           * קודם השדה הזה לא נקבע ביצירה אלא נפל לברירת
+           * המחדל "שלך", ולכן ליד חדש של אלעד נראה לרגע
+           * כמו ליד שלך - והאוטומציות שלך רצו עליו. ככה
+           * לקוחות שלו קיבלו ממך הודעות.
+           */
+          origin: channel.isSale ? "sale" : "leadmanager",
           extra: Object.keys(extra).length
             ? (extra as Prisma.InputJsonObject)
             : undefined,
@@ -169,20 +189,34 @@ async function handle(request: Request) {
         },
       });
 
-      // כל כניסה נרשמת, כדי שנדע מתי הליד הגיע ומאיזה קמפיין
+      /**
+       * כל כניסה נרשמת **עם הערוץ שלה חתום עליה**.
+       *
+       * זה השדה שבלעדיו הכל התבלבל: קודם הכניסה נרשמה בלי
+       * isSale, ואז תהליך אחר יצר כניסה שנייה כדי לסמן
+       * שזו מכירה - ואותה הגעה אחת נספרה כשתיים. זה מה
+       * שהפך ליד של אלעד ל"כפול 2" אצלך.
+       */
       await db.leadEntry
         .create({
           data: {
             leadId: lead.id,
-            campaign: extra.fb_campaign || extra.campaign || null,
+            campaign: incomingCampaign,
             source: mapped.source,
+            isSale: channel.isSale,
+            price: channel.price,
             at: new Date(),
           },
         })
         .catch(() => null);
 
-      // אם יש חוקים לסטטוס שבו הליד נכנס - מתזמנים אותם
-      await scheduleForStatus(lead.id, lead.status);
+      /**
+       * אוטומציות רצות רק על הערוץ שלך.
+       * ליד של המכירה לא מקבל ממך הודעה, לעולם.
+       */
+      if (!channel.isSale) {
+        await scheduleForStatus(lead.id, lead.status);
+      }
     } else {
       /**
        * המקור נקבע לפי הכניסה הנוכחית, לא לפי העבר.
@@ -194,13 +228,16 @@ async function handle(request: Request) {
        * הכלל הנכון: הקמפיין שממנו הוא נכנס עכשיו הוא
        * שקובע של מי הליד.
        */
-      const salePrice = await salesPriceFor(
-        extra.fb_campaign || extra.campaign || null
-      );
-      const isSaleNow = salePrice !== null;
+      const isSaleNow = channel.isSale;
 
+      /**
+       * סטטוס שמגיע מליד מנגר נוגע רק בערוץ שלך.
+       * לערוץ המכירה אין סטטוסים בכלל.
+       */
       const statusChanged =
-        incomingStatus !== null && incomingStatus !== existing.status;
+        !isSaleNow &&
+        incomingStatus !== null &&
+        incomingStatus !== existing.status;
 
       /**
        * אותה הגשה שהגיעה פעמיים - לא ליד כפול.
@@ -219,18 +256,48 @@ async function handle(request: Request) {
 
       const incomingFbId = extra.fb_leadid?.trim() || null;
 
-      const recentEntry = await db.leadEntry
-        .findFirst({
+      /**
+       * הבדיקה רצה **בתוך הערוץ בלבד**.
+       *
+       * קודם היא רצה על כל הכניסות, ולכן ליד שנכנס אצלך
+       * וכמה דקות אחר כך נכנס אצל אלעד - הכניסה של אלעד
+       * נבלעה ולא נרשמה בכלל. שתי מערכות נפרדות; כניסה
+       * באחת לא מבטלת כניסה בשנייה.
+       */
+      const recentEntries = await db.leadEntry
+        .findMany({
           where: {
             leadId: existing.id,
-            at: { gte: new Date(Date.now() - 15 * 60 * 1000) },
+            at: { gte: new Date(Date.now() - 60 * 60 * 1000) },
           },
+          select: { isSale: true, campaign: true, at: true },
         })
-        .catch(() => null);
+        .catch(() => []);
 
-      const sameSubmission =
-        (incomingFbId !== null && previousExtra.fb_leadid === incomingFbId) ||
-        recentEntry !== null;
+      const sameSubmission = isSameSubmission({
+        incomingFbId,
+        knownFbId: previousExtra.fb_leadid ?? null,
+        channel: channel.channel,
+        entries: recentEntries,
+      });
+
+      /**
+       * האם הליד הזה קיים גם במערכת שלך.
+       *
+       * אם כן - כניסה של אלעד לא הופכת אותו לשלו. הוא
+       * נשאר ליד רגיל אצלך, ובמקביל ליד רגיל אצלו.
+       * רק ליד שקיים **אך ורק** בערוץ המכירה מסומן כשלו.
+       */
+      const hasMineEntry =
+        (await db.leadEntry
+          .count({ where: { leadId: existing.id, isSale: false } })
+          .catch(() => 0)) > 0;
+
+      const ownerOrigin = isSaleNow
+        ? hasMineEntry
+          ? "leadmanager"
+          : "sale"
+        : "leadmanager";
 
       await db.lead.update({
         where: { id: existing.id },
@@ -238,24 +305,25 @@ async function handle(request: Request) {
           firstName: mapped.firstName ?? existing.firstName,
           lastName: mapped.lastName ?? existing.lastName,
           source: mapped.source ?? existing.source,
-          status: incomingStatus ?? existing.status,
+
+          /**
+           * סטטוס נוגע רק לערוץ שלך. כניסה של אלעד לא
+           * דורסת סטטוס שאתה קבעת - זה מה שגרם לליד
+           * שעבדת עליו אתמול להשתנות מעצמו.
+           */
+          status: isSaleNow ? existing.status : incomingStatus ?? existing.status,
 
           /**
            * הליד נכנס שוב עכשיו - ולכן הוא צף לראש הרשימה
-           * עם התאריך של היום.
+           * עם התאריך של היום. התאריכים הקודמים לא אובדים:
+           * כל כניסה נשמרת בנפרד ומוצגת בכרטיס הליד.
            *
-           * עד היום הוא נשאר עם התאריך הישן ופשוט נעלם
-           * בתחתית, ונראה כאילו הוא לא הגיע בכלל. התאריכים
-           * הקודמים לא אובדים: כל כניסה נשמרת בנפרד ומוצגת
-           * בכרטיס הליד.
+           * אבל רק כניסה **בערוץ שלך** מקפיצה אותו אצלך.
+           * כניסה אצל אלעד לא מזיזה כלום ברשימה שלך.
            */
-          intakeAt: sameSubmission ? undefined : new Date(),
+          intakeAt: sameSubmission || isSaleNow ? undefined : new Date(),
 
-          /**
-           * ליד מכירה נשאר במכירה. אחרת - מי שנוצר מהודעת
-           * וואטסאפ משתדרג עכשיו לליד אמיתי.
-           */
-          origin: isSaleNow ? "sale" : "leadmanager",
+          origin: ownerOrigin,
           extra: Object.keys(extra).length
             ? ({
                 ...(typeof existing.extra === "object" && existing.extra
@@ -267,14 +335,21 @@ async function handle(request: Request) {
         },
       });
 
-      // כניסה אמיתית נוספת נרשמת - זה מה שמפעיל את תגית "כפול"
+      /**
+       * כניסה נוספת נרשמת עם הערוץ שלה חתום עליה.
+       *
+       * תגית "כפול" נספרת מתוך הכניסות של אותו ערוץ בלבד,
+       * ולכן כניסה אצל אלעד לא תסמן לך כפול ברשימה שלך.
+       */
       if (!sameSubmission) {
         await db.leadEntry
           .create({
             data: {
               leadId: existing.id,
-              campaign: extra.fb_campaign || extra.campaign || null,
+              campaign: incomingCampaign,
               source: mapped.source,
+              isSale: channel.isSale,
+              price: channel.price,
               at: new Date(),
             },
           })
