@@ -39,7 +39,16 @@ export async function POST() {
   });
   const has = new Set(existing.map((e) => e.leadId));
 
+  /**
+   * וואטסאפ לא מקבל כניסות.
+   *
+   * כאן נולדה הבעיה: הכלי הזה יצר כניסה לכל ליד במסד, כולל
+   * אנשים שרק שלחו הודעת וואטסאפ. כל עוד הרשימה סיננה לפי
+   * בעלות זה לא הזיק - אבל ברגע שהסינון התחיל להסתכל על
+   * כניסות, הם צצו כלידים.
+   */
   const leads = await db.lead.findMany({
+    where: { origin: { not: "whatsapp" } },
     select: { id: true, extra: true, source: true, intakeAt: true },
   });
 

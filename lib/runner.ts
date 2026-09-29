@@ -12,6 +12,7 @@ import { sendTemplate } from "./texter";
 import { applyStatusChange } from "./rules";
 import { displayPhone } from "./phone";
 import { sendEmail } from "./email";
+import { sendPush } from "./push";
 import { runCampaignChecks } from "./campaign-monitor";
 import { isExistingCustomer, supplierAnswer } from "./existing-customer";
 import { getSettings } from "./settings";
@@ -316,6 +317,15 @@ export async function runDueJobs(limit = 50): Promise<RunSummary> {
  * כל משימה מקבלת תזכורת אחת בלבד.
  */
 async function sendTaskReminders(summary: RunSummary) {
+  /**
+   * לאן לשלוח - לפי מה שבחרת בהגדרות.
+   * כל ערוץ עצמאי: כיבוי אחד לא משפיע על השאר.
+   */
+  const channels = await getSettings().catch(() => null);
+  const toBanner = channels?.notifyBanner ?? true;
+  const toPush = channels?.notifyPush ?? true;
+  const toEmail = channels?.notifyEmail ?? true;
+
   const appUrl = process.env.APP_URL?.trim() || "";
 
   const dueTasks = await db.task.findMany({
@@ -348,30 +358,99 @@ async function sendTaskReminders(summary: RunSummary) {
 
     lines.push("", "— העוזר של רובי");
 
-    const emailed = await sendEmail({
-      subject: task.urgent ? `🔥 ${task.title}` : `תזכורת: ${task.title}`,
-      body: lines.join("\n"),
-    });
+    /**
+     * ------------------------------------------------------------
+     *  ההתראה לא תלויה במייל
+     * ------------------------------------------------------------
+     *
+     *  עד היום התזכורת הייתה מייל בלבד. אם Resend נחסם, אם
+     *  המפתח פג, אם המייל נחת בספאם - פשוט לא ידעת. וכשזה
+     *  קורה אתה מפספס מכירה.
+     *
+     *  מעכשיו: הבאנר במערכת הוא ההתראה. הוא נוצר תמיד,
+     *  נשאר על המסך עד שתסיר אותו, ולא תלוי באף שירות חיצוני.
+     *  המייל הוא תוספת בלבד.
+     */
+    /**
+     * נספר כמה ערוצים באמת הצליחו. משימה לא מסומנת
+     * "הותרעה" עד שלפחות אחד מהם עבד - אחרת תזכורת
+     * נעלמת בשקט ואתה מפספס לקוח.
+     */
+    let delivered = 0;
+
+    if (toBanner) {
+      const notice = await db.notice
+        .create({
+          data: {
+            kind: "task",
+            leadId: task.leadId,
+            level: task.urgent ? "bad" : "good",
+            title: task.urgent ? `🔥 ${task.title}` : task.title,
+            body: task.lead
+              ? `${task.lead.firstName ?? displayPhone(task.lead.phone)} · ${displayPhone(task.lead.phone)} · ${task.lead.status}`
+              : task.body,
+            campaignName: null,
+          },
+        })
+        .catch(() => null);
+
+      if (notice) delivered++;
+    }
 
     /**
-     * מסמנים כנשלח רק אם המייל באמת יצא.
-     *
-     * קודם סימנו תמיד - ולכן משימה שהמייל שלה נכשל לא ניסתה
-     * שוב לעולם, והתזכורת פשוט נעלמה.
-     *
-     * אם המייל לא מוגדר בכלל, אין טעם לנסות שוב: מסמנים,
-     * וההתראה נשארת במסך.
+     * התראה לנייד. קופצת על המסך הנעול תוך שניות, ולכן
+     * זו הדרך האמינה ביותר שלא תפספס תזכורת.
      */
-    const configured = Boolean(
-      process.env.RESEND_API_KEY?.trim() && process.env.ALERT_EMAIL?.trim()
-    );
+    if (toPush) {
+      const sent = await sendPush({
+        title: task.urgent ? `🔥 ${task.title}` : task.title,
+        body: task.lead
+          ? `${task.lead.firstName ?? displayPhone(task.lead.phone)} · ${displayPhone(task.lead.phone)}`
+          : task.body ?? "",
+        url: task.leadId ? `/leads/${task.leadId}` : "/tasks",
+        urgent: task.urgent,
+        tag: `task-${task.id}`,
+      }).catch(() => 0);
 
-    if (emailed || !configured) {
+      if (sent > 0) delivered++;
+    }
+
+    // המייל נשלח בנוסף, ואם הוא נכשל זה כבר לא קריטי
+    if (toEmail) {
+      const emailed = await sendEmail({
+        subject: task.urgent ? `🔥 ${task.title}` : `תזכורת: ${task.title}`,
+        body: lines.join("\n"),
+      }).catch(() => false);
+
+      if (emailed) delivered++;
+    }
+
+    /**
+     * ------------------------------------------------------------
+     *  תזכורת לא נמחקת כשההתראה נכשלה
+     * ------------------------------------------------------------
+     *
+     *  עד היום המשימה סומנה "הותרעה" תמיד - גם כשאף ערוץ
+     *  לא הצליח. ואז היא לא ניסתה שוב לעולם, והתזכורת פשוט
+     *  נעלמה בלי שידעת.
+     *
+     *  מעכשיו: מסמנים רק אם משהו באמת יצא. אם הכל נכשל,
+     *  המשימה נשארת בתור והמנוע ינסה שוב בדקה הבאה.
+     *
+     *  המקרה היחיד שבו מסמנים בלי שליחה הוא כשכיבית את כל
+     *  הערוצים בעצמך - אז אין למי לשלוח, וזו בחירה שלך.
+     */
+    const anyChannelOn = toBanner || toPush || toEmail;
+
+    if (delivered > 0 || !anyChannelOn) {
       await db.task
         .update({ where: { id: task.id }, data: { notifiedAt: new Date() } })
         .catch(() => null);
     } else {
-      console.error("[מנוע] תזכורת לא נשלחה, ננסה שוב:", task.title);
+      console.error(
+        "[מנוע] אף ערוץ לא הצליח, התזכורת תנסה שוב:",
+        task.title
+      );
     }
 
     if (task.leadId) {
@@ -466,29 +545,36 @@ async function syncSaleLeads() {
     })
     .catch(() => []);
 
-  const key = (v: string) => v.trim().replace(/\s+/g, " ").toLowerCase();
+  if (campaigns.length === 0) return;
+
   const priceByKey = new Map<string, number>(
-    campaigns.map((c) => [key(c.name), Number(c.pricePerLead ?? 0)])
+    campaigns.map((c) => [
+      c.name.trim().replace(/\s+/g, " ").toLowerCase(),
+      Number(c.pricePerLead ?? 0),
+    ])
   );
 
   /**
-   * מיישר בעלות בשני הכיוונים, לפי הכניסה האחרונה שיש בה
-   * קמפיין.
-   *
-   * קודם זה עבד רק לכיוון אחד - לתוך המכירה - ולכן ליד
-   * שנכנס פעם מקמפיין של הקונה נשאר שלו לנצח, גם כשהוא
-   * חזר מקמפיין שלך. ככה לידים נעלמו מהרשימה.
+   * סורקים רק את מה שנגע לאחרונה. סריקה מלאה כל דקה מיותרת,
+   * והכפתור בהגדרות עושה מעבר על הכל כשצריך.
    */
   const since = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
 
+  const key = (v: string) => v.trim().replace(/\s+/g, " ").toLowerCase();
+
+  /**
+   * סורקים לפי **כניסות**, לא לפי הקמפיין שרשום על הליד.
+   *
+   * הקמפיין שעל הליד הוא תמיד האחרון שנכנס, ולכן ליד שחזר
+   * אליך מקמפיין שלך עדיין נראה כאילו הוא של המכירה. הכניסות
+   * הן מה שבאמת קרה, וכל אחת מהן שייכת לערוץ אחד בלבד.
+   */
   const leads = await db.lead
     .findMany({
       where: { updatedAt: { gte: since }, origin: { not: "whatsapp" } },
       select: {
         id: true,
         origin: true,
-        source: true,
-        intakeAt: true,
         entries: {
           where: { campaign: { not: null } },
           orderBy: { at: "desc" },
@@ -506,12 +592,11 @@ async function syncSaleLeads() {
     /**
      * --- שלב א': לחתום ערוץ על כניסות שנרשמו בלי חותמת ---
      *
-     * זה היה הבאג המרכזי: הוובוק רשם כניסה בלי isSale,
-     * והתהליך הזה יצר כניסה *שנייה* כדי לסמן שזו מכירה.
-     * הגעה אחת של אלעד נספרה כשתי כניסות, ולכן הליד הופיע
-     * אצלך עם התווית "כפול 2".
+     * כאן היה הבאג שגרם ל"כפול 2": הוובוק רשם כניסה בלי
+     * isSale, והקוד הזה יצר כניסה **שנייה** כדי לסמן שזו
+     * מכירה. הגעה אחת של אלעד נספרה כשתי כניסות.
      *
-     * עכשיו לא נוצרת שום כניסה חדשה. הכניסה הקיימת רק
+     * עכשיו לא נוצרת שום כניסה חדשה - הכניסה הקיימת רק
      * מקבלת את החותמת הנכונה, פעם אחת.
      */
     let stampedAny = false;
@@ -523,10 +608,7 @@ async function syncSaleLeads() {
       if (price === undefined) continue; // קמפיין שלך - נשאר שלך
 
       await db.leadEntry
-        .update({
-          where: { id: entry.id },
-          data: { isSale: true, price },
-        })
+        .update({ where: { id: entry.id }, data: { isSale: true, price } })
         .catch(() => null);
 
       entry.isSale = true;
@@ -536,13 +618,12 @@ async function syncSaleLeads() {
     /**
      * --- שלב ב': למי הליד שייך ---
      *
-     * ליד ששייך גם למערכת שלך נשאר שלך. קודם הכלל היה
-     * "הכניסה האחרונה קובעת", ולכן ליד שעבדת עליו עבר
-     * לאלעד ברגע שהוא נכנס אצלו - ונעלם לך מהרשימה.
+     * ליד שיש לו ולו כניסה אחת בערוץ שלך **נשאר שלך**, גם
+     * אם הוא נכנס גם אצל אלעד. שתי המערכות מחזיקות אותו
+     * במקביל: ליד רגיל אצלך, וליד רגיל אצלו.
      *
-     * שתי המערכות מחזיקות אותו במקביל: ליד רגיל אצלך,
-     * וליד רגיל אצלו. רק ליד שאין לו **אף כניסה** בערוץ
-     * שלך שייך לו בלבד.
+     * קודם הכלל היה "הכניסה האחרונה קובעת", ולכן ליד שעבדת
+     * עליו עבר לאלעד ברגע שנכנס אצלו - ונעלם לך מהרשימה.
      *
      * הספירה רצה אחרי החתימה, כדי שכניסה שזה עתה סומנה
      * כמכירה לא תיחשב בטעות ככניסה שלך.

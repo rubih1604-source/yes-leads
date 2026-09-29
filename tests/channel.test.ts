@@ -17,6 +17,7 @@ import {
   isSameSubmission,
   mineOnly,
   saleOnly,
+  MY_LEADS_WHERE,
 } from "../lib/channel";
 
 let passed = 0;
@@ -205,6 +206,41 @@ console.log("\nחותמת הערוץ היא הקובעת");
   );
   check("ליד בלי שום כניסה לא קיים באף ערוץ", existsIn([], "mine"), false);
   check("ואין לו תאריך", lastEntryAtIn([], "mine"), null);
+}
+
+// ------------------------------------------------------------
+console.log("\nמי נכנס לרשימת הלידים — וואטסאפ אף פעם לא");
+// ------------------------------------------------------------
+{
+  /**
+   * הבדיקה הזו נולדה מתקלה אמיתית: אנשים ששלחו הודעת
+   * וואטסאפ בלבד התחילו להופיע כלידים, כי אחד הענפים
+   * בסינון נשאר בלי תנאי בעלות.
+   *
+   * במקום לבדוק מסך, בודקים את ההגדרה עצמה: **בכל ענף**
+   * חייב להיות תנאי בעלות, ובשום ענף אסור שוואטסאפ יתקבל.
+   */
+  const branches = MY_LEADS_WHERE.OR as Array<Record<string, any>>;
+
+  check("יש לפחות ענף אחד בהגדרה", branches.length > 0, true);
+
+  const everyBranchHasOrigin = branches.every((b) => "origin" in b);
+  check("לכל ענף יש תנאי בעלות", everyBranchHasOrigin, true);
+
+  const whatsappAllowed = branches.some((b) => {
+    const o = b.origin;
+    if (typeof o === "string") return o === "whatsapp";
+    if (o && Array.isArray(o.in)) return o.in.includes("whatsapp");
+    return true; // תנאי שלא מזהים = לא בטוח, נכשל בכוונה
+  });
+  check("אף ענף לא מכניס וואטסאפ", whatsappAllowed, false);
+
+  const saleOnlyBlocked = branches.every((b) => {
+    if (b.entries?.some?.isSale === false) return true; // דורש כניסה שלך
+    if (b.entries?.none !== undefined) return b.origin === "leadmanager";
+    return false;
+  });
+  check("ליד שקיים רק אצל אלעד לא נכנס לרשימה שלך", saleOnlyBlocked, true);
 }
 
 // ------------------------------------------------------------

@@ -6,6 +6,7 @@ import { getSubStatusMap } from "@/lib/substatus";
 import { getRevenue } from "@/lib/revenue";
 import { getSettings } from "@/lib/settings";
 import { isExistingCustomer } from "@/lib/existing-customer";
+import { MY_LEADS_WHERE } from "@/lib/channel";
 import RevenueBar from "@/components/RevenueBar";
 
 export const dynamic = "force-dynamic";
@@ -29,34 +30,10 @@ export default async function HomePage() {
     // רק לידים אמיתיים. מי שכתב בוואטסאפ בלי להיות ליד
     // יושב במסך השיחות בלבד.
     /**
-     * ============================================================
-     *  כאן מופיע **רק הערוץ שלך**
-     * ============================================================
-     *
-     *  ערוץ המכירה הוא מערכת לידים נפרדת שחיה לצד שלך,
-     *  והוא יושב במסך "מכירת לידים" בלבד. הנתונים שלו לא
-     *  מתערבבים כאן.
-     *
-     *  ליד מופיע ברשימה הזו אם יש לו לפחות **כניסה אחת
-     *  בערוץ שלך**. אדם שנכנס גם אצלך וגם אצל אלעד מופיע
-     *  בשני המקומות - ליד רגיל בכל אחד מהם, בלי שום תלות
-     *  ביניהם.
-     *
-     *  התנאי השני הוא לידים ותיקים שנוצרו לפני שהתחלנו
-     *  לרשום כניסות בנפרד. אין להם אף כניסה, ולכן הם
-     *  נמדדים לפי הבעלות הישנה - כדי ששום ליד לא ייעלם.
+     * ההגדרה של "ליד שלי" יושבת במקום אחד - lib/channel.ts -
+     * ומשמשת גם כאן וגם בייצוא. וואטסאפ אף פעם לא נכנס.
      */
-    where: {
-      OR: [
-        { entries: { some: { isSale: false } } },
-        {
-          AND: [
-            { entries: { none: {} } },
-            { origin: { in: ["leadmanager", "sale"] } },
-          ],
-        },
-      ],
-    },
+    where: MY_LEADS_WHERE,
     /**
      * הליד האחרון שנכנס תמיד בראש.
      * createdAt כגיבוי, כדי שליד עם תאריך כניסה חריג

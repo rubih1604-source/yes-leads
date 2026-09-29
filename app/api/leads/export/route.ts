@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { isLoggedIn } from "@/lib/auth";
 import { displayPhone, phoneMatches } from "@/lib/phone";
+import { MY_LEADS_WHERE } from "@/lib/channel";
 
 export const dynamic = "force-dynamic";
 
@@ -72,8 +73,15 @@ export async function GET(request: Request) {
   }
 
   const leads = await db.lead.findMany({
+    /**
+     * אותה הגדרה בדיוק כמו ברשימת הלידים.
+     *
+     * הייצוא הולך לקהלים דומים בפייסבוק, ולכן חשוב במיוחד
+     * שלא ייכנסו אליו לא אנשי וואטסאפ ולא הלידים של אלעד -
+     * הם יעוותו לך את הקהל.
+     */
     where: {
-      origin: { in: ["leadmanager", "sale"] },
+      ...MY_LEADS_WHERE,
       ...(statuses.length ? { status: { in: statuses } } : {}),
       ...(since ? { intakeAt: { gte: since } } : {}),
     },
