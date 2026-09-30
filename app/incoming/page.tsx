@@ -20,20 +20,37 @@ function formatDate(d: Date): string {
  * יומן קליטה - מה בדיוק הגיע מליד מנגר.
  * זה המסך שממנו נדע איך למפות את השדות.
  */
+/**
+ * שמות המקורות בעברית. המקור נשמר באנגלית בשדה source,
+ * וככה רואים מיד אם השורה הגיעה מליד מנגר או מוואטסאפ
+ * במקום לנחש מתוך ה-JSON.
+ */
+const SOURCE_LABELS: Record<string, string> = {
+  leadmanager: "ליד מנגר",
+  facebook: "פייסבוק (ישיר)",
+  texter: "וואטסאפ",
+};
+
 export default async function IncomingPage({
   searchParams,
 }: {
-  searchParams?: { q?: string };
+  searchParams?: { q?: string; src?: string };
 }) {
   const q = (searchParams?.q ?? "").trim();
+  const src = (searchParams?.src ?? "").trim();
 
   /**
-   * כל מה שהגיע - בלי קשר לסטטוס, לשגיאה או למקור.
+   * כל מה שהגיע - בלי קשר לסטטוס או לשגיאה.
    * זה המסך שאמור לענות על "הליד הגיע או לא", ולכן הוא
-   * לא מסנן כלום ולא נופל על שגיאה.
+   * לא נופל על שגיאה.
+   *
+   * סינון לפי מקור, כי היומן מעורבב: הודעות וואטסאפ
+   * והלידים מליד מנגר נכנסים לאותה רשימה, והוואטסאפ
+   * מציף את מה שבאמת מחפשים.
    */
   const all = await db.webhookLog
     .findMany({
+      where: src ? { source: src } : undefined,
       orderBy: { createdAt: "desc" },
       take: q ? 1000 : 60,
     })
@@ -55,9 +72,14 @@ export default async function IncomingPage({
     digits = q.replace(/\D/g, "");
   }
 
+  /**
+   * כאן היה באג: החיפוש קרא שדה בשם payload, אבל השדה
+   * במסד נקרא rawPayload. התוצאה - החיפוש תמיד החזיר
+   * "לא נמצא כלום", גם כשהליד היה שם.
+   */
   const logs = q
     ? all.filter((log) => {
-        const raw = JSON.stringify(log.payload ?? {});
+        const raw = JSON.stringify(log.rawPayload ?? {});
         if (digits.length >= 4) {
           const rawDigits = raw.replace(/\D/g, "");
           if (rawDigits.includes(digits)) return true;
@@ -80,10 +102,45 @@ export default async function IncomingPage({
             className="search"
             name="q"
             defaultValue={q}
-            placeholder="חפש לפי טלפון או שם"
+            placeholder="חפש לפי טלפון, שם או fb_leadid"
             inputMode="search"
           />
+          {src ? <input type="hidden" name="src" value={src} /> : null}
         </form>
+      </div>
+
+      {/* סינון לפי מקור - כדי שהוואטסאפ לא יציף את הלידים */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "10px 0" }}>
+        {[
+          { key: "", label: "הכל" },
+          { key: "leadmanager", label: "ליד מנגר" },
+          { key: "facebook", label: "פייסבוק" },
+          { key: "texter", label: "וואטסאפ" },
+        ].map((opt) => {
+          const params = new URLSearchParams();
+          if (q) params.set("q", q);
+          if (opt.key) params.set("src", opt.key);
+          const href = `/incoming${params.toString() ? `?${params}` : ""}`;
+          const active = src === opt.key;
+
+          return (
+            <a
+              key={opt.key || "all"}
+              href={href}
+              style={{
+                padding: "6px 14px",
+                borderRadius: 999,
+                fontSize: 13.5,
+                textDecoration: "none",
+                border: "1px solid #dbe3ea",
+                background: active ? "#1b4d8f" : "#fff",
+                color: active ? "#fff" : "#475467",
+              }}
+            >
+              {opt.label}
+            </a>
+          );
+        })}
       </div>
 
       {logs.length === 0 ? (
@@ -106,12 +163,33 @@ export default async function IncomingPage({
                   : "#f59e0b",
               }}
             >
-              <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                {log.error
-                  ? `שגיאה: ${log.error}`
-                  : log.processed
-                  ? "נקלט בהצלחה"
-                  : "התקבל, לא עובד"}
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "center",
+                  marginBottom: 4,
+                  flexWrap: "wrap",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 12,
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                    background: "#eef2f7",
+                    color: "#475467",
+                  }}
+                >
+                  {SOURCE_LABELS[log.source] ?? log.source}
+                </span>
+                <span style={{ fontWeight: 600 }}>
+                  {log.error
+                    ? `שגיאה: ${log.error}`
+                    : log.processed
+                    ? "נקלט בהצלחה"
+                    : "התקבל, לא עובד"}
+                </span>
               </div>
               <pre
                 style={{
