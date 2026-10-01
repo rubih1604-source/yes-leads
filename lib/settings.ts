@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { readRowFields, type RowFieldKey } from "./row-fields";
+import { DEFAULT_DIALER } from "./dialer";
 
 export type AppSettings = {
   botEnabled: boolean;
@@ -16,6 +17,9 @@ export type AppSettings = {
   notifyEmail: boolean;
   notifyPush: boolean;
   notifyBanner: boolean;
+  /** תבניות החיוג - איזו אפליקציה פותחת שיחה */
+  dialerMobile: string;
+  dialerDesktop: string;
   botFromHour: number;
   botToHour: number;
   botStatuses: string[];
@@ -45,6 +49,8 @@ const DEFAULTS: AppSettings = {
   notifyEmail: true,
   notifyPush: true,
   notifyBanner: true,
+  dialerMobile: DEFAULT_DIALER,
+  dialerDesktop: DEFAULT_DIALER,
   botFromHour: 8,
   botToHour: 21,
   botStatuses: [],
@@ -82,6 +88,8 @@ export async function getSettings(): Promise<AppSettings> {
       callbackAfternoonHour: row.callbackAfternoonHour,
       callbackCutoffHour: row.callbackCutoffHour,
       callbackEnabled: row.callbackEnabled,
+      dialerMobile: row.dialerMobile || DEFAULT_DIALER,
+      dialerDesktop: row.dialerDesktop || DEFAULT_DIALER,
       notifyEmail: row.notifyEmail ?? true,
       notifyPush: row.notifyPush ?? true,
       notifyBanner: row.notifyBanner ?? true,

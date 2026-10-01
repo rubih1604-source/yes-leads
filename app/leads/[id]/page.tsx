@@ -8,6 +8,8 @@ import { getStatuses } from "@/lib/status-store";
 import { getSubStatusMap } from "@/lib/substatus";
 import { isExistingCustomer, supplierAnswer } from "@/lib/existing-customer";
 import LeadCardActions from "@/components/LeadCardActions";
+import CallLink from "@/components/CallLink";
+import { getSettings } from "@/lib/settings";
 import LeadTasks from "@/components/LeadTasks";
 import BackLink from "@/components/BackLink";
 import AutoRefresh from "@/components/AutoRefresh";
@@ -57,9 +59,10 @@ export default async function LeadPage({
 
   if (!lead) notFound();
 
-  const [statuses, subStatusMap] = await Promise.all([
+  const [statuses, subStatusMap, settings] = await Promise.all([
     getStatuses(),
     getSubStatusMap(),
+    getSettings(),
   ]);
 
   const lastAutoChange = await db.leadEvent.findFirst({
@@ -131,9 +134,13 @@ export default async function LeadPage({
             {lead.subStatus ? ` · ${lead.subStatus}` : ""}
           </span>
           <span className="sep">·</span>
-          <a href={`tel:${dialPhone(lead.phone)}`}>
+          <CallLink
+            phone={dialPhone(lead.phone)}
+            mobileTemplate={settings.dialerMobile}
+            desktopTemplate={settings.dialerDesktop}
+          >
             {displayPhone(lead.phone)}
-          </a>
+          </CallLink>
         </div>
       </div>
 
@@ -160,6 +167,8 @@ export default async function LeadPage({
           leadName={name}
           currentSub={lead.subStatus}
           subStatuses={subStatusMap}
+          dialerMobile={settings.dialerMobile}
+          dialerDesktop={settings.dialerDesktop}
         />
       </div>
 

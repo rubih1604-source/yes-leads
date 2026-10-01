@@ -62,6 +62,21 @@ export async function PATCH(request: Request) {
     if (typeof body[key] === "boolean") data[key] = body[key];
   }
 
+  /**
+   * תבניות החיוג.
+   *
+   * תבנית חייבת להכיל {phone}, אחרת כפתור החיוג היה יוצא
+   * שבור ובלי מספר. תבנית לא תקינה פשוט לא נשמרת.
+   */
+  for (const key of ["dialerMobile", "dialerDesktop"]) {
+    if (typeof body[key] === "string") {
+      const value = body[key].trim();
+      if (value.includes("{phone}") && value.length <= 200) {
+        data[key] = value;
+      }
+    }
+  }
+
   if (typeof body.callbackEnabled === "boolean") {
     data.callbackEnabled = body.callbackEnabled;
   }

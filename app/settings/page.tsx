@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import { getStatuses } from "@/lib/status-store";
 import PushSetup from "@/components/PushSetup";
 import NotifyChannels from "@/components/NotifyChannels";
+import DialerSettings from "@/components/DialerSettings";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +59,11 @@ export default async function SettingsPage() {
         banner={settings.notifyBanner}
       />
       <PushSetup />
+
+      <DialerSettings
+        mobile={settings.dialerMobile}
+        desktop={settings.dialerDesktop}
+      />
 
       <div className="section-title">העוזר</div>
       <BotSettings

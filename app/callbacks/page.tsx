@@ -6,6 +6,7 @@ import { statusColor } from "@/lib/statuses";
 import { displayPhone, dialPhone } from "@/lib/phone";
 import AutoRefresh from "@/components/AutoRefresh";
 import CallbackNowButton from "@/components/CallbackNowButton";
+import CallLink from "@/components/CallLink";
 
 export const dynamic = "force-dynamic";
 
@@ -95,13 +96,15 @@ export default async function CallbacksPage() {
                 </div>
               </Link>
               <div className="row-actions">
-                <a
+                <CallLink
                   className="row-btn call"
-                  href={`tel:${dialPhone(lead.phone)}`}
-                  aria-label="התקשר"
+                  phone={dialPhone(lead.phone)}
+                  mobileTemplate={settings.dialerMobile}
+                  desktopTemplate={settings.dialerDesktop}
+                  title="התקשר"
                 >
                   ✆
-                </a>
+                </CallLink>
               </div>
             </div>
           ))}

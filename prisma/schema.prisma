@@ -200,6 +200,11 @@ model Settings {
   callbackEnabled      Boolean   @default(false)
 
   // לאן מגיעות התראות: מייל, נייד, באנר במערכת
+  // חייגן: לאיזו אפליקציה כפתור החיוג פונה.
+  // {phone} מוחלף במספר. ברירת המחדל היא חייגן המכשיר.
+  dialerMobile         String    @default("tel:{phone}")
+  dialerDesktop        String    @default("tel:{phone}")
+
   notifyEmail          Boolean   @default(true)
   notifyPush           Boolean   @default(true)
   notifyBanner         Boolean   @default(true)

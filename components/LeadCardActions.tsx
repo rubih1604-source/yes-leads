@@ -6,6 +6,8 @@ import SendTemplateSheet, { type TemplateOption } from "./SendTemplateSheet";
 import SendKnowledgeSheet, { type KnowledgeOption } from "./SendKnowledgeSheet";
 import type { StatusDef } from "@/lib/statuses";
 import AddTaskSheet from "./AddTaskSheet";
+import CallLink from "./CallLink";
+import { DEFAULT_DIALER } from "@/lib/dialer";
 import { useRouter } from "next/navigation";
 
 export default function LeadCardActions({
@@ -23,6 +25,8 @@ export default function LeadCardActions({
   leadName,
   currentSub,
   subStatuses,
+  dialerMobile = DEFAULT_DIALER,
+  dialerDesktop = DEFAULT_DIALER,
 }: {
   leadId: string;
   phone: string;
@@ -38,6 +42,9 @@ export default function LeadCardActions({
   leadName: string;
   currentSub: string | null;
   subStatuses: Record<string, string[]>;
+  /** לאיזה חייגן כפתור ההתקשרות פונה */
+  dialerMobile?: string;
+  dialerDesktop?: string;
 }) {
   const [statusOpen, setStatusOpen] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
@@ -70,9 +77,14 @@ export default function LeadCardActions({
   return (
     <>
       <div className="actions">
-        <a className="btn call" href={`tel:${phone}`}>
+        <CallLink
+          className="btn call"
+          phone={phone}
+          mobileTemplate={dialerMobile}
+          desktopTemplate={dialerDesktop}
+        >
           התקשר
-        </a>
+        </CallLink>
         <button className="btn primary" onClick={() => setStatusOpen(true)}>
           שנה סטטוס
         </button>

@@ -147,6 +147,8 @@ export default async function HomePage() {
         subStatuses={subStatuses}
         templates={templates}
         rowFields={settings.leadRowFields}
+        dialerMobile={settings.dialerMobile}
+        dialerDesktop={settings.dialerDesktop}
       />
     </div>
   );

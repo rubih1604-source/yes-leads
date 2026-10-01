@@ -6,6 +6,8 @@ import { useSearchParams } from "next/navigation";
 import { statusColor, type StatusDef } from "@/lib/statuses";
 import { displayPhone, dialPhone, phoneMatches } from "@/lib/phone";
 import { DEFAULT_ROW_FIELDS, type RowFieldKey } from "@/lib/row-fields";
+import { DEFAULT_DIALER } from "@/lib/dialer";
+import CallLink from "./CallLink";
 import StatusSheet from "./StatusSheet";
 
 export type LeadRow = {
@@ -133,6 +135,8 @@ export default function LeadList({
   templates = [],
   rowFields = DEFAULT_ROW_FIELDS,
   saleCampaigns = [],
+  dialerMobile = DEFAULT_DIALER,
+  dialerDesktop = DEFAULT_DIALER,
 }: {
   leads: LeadRow[];
   statuses: StatusDef[];
@@ -140,6 +144,9 @@ export default function LeadList({
   templates?: Array<{ name: string; displayName: string | null }>;
   rowFields?: RowFieldKey[];
   saleCampaigns?: Array<{ id: string; name: string; pricePerLead: number }>;
+  /** לאיזה חייגן כפתור החיוג פונה. ברירת מחדל: חייגן המכשיר */
+  dialerMobile?: string;
+  dialerDesktop?: string;
 }) {
   /**
    * הסינון נשמר בכתובת.
@@ -867,14 +874,17 @@ export default function LeadList({
                 </Link>
 
                 <div className="row-actions">
-                  <a
+                  <span onClick={(e) => e.stopPropagation()}>
+                  <CallLink
                     className="row-btn call"
-                    href={`tel:${dialPhone(lead.phone)}`}
-                    aria-label="התקשר"
-                    onClick={(e) => e.stopPropagation()}
+                    phone={dialPhone(lead.phone)}
+                    mobileTemplate={dialerMobile}
+                    desktopTemplate={dialerDesktop}
+                    title="התקשר"
                   >
                     ✆
-                  </a>
+                  </CallLink>
+                  </span>
                   <button
                     className="row-btn"
                     aria-label="שנה סטטוס"
