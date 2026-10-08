@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { isLoggedIn } from "@/lib/auth";
 import { displayPhone, phoneMatches } from "@/lib/phone";
 import { MY_LEADS_WHERE } from "@/lib/channel";
+import { resolveRange, type PeriodKey } from "@/lib/periods";
 
 export const dynamic = "force-dynamic";
 
@@ -59,18 +60,30 @@ export async function GET(request: Request) {
   const period = url.searchParams.get("period");
   const query = (url.searchParams.get("q") ?? "").trim();
 
-  // חלון זמן, אותו היגיון כמו במסך
-  let since: Date | null = null;
-  const now = new Date();
-  if (period === "today") {
-    const d = new Date(now);
-    d.setHours(0, 0, 0, 0);
-    since = d;
-  } else if (period === "week") {
-    since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  } else if (period === "month") {
-    since = new Date(now.getFullYear(), now.getMonth(), 1);
-  }
+  /**
+   * הטווח מחושב בשעון ישראל, לא בשעון השרת.
+   *
+   * השרת רץ ב-UTC, ולכן "היום" שלו מתחיל ב-3 לפנות בוקר
+   * שלך. בלי זה הייצוא והרשימה היו מראים מספרים שונים
+   * בשעות הקטנות.
+   */
+  const PERIOD_MAP: Record<string, PeriodKey> = {
+    today: "today",
+    yesterday: "yesterday",
+    week: "last_7",
+    month: "this_month",
+    last_month: "last_month",
+    custom: "custom",
+    all: "all",
+  };
+
+  const range = period
+    ? resolveRange(
+        PERIOD_MAP[period] ?? "all",
+        url.searchParams.get("from"),
+        url.searchParams.get("to")
+      )
+    : null;
 
   const leads = await db.lead.findMany({
     /**
@@ -83,7 +96,9 @@ export async function GET(request: Request) {
     where: {
       ...MY_LEADS_WHERE,
       ...(statuses.length ? { status: { in: statuses } } : {}),
-      ...(since ? { intakeAt: { gte: since } } : {}),
+      ...(range && period !== "all"
+        ? { intakeAt: { gte: range.from, lt: range.to } }
+        : {}),
     },
     orderBy: { intakeAt: "desc" },
     take: 5000,

@@ -146,7 +146,16 @@ export async function getLeadSales(
     }
     byCampaign.set(key, row);
 
-    if (entries.length < 300 && entry.lead) {
+    /**
+     * הרשימה מציגה **רק את הטווח שנבחר**.
+     *
+     * כאן היה הבאג: הטווח סינן את המונים למעלה אבל לא את
+     * הרשימה עצמה, ולכן לחיצה על "החודש" שינתה את המספרים
+     * ולא את מה שמופיע מתחתם.
+     */
+    const inRange = entry.at >= from && entry.at < to;
+
+    if (inRange && entries.length < 300 && entry.lead) {
       entries.push({
         id: entry.id,
         leadId: entry.lead.id,

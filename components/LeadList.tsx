@@ -31,11 +31,22 @@ export type LeadRow = {
 const SAVE_KEY = "leads:filters";
 const SCROLL_KEY = "leads:scroll";
 
+export type PeriodKey =
+  | "all"
+  | "today"
+  | "yesterday"
+  | "week"
+  | "month"
+  | "last_month"
+  | "custom";
+
 type SavedFilters = {
   status: string[];
   campaign: string | null;
-  period: "all" | "today" | "week" | "month";
+  period: PeriodKey;
   q: string;
+  from: string;
+  to: string;
 };
 
 const EMPTY_FILTERS: SavedFilters = {
@@ -43,6 +54,8 @@ const EMPTY_FILTERS: SavedFilters = {
   campaign: null,
   period: "all",
   q: "",
+  from: "",
+  to: "",
 };
 
 /**
@@ -56,9 +69,10 @@ function readSaved(params: URLSearchParams): SavedFilters {
       .map((x) => x.trim())
       .filter(Boolean),
     campaign: params.get("campaign"),
-    period:
-      (params.get("period") as SavedFilters["period"]) ?? "all",
+    period: (params.get("period") as PeriodKey) ?? "all",
     q: params.get("q") ?? "",
+    from: params.get("from") ?? "",
+    to: params.get("to") ?? "",
   };
 
   const urlHasSomething =
@@ -83,12 +97,20 @@ function readSaved(params: URLSearchParams): SavedFilters {
         ? [parsed.status]
         : [],
       campaign: typeof parsed.campaign === "string" ? parsed.campaign : null,
-      period: ["all", "today", "week", "month"].includes(
-        parsed.period as string
-      )
-        ? (parsed.period as SavedFilters["period"])
+      period: [
+        "all",
+        "today",
+        "yesterday",
+        "week",
+        "month",
+        "last_month",
+        "custom",
+      ].includes(parsed.period as string)
+        ? (parsed.period as PeriodKey)
         : "all",
       q: typeof parsed.q === "string" ? parsed.q : "",
+      from: typeof parsed.from === "string" ? parsed.from : "",
+      to: typeof parsed.to === "string" ? parsed.to : "",
     };
   } catch {
     return { ...EMPTY_FILTERS };
@@ -96,24 +118,70 @@ function readSaved(params: URLSearchParams): SavedFilters {
 }
 
 /** מרגע מתי לספור, לפי התקופה שנבחרה */
-function periodStart(period: string): number | null {
-  const now = new Date();
+/**
+ * ============================================================
+ *  הטווח שנבחר, כשני גבולות
+ * ============================================================
+ *
+ *  קודם הייתה כאן רק נקודת התחלה, ולכן אי אפשר היה לבחור
+ *  תקופה **סגורה** כמו "אתמול" או "חודש שעבר" - הסינון תמיד
+ *  המשיך עד היום.
+ *
+ *  עכשיו יש התחלה וסוף. null פירושו בלי גבול בצד הזה.
+ *  הכל נמדד בשעון המקומי שלך, כי זה רץ בדפדפן.
+ */
+export function periodRange(
+  period: PeriodKey,
+  from: string,
+  to: string,
+  now: Date = new Date()
+): { start: number | null; end: number | null } {
+  const midnight = (d: Date) => {
+    const x = new Date(d);
+    x.setHours(0, 0, 0, 0);
+    return x;
+  };
 
   if (period === "today") {
-    const d = new Date(now);
-    d.setHours(0, 0, 0, 0);
-    return d.getTime();
+    return { start: midnight(now).getTime(), end: null };
+  }
+
+  if (period === "yesterday") {
+    const todayStart = midnight(now);
+    const yStart = new Date(todayStart);
+    yStart.setDate(yStart.getDate() - 1);
+    return { start: yStart.getTime(), end: todayStart.getTime() };
   }
 
   if (period === "week") {
-    return now.getTime() - 7 * 24 * 60 * 60 * 1000;
+    return { start: now.getTime() - 7 * 24 * 60 * 60 * 1000, end: null };
   }
 
   if (period === "month") {
-    return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    return {
+      start: new Date(now.getFullYear(), now.getMonth(), 1).getTime(),
+      end: null,
+    };
   }
 
-  return null;
+  if (period === "last_month") {
+    return {
+      start: new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime(),
+      end: new Date(now.getFullYear(), now.getMonth(), 1).getTime(),
+    };
+  }
+
+  if (period === "custom") {
+    // בלי תאריכים זה עדיין "הכל", כדי שלא ייעלם הכל פתאום
+    const start = from ? new Date(`${from}T00:00:00`).getTime() : null;
+    const end = to ? new Date(`${to}T23:59:59.999`).getTime() : null;
+    return {
+      start: Number.isNaN(start as number) ? null : start,
+      end: Number.isNaN(end as number) ? null : end,
+    };
+  }
+
+  return { start: null, end: null };
 }
 
 /** חותמת הכניסה המדויקת - תאריך ושעה */
@@ -167,9 +235,9 @@ export default function LeadList({
   const [query, setQuery] = useState(initial.q);
   const [filter, setFilter] = useState<string[]>(initial.status);
   const [campaign, setCampaign] = useState<string | null>(initial.campaign);
-  const [period, setPeriod] = useState<"all" | "today" | "week" | "month">(
-    initial.period
-  );
+  const [period, setPeriod] = useState<PeriodKey>(initial.period);
+  const [rangeFrom, setRangeFrom] = useState(initial.from);
+  const [rangeTo, setRangeTo] = useState(initial.to);
 
   const [campaignOpen, setCampaignOpen] = useState(false);
   const [sheetFor, setSheetFor] = useState<LeadRow | null>(null);
@@ -196,6 +264,8 @@ export default function LeadList({
       campaign,
       period,
       q: query.trim(),
+      from: rangeFrom,
+      to: rangeTo,
     };
 
     try {
@@ -209,6 +279,8 @@ export default function LeadList({
     if (state.campaign) next.set("campaign", state.campaign);
     if (state.period !== "all") next.set("period", state.period);
     if (state.q) next.set("q", state.q);
+    if (state.period === "custom" && state.from) next.set("from", state.from);
+    if (state.period === "custom" && state.to) next.set("to", state.to);
 
     const qs = next.toString();
     const target = qs ? `?${qs}` : window.location.pathname;
@@ -216,7 +288,7 @@ export default function LeadList({
     if (`${window.location.search}` !== (qs ? `?${qs}` : "")) {
       window.history.replaceState(null, "", target);
     }
-  }, [filter, campaign, period, query]);
+  }, [filter, campaign, period, query, rangeFrom, rangeTo]);
 
   /** שומר את מיקום הגלילה, כדי לחזור בדיוק לאותו מקום ברשימה */
   useEffect(() => {
@@ -269,6 +341,8 @@ export default function LeadList({
     setCampaign(null);
     setPeriod("all");
     setQuery("");
+    setRangeFrom("");
+    setRangeTo("");
     try {
       sessionStorage.removeItem(SAVE_KEY);
       sessionStorage.removeItem(SCROLL_KEY);
@@ -352,11 +426,14 @@ export default function LeadList({
 
   const visible = useMemo(() => {
     const q = query.trim();
-    const since = periodStart(period);
+    const { start, end } = periodRange(period, rangeFrom, rangeTo);
 
     return leads.filter((lead) => {
-      if (since !== null && new Date(lead.intakeAt).getTime() < since)
-        return false;
+      const at = new Date(lead.intakeAt).getTime();
+
+      // תקופה סגורה כמו "אתמול" צריכה גם גבול עליון
+      if (start !== null && at < start) return false;
+      if (end !== null && at >= end) return false;
       if (campaign && lead.campaign !== campaign) return false;
       if (filter.length > 0 && !filter.includes(lead.status)) return false;
 
@@ -365,7 +442,7 @@ export default function LeadList({
       const name = `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim();
       return name.includes(q) || phoneMatches(lead.phone, q);
     });
-  }, [leads, query, filter, campaign, period]);
+  }, [leads, query, filter, campaign, period, rangeFrom, rangeTo]);
 
   /** הקמפיינים שיש בפועל, לפי כמות לידים */
   const campaigns = useMemo(() => {
@@ -483,8 +560,11 @@ export default function LeadList({
           [
             { key: "all", label: "הכל" },
             { key: "today", label: "היום" },
+            { key: "yesterday", label: "אתמול" },
             { key: "week", label: "7 ימים" },
             { key: "month", label: "החודש" },
+            { key: "last_month", label: "חודש שעבר" },
+            { key: "custom", label: "טווח תאריכים" },
           ] as const
         ).map((opt) => (
           <button
@@ -497,6 +577,52 @@ export default function LeadList({
           </button>
         ))}
       </div>
+
+      {/* שדות התאריך מופיעים רק כשבוחרים טווח, כדי לא לעמס */}
+      {period === "custom" && (
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+            flexWrap: "wrap",
+            margin: "2px 0 10px",
+            fontSize: 13.5,
+          }}
+        >
+          <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <span style={{ color: "#475467" }}>מ־</span>
+            <input
+              type="date"
+              className="search"
+              style={{ padding: "6px 9px" }}
+              value={rangeFrom}
+              onChange={(e) => setRangeFrom(e.target.value)}
+            />
+          </label>
+          <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <span style={{ color: "#475467" }}>עד</span>
+            <input
+              type="date"
+              className="search"
+              style={{ padding: "6px 9px" }}
+              value={rangeTo}
+              onChange={(e) => setRangeTo(e.target.value)}
+            />
+          </label>
+          {(rangeFrom || rangeTo) && (
+            <button
+              className="chip"
+              onClick={() => {
+                setRangeFrom("");
+                setRangeTo("");
+              }}
+            >
+              נקה
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="filters">
         {campaigns.length > 0 && (
@@ -730,6 +856,8 @@ export default function LeadList({
                 ...(filter.length ? { status: filter.join(",") } : {}),
                 ...(campaign ? { campaign } : {}),
                 ...(period !== "all" ? { period } : {}),
+                ...(period === "custom" && rangeFrom ? { from: rangeFrom } : {}),
+                ...(period === "custom" && rangeTo ? { to: rangeTo } : {}),
                 ...(query.trim() ? { q: query.trim() } : {}),
               }).toString()}`}
               style={{

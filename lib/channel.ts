@@ -154,6 +154,21 @@ export function lastEntryAtIn(
  */
 export const SAME_SUBMISSION_MINUTES = 15;
 
+/**
+ * כשאין מזהה הגשה של פייסבוק, החלון ארוך בהרבה.
+ *
+ * ליד מנגר שולח webhook גם כשמשתנה **סטטוס**, לא רק
+ * כשנכנס ליד חדש. בלי מזהה הגשה אין איך להבדיל, וחלון של
+ * 15 דקות אומר שכל שינוי סטטוס שעשית נרשם ככניסה חדשה:
+ * הליד קיבל תאריך של היום, נספר כ"כפול", וסינון לפי
+ * תקופה הפסיק להיות אמין.
+ *
+ * אדם שבאמת ממלא את אותו טופס פעמיים באותו יום הוא מקרה
+ * נדיר, ולספור אותו כאחד מזיק הרבה פחות מלהפוך כל עדכון
+ * סטטוס לכניסה.
+ */
+export const SAME_SUBMISSION_MINUTES_NO_ID = 24 * 60;
+
 export function isSameSubmission(args: {
   /** מזהה ההגשה של פייסבוק בכניסה הנכנסת */
   incomingFbId: string | null;
@@ -170,9 +185,17 @@ export function isSameSubmission(args: {
   if (args.incomingFbId && args.knownFbId === args.incomingFbId) return true;
 
   const now = args.now ?? new Date();
-  const window = SAME_SUBMISSION_MINUTES * 60 * 1000;
+  /**
+   * יש מזהה הגשה ושונה מהקודם -> זו באמת הגשה חדשה,
+   * ואין צורך בחלון זמן בכלל.
+   */
+  const minutes = args.incomingFbId
+    ? SAME_SUBMISSION_MINUTES
+    : SAME_SUBMISSION_MINUTES_NO_ID;
 
-  // אחרת: כניסה **באותו ערוץ** מהדקות האחרונות
+  const window = minutes * 60 * 1000;
+
+  // אחרת: כניסה **באותו ערוץ** מהזמן האחרון
   return args.entries.some((e) => {
     if (channelOfEntry(e) !== args.channel) return false;
     if (!e.at) return false;

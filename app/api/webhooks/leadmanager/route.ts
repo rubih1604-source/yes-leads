@@ -9,7 +9,11 @@ import {
 import { isExistingCustomer } from "@/lib/existing-customer";
 import { isKnownStatus } from "@/lib/status-store";
 import { scheduleForStatus } from "@/lib/rules";
-import { channelForIncoming, isSameSubmission } from "@/lib/channel";
+import {
+  channelForIncoming,
+  isSameSubmission,
+  SAME_SUBMISSION_MINUTES_NO_ID,
+} from "@/lib/channel";
 
 export const dynamic = "force-dynamic";
 
@@ -264,11 +268,18 @@ async function handle(request: Request) {
        * נבלעה ולא נרשמה בכלל. שתי מערכות נפרדות; כניסה
        * באחת לא מבטלת כניסה בשנייה.
        */
+      /**
+       * טווח השליפה חייב לכסות את החלון הארוך ביותר שהבדיקה
+       * משתמשת בו, אחרת היא פשוט לא תראה את הכניסה הקודמת
+       * ותחשוב שזו הגעה חדשה.
+       */
+      const lookback = (SAME_SUBMISSION_MINUTES_NO_ID + 60) * 60 * 1000;
+
       const recentEntries = await db.leadEntry
         .findMany({
           where: {
             leadId: existing.id,
-            at: { gte: new Date(Date.now() - 60 * 60 * 1000) },
+            at: { gte: new Date(Date.now() - lookback) },
           },
           select: { isSale: true, campaign: true, at: true },
         })

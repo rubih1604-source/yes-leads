@@ -170,11 +170,31 @@ console.log('\n"אותה הגשה" — בתוך הערוץ בלבד');
     true
   );
 
+  /**
+   * שונה בכוונה: בלי מזהה הגשה, הפרש של כמה שעות נחשב
+   * לאותה הגשה. זה מה שמונע מכל שינוי סטטוס בליד מנגר
+   * להירשם ככניסה חדשה. ההבחנה האמיתית נעשית לפי מזהה
+   * ההגשה, כפי שהבדיקה הבאה מראה.
+   */
   check(
-    "כניסה אמיתית חדשה אחרי שעות = לא אותה הגשה",
+    "בלי מזהה הגשה, הפרש של שעות = אותה הגשה",
     isSameSubmission({
       incomingFbId: null,
       knownFbId: null,
+      channel: "mine",
+      entries: [
+        { isSale: false, campaign: "גאוגרפי", at: t("2026-09-28T06:00:00Z") },
+      ],
+      now,
+    }),
+    true
+  );
+
+  check(
+    "אבל עם מזהה הגשה שונה — הגעה חדשה, גם אחרי שעות",
+    isSameSubmission({
+      incomingFbId: "fb-222",
+      knownFbId: "fb-111",
       channel: "mine",
       entries: [
         { isSale: false, campaign: "גאוגרפי", at: t("2026-09-28T06:00:00Z") },
@@ -206,6 +226,85 @@ console.log("\nחותמת הערוץ היא הקובעת");
   );
   check("ליד בלי שום כניסה לא קיים באף ערוץ", existsIn([], "mine"), false);
   check("ואין לו תאריך", lastEntryAtIn([], "mine"), null);
+}
+
+// ------------------------------------------------------------
+console.log("\nעדכון סטטוס מליד מנגר אינו כניסה חדשה");
+// ------------------------------------------------------------
+{
+  /**
+   * ליד מנגר שולח webhook גם כשמשתנה סטטוס. בלי מזהה הגשה
+   * אין איך להבדיל בינו לבין ליד חדש, וחלון קצר הפך כל
+   * שינוי סטטוס לכניסה — מה ששבר את הסינון לפי תקופה.
+   */
+  const now = t("2026-10-07T12:00:00Z");
+  const morning = [
+    { isSale: false, campaign: "גאוגרפי", at: t("2026-10-07T06:00:00Z") },
+  ];
+
+  check(
+    "שינוי סטטוס 6 שעות אחרי הכניסה — לא כניסה חדשה",
+    isSameSubmission({
+      incomingFbId: null,
+      knownFbId: null,
+      channel: "mine",
+      entries: morning,
+      now,
+    }),
+    true
+  );
+
+  check(
+    "גם יום אחרי — עדיין לא כניסה חדשה",
+    isSameSubmission({
+      incomingFbId: null,
+      knownFbId: null,
+      channel: "mine",
+      entries: [
+        { isSale: false, campaign: "גאוגרפי", at: t("2026-10-06T13:00:00Z") },
+      ],
+      now,
+    }),
+    true
+  );
+
+  check(
+    "אחרי יומיים — זו באמת הגעה חדשה",
+    isSameSubmission({
+      incomingFbId: null,
+      knownFbId: null,
+      channel: "mine",
+      entries: [
+        { isSale: false, campaign: "גאוגרפי", at: t("2026-10-05T06:00:00Z") },
+      ],
+      now,
+    }),
+    false
+  );
+
+  check(
+    "עם מזהה הגשה שונה — הגעה חדשה גם באותו יום",
+    isSameSubmission({
+      incomingFbId: "fb-999",
+      knownFbId: "fb-111",
+      channel: "mine",
+      entries: morning,
+      now,
+    }),
+    false
+  );
+
+  check(
+    "ההפרדה מאלעד נשמרה — כניסה שלו לא נבלעת גם בחלון הארוך",
+    isSameSubmission({
+      incomingFbId: null,
+      knownFbId: null,
+      channel: "sale",
+      entries: morning,
+      now,
+    }),
+    false
+  );
 }
 
 // ------------------------------------------------------------
