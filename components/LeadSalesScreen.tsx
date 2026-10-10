@@ -221,6 +221,37 @@ export default function LeadSalesScreen({
         </div>
       </div>
 
+      {/*
+        הורדת הדוח להתחשבנות.
+        מוריד בדיוק את הטווח והקמפיין שמוצגים עכשיו על המסך,
+        כדי שמה שתראה הוא מה שתקבל בקובץ.
+      */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "10px 0" }}>
+        <a
+          className="btn"
+          href={`/api/lead-sales/export?${new URLSearchParams({
+            period,
+            ...(period === "custom" ? { from: customFrom, to: customTo } : {}),
+            ...(filter ? { campaign: filter } : {}),
+          }).toString()}`}
+          style={{ textDecoration: "none" }}
+        >
+          הורד דוח להתחשבנות
+        </a>
+        <a
+          className="btn"
+          href={`/api/lead-sales/export?${new URLSearchParams({
+            period,
+            ...(period === "custom" ? { from: customFrom, to: customTo } : {}),
+            ...(filter ? { campaign: filter } : {}),
+            billable: "1",
+          }).toString()}`}
+          style={{ textDecoration: "none" }}
+        >
+          רק מה שלחיוב
+        </a>
+      </div>
+
       {missingEntries > 0 && (
         <div className="card">
           <div style={{ fontWeight: 600, marginBottom: 4 }}>
