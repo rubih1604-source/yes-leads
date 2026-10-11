@@ -1,8 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import {
+  SALE_COLUMNS,
+  DEFAULT_SALE_COLUMNS,
+  type SaleColumnKey,
+} from "@/lib/sale-report-columns";
 import type {
   CampaignStat,
   BuyerStat,
@@ -52,6 +57,45 @@ export default function LeadSalesScreen({
   const [customTo, setCustomTo] = useState(
     to || new Date().toISOString().slice(0, 10)
   );
+  /**
+   * אילו עמודות ייכנסו לקובץ. נשמר בדפדפן, כדי שלא תצטרך
+   * לבחור מחדש בכל פעם שאתה מוריד דוח.
+   */
+  const [cols, setCols] = useState<SaleColumnKey[]>(DEFAULT_SALE_COLUMNS);
+  const [colsOpen, setColsOpen] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("sale-report:cols");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as string[];
+      const valid = SALE_COLUMNS.filter((c) => parsed.includes(c.key)).map(
+        (c) => c.key
+      );
+      if (valid.length > 0) setCols(valid);
+    } catch {
+      // אם הדפדפן חוסם - פשוט נשארים עם ברירת המחדל
+    }
+  }, []);
+
+  function toggleCol(key: SaleColumnKey) {
+    setCols((prev) => {
+      const next = prev.includes(key)
+        ? prev.filter((k) => k !== key)
+        : [...prev, key];
+
+      // לפחות עמודה אחת, אחרת הקובץ יורד ריק
+      const safe = next.length > 0 ? next : prev;
+
+      try {
+        localStorage.setItem("sale-report:cols", JSON.stringify(safe));
+      } catch {
+        // לא קריטי
+      }
+      return safe;
+    });
+  }
+
   const [tab, setTab] = useState<"leads" | "campaigns" | "buyers">("leads");
   const [filter, setFilter] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -233,6 +277,7 @@ export default function LeadSalesScreen({
             period,
             ...(period === "custom" ? { from: customFrom, to: customTo } : {}),
             ...(filter ? { campaign: filter } : {}),
+            cols: cols.join(","),
           }).toString()}`}
           style={{ textDecoration: "none" }}
         >
@@ -244,13 +289,80 @@ export default function LeadSalesScreen({
             period,
             ...(period === "custom" ? { from: customFrom, to: customTo } : {}),
             ...(filter ? { campaign: filter } : {}),
+            cols: cols.join(","),
             billable: "1",
           }).toString()}`}
           style={{ textDecoration: "none" }}
         >
           רק מה שלחיוב
         </a>
+        <button className="btn" onClick={() => setColsOpen((v) => !v)}>
+          עמודות ({cols.length}) {colsOpen ? "⌃" : "⌄"}
+        </button>
       </div>
+
+      {/* בורר העמודות - מה ייכנס לקובץ */}
+      {colsOpen && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div style={{ fontWeight: 600, marginBottom: 2 }}>
+            אילו עמודות יופיעו בקובץ
+          </div>
+          <div style={{ fontSize: 13, color: "#475467", marginBottom: 10 }}>
+            הבחירה נשמרת, ותחול גם על ההורדות הבאות. הסדר בקובץ קבוע
+            ולא תלוי בסדר שבו סימנת.
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {SALE_COLUMNS.map((c) => (
+              <label
+                key={c.key}
+                style={{
+                  display: "flex",
+                  gap: 9,
+                  alignItems: "center",
+                  padding: "7px 10px",
+                  borderRadius: 8,
+                  border: `1px solid ${
+                    cols.includes(c.key) ? "#1b4d8f" : "#dbe3ea"
+                  }`,
+                  background: cols.includes(c.key) ? "#f2f7fd" : "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={cols.includes(c.key)}
+                  onChange={() => toggleCol(c.key)}
+                />
+                <span style={{ fontWeight: 500 }}>{c.label}</span>
+                {c.note && (
+                  <span style={{ fontSize: 12.5, color: "#667085" }}>
+                    {c.note}
+                  </span>
+                )}
+              </label>
+            ))}
+          </div>
+
+          <button
+            className="btn"
+            style={{ marginTop: 10 }}
+            onClick={() => {
+              setCols([...DEFAULT_SALE_COLUMNS]);
+              try {
+                localStorage.setItem(
+                  "sale-report:cols",
+                  JSON.stringify(DEFAULT_SALE_COLUMNS)
+                );
+              } catch {
+                // לא קריטי
+              }
+            }}
+          >
+            חזרה לברירת המחדל
+          </button>
+        </div>
+      )}
 
       {missingEntries > 0 && (
         <div className="card">

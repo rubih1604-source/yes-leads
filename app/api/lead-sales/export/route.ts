@@ -4,6 +4,11 @@ import { displayPhone } from "@/lib/phone";
 import { normalizeName } from "@/lib/sales-campaigns";
 import { isExistingCustomer } from "@/lib/existing-customer";
 import { resolveRange, type PeriodKey } from "@/lib/periods";
+import {
+  SALE_COLUMNS,
+  readSaleColumns,
+  type SaleColumnKey,
+} from "@/lib/sale-report-columns";
 
 export const dynamic = "force-dynamic";
 
@@ -28,20 +33,17 @@ export const dynamic = "force-dynamic";
  *    billable - 1 כדי לקבל רק את מה שבאמת לחיוב
  */
 
-const COLUMNS = [
-  { key: "date", label: "תאריך" },
-  { key: "time", label: "שעה" },
-  { key: "name", label: "שם" },
-  { key: "phone", label: "טלפון" },
-  { key: "campaign", label: "קמפיין" },
-  { key: "buyer", label: "קונה" },
-  { key: "price", label: "מחיר לליד" },
-  { key: "billable", label: "לחיוב" },
-  { key: "existing", label: "לקוח קיים" },
-];
+
 
 function esc(value: string): string {
   return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+/** השדות הנוספים של הליד, שבהם יושב גם המייל */
+function extraOf(extra: unknown): Record<string, string> {
+  return extra && typeof extra === "object" && !Array.isArray(extra)
+    ? (extra as Record<string, string>)
+    : {};
 }
 
 function dateParts(at: Date): { date: string; time: string } {
@@ -77,6 +79,14 @@ export async function GET(request: Request) {
     "all",
     "custom",
   ];
+
+  /**
+   * אילו עמודות להוציא. בלי פרמטר - ברירת המחדל.
+   */
+  const cols = readSaleColumns(url.searchParams.get("cols"));
+  const labelOf = new Map<SaleColumnKey, string>(
+    SALE_COLUMNS.map((c) => [c.key, c.label])
+  );
 
   const asked = url.searchParams.get("period") as PeriodKey | null;
   const period: PeriodKey =
@@ -135,7 +145,9 @@ export async function GET(request: Request) {
     },
   });
 
-  const lines: string[] = [COLUMNS.map((c) => c.label).join(",")];
+  const lines: string[] = [
+    cols.map((k) => esc(labelOf.get(k) ?? k)).join(","),
+  ];
 
   let total = 0;
   let billableTotal = 0;
@@ -161,6 +173,7 @@ export async function GET(request: Request) {
         `${entry.lead?.firstName ?? ""} ${entry.lead?.lastName ?? ""}`.trim() ||
         "",
       phone: entry.lead ? displayPhone(entry.lead.phone) : "",
+      email: extraOf(entry.lead?.extra).email ?? "",
       campaign: entry.campaign ?? "",
       buyer,
       price: String(price),
@@ -170,7 +183,7 @@ export async function GET(request: Request) {
         : "לא",
     };
 
-    lines.push(COLUMNS.map((c) => esc(values[c.key] ?? "")).join(","));
+    lines.push(cols.map((k) => esc(values[k] ?? "")).join(","));
   }
 
   /**
