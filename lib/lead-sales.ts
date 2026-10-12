@@ -13,6 +13,7 @@
 import { db } from "./db";
 import { normalizeName } from "./sales-campaigns";
 import { isExistingCustomer } from "./existing-customer";
+import { matchesQuery } from "./sale-search";
 import type { Range } from "./periods";
 
 export type CampaignStat = {
@@ -58,6 +59,10 @@ export type LeadSalesSummary = {
   revenueMonth: number;
   unregistered: Array<{ name: string; count: number }>;
   monthLabel: string;
+  /** האם הרשימה מציגה תוצאות חיפוש ולא את התקופה שנבחרה */
+  searching: boolean;
+  /** מה חיפשת */
+  query: string;
 };
 
 function campaignOf(extra: unknown): string | null {
@@ -73,10 +78,28 @@ function campaignOf(extra: unknown): string | null {
  * מדברים שאר הדוחות במערכת.
  */
 export async function getLeadSales(
-  range: Range
+  range: Range,
+  query = ""
 ): Promise<LeadSalesSummary> {
   const from = range.from;
   const to = range.to;
+
+  /**
+   * ============================================================
+   *  חיפוש חוצה תאריכים
+   * ============================================================
+   *
+   *  כשמחפשים, התקופה שנבחרה **לא רלוונטית**.
+   *
+   *  אם אתה מחפש לקוח, אתה רוצה למצוא אותו - לא לגלות
+   *  שהוא לא נמצא כי במקרה אתה עומד על טאב של חודש שעבר.
+   *  לכן בחיפוש הרשימה נבנית מכל הזמנים.
+   *
+   *  המונים והקמפיינים למעלה ממשיכים להציג את התקופה
+   *  שבחרת, כי הם מדדי ביצוע ולא כלי איתור.
+   */
+  const q = query.trim();
+  const searching = q.length > 0;
 
   const [registered, buyers, saleEntries, normalLeads] = await Promise.all([
     db.salesCampaign.findMany({ orderBy: { createdAt: "desc" } }),
@@ -84,7 +107,8 @@ export async function getLeadSales(
     db.leadEntry.findMany({
       where: { isSale: true },
       orderBy: { at: "desc" },
-      take: 2000,
+      // בחיפוש סורקים רחב יותר, כי מחפשים בכל הזמנים
+      take: searching ? 20000 : 2000,
       include: {
         lead: {
           select: {
@@ -155,7 +179,17 @@ export async function getLeadSales(
      */
     const inRange = entry.at >= from && entry.at < to;
 
-    if (inRange && entries.length < 300 && entry.lead) {
+    /**
+     * בחיפוש - ההתאמה קובעת, לא התאריך.
+     * בלי חיפוש - הטווח קובע, כרגיל.
+     */
+    const show = searching
+      ? entry.lead
+        ? matchesQuery(entry, entry.lead, q)
+        : false
+      : inRange;
+
+    if (show && entries.length < 300 && entry.lead) {
       entries.push({
         id: entry.id,
         leadId: entry.lead.id,
@@ -238,5 +272,7 @@ export async function getLeadSales(
     revenueMonth: campaigns.reduce((s, c) => s + c.revenueMonth, 0),
     unregistered,
     monthLabel: range.label,
+    searching,
+    query: q,
   };
 }

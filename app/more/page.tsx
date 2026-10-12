@@ -93,6 +93,12 @@ export default async function MorePage() {
           desc: "מתי נכנסים לידים, מתי עונים, ומה מאפיין סגירה",
         },
         {
+          href: "/competition",
+          glyph: "⚑",
+          label: "איפה אני מאבד",
+          desc: "למה לקוחות סוגרים אצל משווק אחר, ומי בסיכון עכשיו",
+        },
+        {
           href: "/reports",
           glyph: "▦",
           label: "דוחות",

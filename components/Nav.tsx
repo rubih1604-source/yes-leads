@@ -46,6 +46,7 @@ export default function Nav({
         "/broadcast",
         "/reports",
         "/insights",
+        "/competition",
         "/campaign-alerts",
         "/callbacks",
         "/tasks",

@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export default async function LeadSalesPage({
   searchParams,
 }: {
-  searchParams?: { period?: string; from?: string; to?: string };
+  searchParams?: { period?: string; from?: string; to?: string; q?: string };
 }) {
   const VALID: PeriodKey[] = [
     "today",
@@ -27,7 +27,10 @@ export default async function LeadSalesPage({
     : "this_month";
 
   const range = resolveRange(period, searchParams?.from, searchParams?.to);
-  const data = await getLeadSales(range);
+  const query = (searchParams?.q ?? "").trim();
+
+  // החיפוש עוקף את התקופה - ראה את ההסבר ב-lib/lead-sales
+  const data = await getLeadSales(range, query);
 
   // כמה לידים ותיקים עדיין בלי כניסה רשומה
   const [leadCount, withEntries] = await Promise.all([
@@ -58,6 +61,8 @@ export default async function LeadSalesPage({
         period={period}
         from={searchParams?.from ?? ""}
         to={searchParams?.to ?? ""}
+        query={data.query}
+        searching={data.searching}
       />
     </div>
   );

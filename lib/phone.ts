@@ -12,9 +12,27 @@ export function normalizePhone(input: string | null | undefined): string | null 
   // 00972... -> +972...
   if (s.startsWith("00")) s = "+" + s.slice(2);
 
+  // 0972... -> +972...  (אפס מיותר לפני קידומת המדינה)
+  if (s.startsWith("0972")) s = "+" + s.slice(1);
+
   // אם כבר בפורמט בינלאומי
   if (s.startsWith("+")) {
-    const digits = s.slice(1);
+    let digits = s.slice(1);
+
+    /**
+     * אפס אחרי קידומת המדינה - מסירים אותו.
+     *
+     * כאן נולדו הכפילויות: "+972 052 123 4567" נשמר כפי
+     * שהוא והפך למספר **אחר** מ-"+972521234567", ולכן אותו
+     * אדם קיבל שתי רשומות נפרדות ברשימה.
+     *
+     * 972 הוא קידומת ישראל, והמספר המקומי אחריה אף פעם לא
+     * מתחיל באפס.
+     */
+    if (/^9720\d+$/.test(digits)) {
+      digits = "972" + digits.slice(4);
+    }
+
     if (!/^\d{9,15}$/.test(digits)) return null;
     return "+" + digits;
   }

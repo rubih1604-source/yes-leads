@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { displayPhone } from "@/lib/phone";
 import {
   SALE_COLUMNS,
   DEFAULT_SALE_COLUMNS,
@@ -38,6 +39,8 @@ export default function LeadSalesScreen({
   period,
   from,
   to,
+  query = "",
+  searching = false,
 }: {
   campaigns: CampaignStat[];
   buyers: BuyerStat[];
@@ -50,6 +53,10 @@ export default function LeadSalesScreen({
   period: string;
   from: string;
   to: string;
+  /** מה חיפשת. ריק = לא מחפשים */
+  query?: string;
+  /** האם הרשימה מציגה תוצאות חיפוש מכל הזמנים */
+  searching?: boolean;
 }) {
   const [customFrom, setCustomFrom] = useState(
     from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
@@ -193,6 +200,62 @@ export default function LeadSalesScreen({
 
   return (
     <>
+      {/*
+        חיפוש חופשי.
+        טופס רגיל ולא סינון בצד הלקוח, כי החיפוש רץ בשרת
+        ועובר על כל הזמנים - לא רק על מה שכבר נטען למסך.
+      */}
+      <form style={{ margin: "0 0 10px" }}>
+        <input
+          className="search"
+          name="q"
+          defaultValue={query}
+          placeholder="חפש שם, טלפון, מייל או קמפיין"
+          inputMode="search"
+          style={{ width: "100%" }}
+        />
+        {period !== "this_month" && (
+          <input type="hidden" name="period" value={period} />
+        )}
+        {period === "custom" && (
+          <>
+            <input type="hidden" name="from" value={customFrom} />
+            <input type="hidden" name="to" value={customTo} />
+          </>
+        )}
+      </form>
+
+      {searching && (
+        <div
+          className="card"
+          style={{
+            borderInlineStart: "4px solid #1b4d8f",
+            marginBottom: 12,
+            padding: "10px 12px",
+          }}
+        >
+          <div style={{ fontWeight: 600, fontSize: 14 }}>
+            תוצאות חיפוש עבור "{query}" — מכל הזמנים
+          </div>
+          <div style={{ fontSize: 13, color: "#475467", marginTop: 3 }}>
+            {entries.length === 0
+              ? "לא נמצא כלום. נסה חלק מהשם או מהמספר."
+              : `${entries.length} תוצאות. התקופה שנבחרה לא משפיעה על החיפוש.`}
+          </div>
+          <a
+            className="chip"
+            href={`/lead-sales?period=${period}`}
+            style={{
+              display: "inline-block",
+              marginTop: 9,
+              textDecoration: "none",
+            }}
+          >
+            נקה חיפוש
+          </a>
+        </div>
+      )}
+
       <div className="filters periods">
         {(
           [
@@ -545,6 +608,13 @@ export default function LeadSalesScreen({
                       </span>
                       <span>·</span>
                       <span>{when(e.at)}</span>
+                      <span>·</span>
+                      {/*
+                        הטלפון בשורה עצמה, כדי לזהות ליד בלי
+                        להיכנס לכרטיס. dir=ltr כדי שמספר לא
+                        יתהפך בתוך שורה בעברית.
+                      */}
+                      <span dir="ltr">{displayPhone(e.phone)}</span>
                     </div>
                     {e.campaign && (
                       <div className="supplier-tag">{e.campaign}</div>

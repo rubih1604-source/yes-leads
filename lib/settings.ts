@@ -24,6 +24,8 @@ export type AppSettings = {
   botToHour: number;
   botStatuses: string[];
   closeStatuses: string[];
+  /** סטטוסים שאומרים: התחבר ליס, לא דרכי */
+  lostStatuses: string[];
   leadRowFields: RowFieldKey[];
   onlyAfterTemplate: boolean;
   offDutyUntil: Date | null;
@@ -55,6 +57,7 @@ const DEFAULTS: AppSettings = {
   botToHour: 21,
   botStatuses: [],
   closeStatuses: [],
+  lostStatuses: [],
   leadRowFields: readRowFields(null),
   onlyAfterTemplate: false,
   offDutyUntil: null,
@@ -97,6 +100,11 @@ export async function getSettings(): Promise<AppSettings> {
       botToHour: row.botToHour,
       closeStatuses: Array.isArray(row.closeStatuses)
         ? (row.closeStatuses as string[]).filter(
+            (x): x is string => typeof x === "string"
+          )
+        : [],
+      lostStatuses: Array.isArray(row.lostStatuses)
+        ? (row.lostStatuses as string[]).filter(
             (x): x is string => typeof x === "string"
           )
         : [],

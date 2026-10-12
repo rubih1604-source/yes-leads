@@ -216,6 +216,10 @@ model Settings {
 
   // אילו סטטוסים נחשבים סגירה לצורך אחוז המכירה
   closeStatuses        Json?
+
+  // אילו סטטוסים אומרים "הלקוח התחבר, אבל לא דרכי".
+  // זה מה שמסך התחרות מודד.
+  lostStatuses         Json?
   leadRowFields        Json?
   replyCallback        String   @default("מעולה, רשמתי. אחזור אליך בזמן שביקשת :)")
 
