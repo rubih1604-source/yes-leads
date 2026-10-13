@@ -141,7 +141,52 @@ type LeadgenChange = {
 export async function POST(request: Request) {
   const body = await request.text().catch(() => "");
 
+  /**
+   * ============================================================
+   *  קודם רושמים, אחר כך בודקים
+   * ============================================================
+   *
+   *  קודם הבדיקה רצה ראשונה, וכשחתימה לא תאמה הבקשה נדחתה
+   *  **בלי להשאיר זכר**. התוצאה: ביומן הקליטה לא הופיע כלום,
+   *  ואי אפשר היה להבדיל בין "פייסבוק לא שלחה" לבין "פייסבוק
+   *  שלחה ואנחנו דחינו".
+   *
+   *  מעכשיו כל פנייה נרשמת מיד. אם היא נדחית - רואים את זה
+   *  ביומן עם הסיבה.
+   */
+  let raw: unknown = body;
+  try {
+    raw = JSON.parse(body);
+  } catch {
+    raw = { _body: body.slice(0, 2000) };
+  }
+
+  const log = await db.webhookLog
+    .create({
+      data: {
+        source: "facebook",
+        rawPayload: raw as never,
+      },
+    })
+    .catch(() => null);
+
   if (!signatureValid(body, request.headers.get("x-hub-signature-256"))) {
+    /**
+     * חתימה שגויה כמעט תמיד אומרת ש-FB_APP_SECRET לא תואם
+     * לסוד של האפליקציה. הפנייה אמיתית - רק האימות נכשל.
+     */
+    if (log) {
+      await db.webhookLog
+        .update({
+          where: { id: log.id },
+          data: {
+            error:
+              "החתימה לא תאמה - בדוק ש-FB_APP_SECRET ברנדר זהה לסוד של האפליקציה בפייסבוק",
+          },
+        })
+        .catch(() => null);
+    }
+
     return new Response("bad signature", { status: 401 });
   }
 
@@ -200,6 +245,25 @@ export async function POST(request: Request) {
         })
         .catch(() => null);
     }
+  }
+
+  /**
+   * מסמנים את הרשומה כמעובדת, כדי שביומן הקליטה היא תופיע
+   * ירוקה ולא כ"התקבל, לא עובד".
+   */
+  if (log) {
+    await db.webhookLog
+      .update({
+        where: { id: log.id },
+        data: {
+          processed: true,
+          error:
+            leadIds.length === 0
+              ? "הפנייה הגיעה אבל לא היה בה ליד (לא אירוע leadgen)"
+              : null,
+        },
+      })
+      .catch(() => null);
   }
 
   /**
