@@ -65,39 +65,86 @@ type GraphLead = {
   id: string;
   created_time?: string;
   field_data?: Array<{ name: string; values?: string[] }>;
+  ad_id?: string;
   ad_name?: string;
+  adset_id?: string;
   adset_name?: string;
+  campaign_id?: string;
   campaign_name?: string;
   form_id?: string;
+  platform?: string;
   is_organic?: boolean;
 };
 
 /** שולף את הפרטים המלאים של הליד */
+/**
+ * כל מה שאפשר למשוך על ליד.
+ *
+ * ליד מנגר מציגה קמפיין, מודעה וקבוצת מודעות - ולכן גם כאן
+ * מבקשים את כולם, כולל המזהים ולא רק השמות. מזהה שורד גם
+ * כששם המודעה משתנה, וזה מה שיאפשר התאמה אמינה בהמשך.
+ */
+const FULL_FIELDS = [
+  "field_data",
+  "created_time",
+  "ad_id",
+  "ad_name",
+  "adset_id",
+  "adset_name",
+  "campaign_id",
+  "campaign_name",
+  "form_id",
+  "platform",
+  "is_organic",
+];
+
+/**
+ * רשימה מצומצמת שתמיד עובדת.
+ *
+ * אם פייסבוק תשנה שם של שדה או תסיר אותו, הבקשה המלאה
+ * תיכשל - ואסור שליד יאבד בגלל זה. במקרה כזה מושכים את
+ * הבסיס ונכנסים עם מה שיש.
+ */
+const SAFE_FIELDS = ["field_data", "created_time", "form_id"];
+
+async function graphLead(
+  leadId: string,
+  token: string,
+  fields: string[]
+): Promise<{ ok: boolean; status: number; body: string }> {
+  const response = await fetch(
+    `${GRAPH}/${leadId}?fields=${fields.join(",")}&access_token=${encodeURIComponent(
+      token
+    )}`,
+    { cache: "no-store" }
+  );
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    body: await response.text().catch(() => ""),
+  };
+}
+
 async function fetchLead(leadId: string): Promise<GraphLead | null> {
   const token = process.env.FB_PAGE_TOKEN?.trim();
   if (!token) return null;
 
-  const fields = [
-    "field_data",
-    "created_time",
-    "ad_name",
-    "adset_name",
-    "campaign_name",
-    "form_id",
-    "is_organic",
-  ].join(",");
+  let res = await graphLead(leadId, token, FULL_FIELDS);
 
-  const response = await fetch(
-    `${GRAPH}/${leadId}?fields=${fields}&access_token=${encodeURIComponent(token)}`,
-    { cache: "no-store" }
-  );
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`Graph ${response.status}: ${text.slice(0, 300)}`);
+  /**
+   * שדה שפייסבוק לא מכירה מחזיר 400. מנסים שוב עם הבסיס,
+   * כדי שהליד ייכנס גם אם חלק מהמידע השיווקי לא זמין.
+   */
+  if (!res.ok && res.status === 400) {
+    res = await graphLead(leadId, token, SAFE_FIELDS);
   }
 
-  return (await response.json()) as GraphLead;
+  if (!res.ok) {
+    throw new Error(`Graph ${res.status}: ${res.body.slice(0, 300)}`);
+  }
+
+  return JSON.parse(res.body) as GraphLead;
 }
 
 /**
@@ -125,6 +172,17 @@ function toIntakePayload(lead: GraphLead): Record<string, string> {
   if (lead.ad_name) out.fb_ad = lead.ad_name;
   if (lead.adset_name) out.fb_adset = lead.adset_name;
   if (lead.form_id) out.fb_form = lead.form_id;
+  if (lead.platform) out.fb_platform = lead.platform;
+
+  /**
+   * גם המזהים, לא רק השמות. שם מודעה אפשר לשנות, מזהה לא -
+   * וזה מה שמאפשר לשייך ליד לקמפיין בוודאות גם חודשים אחרי.
+   */
+  if (lead.campaign_id) out.fb_campaign_id = lead.campaign_id;
+  if (lead.ad_id) out.fb_ad_id = lead.ad_id;
+  if (lead.adset_id) out.fb_adset_id = lead.adset_id;
+  if (lead.is_organic) out.fb_organic = "כן";
+
   out.fb_leadid = lead.id;
 
   // סימון המקור, כדי שביומן הקליטה יהיה ברור מאיפה הגיע
