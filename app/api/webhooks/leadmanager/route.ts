@@ -12,6 +12,7 @@ import { scheduleForStatus } from "@/lib/rules";
 import { queueDelivery } from "@/lib/delivery";
 import { doorOf, addDoor } from "@/lib/via";
 import { identifiersOf } from "@/lib/campaign-match";
+import { assignmentForForm } from "@/lib/lead-forms";
 import {
   channelForIncoming,
   isSameSubmission,
@@ -162,7 +163,29 @@ async function handle(request: Request) {
      * מזהה טופס או מודעה תמיד מגיע, ולכן עכשיו ההכרעה
      * מחזיקה גם בלי שם.
      */
-    const channel = await channelForIncoming(identifiersOf(extra));
+    const ids = identifiersOf(extra);
+
+    /**
+     * הטופס קובע ראשון.
+     *
+     * טופס מחובר לקונה אחד, וזה בדיוק איך שאתה עובד.
+     * אם הטופס מוגדר במסך ההתממשקות - אין צורך בשם קמפיין
+     * ואין מה לנחש.
+     *
+     * טופס שלא הוגדר לא משנה כלום: נופלים לשם הקמפיין,
+     * בדיוק כמו קודם.
+     */
+    const byForm = await assignmentForForm(ids.formId).catch(() => null);
+
+    const channel = byForm
+      ? {
+          channel: byForm.channel,
+          isSale: byForm.channel === "sale",
+          price: byForm.price,
+          campaignName: byForm.formName,
+          matchedOn: `טופס: ${byForm.formName}`,
+        }
+      : await channelForIncoming(ids);
 
     /**
      * מאיזו דלת הליד נכנס.
@@ -249,6 +272,7 @@ async function handle(request: Request) {
           leadId: lead.id,
           entryId: firstEntry.id,
           campaign: incomingCampaign,
+          buyerId: byForm?.buyerId ?? null,
         }).catch(() => false);
       }
 
@@ -331,22 +355,22 @@ async function handle(request: Request) {
       });
 
       /**
-       * האם הליד הזה קיים גם במערכת שלך.
+       * של מי הליד.
        *
-       * אם כן - כניסה של אלעד לא הופכת אותו לשלו. הוא
-       * נשאר ליד רגיל אצלך, ובמקביל ליד רגיל אצלו.
-       * רק ליד שקיים **אך ורק** בערוץ המכירה מסומן כשלו.
+       * **כניסה אחת של מכירה מעבירה אותו לקונה**, גם אם
+       * הוא נכנס פעם גם מקמפיין שלך: "מה שקשור לאלעד
+       * שייך אך ורק אליו".
+       *
+       * גם כניסה של מכירה שנרשמה בעבר נספרת, ולכן ליד
+       * שכבר עבר לקונה לא חוזר אליך בגלל התראת סטטוס
+       * שהגיעה בלי קמפיין.
        */
-      const hasMineEntry =
+      const hadSaleEntry =
         (await db.leadEntry
-          .count({ where: { leadId: existing.id, isSale: false } })
+          .count({ where: { leadId: existing.id, isSale: true } })
           .catch(() => 0)) > 0;
 
-      const ownerOrigin = isSaleNow
-        ? hasMineEntry
-          ? "leadmanager"
-          : "sale"
-        : "leadmanager";
+      const ownerOrigin = isSaleNow || hadSaleEntry ? "sale" : "leadmanager";
 
       await db.lead.update({
         where: { id: existing.id },
@@ -440,6 +464,7 @@ async function handle(request: Request) {
             leadId: existing.id,
             entryId: entry.id,
             campaign: incomingCampaign,
+            buyerId: byForm?.buyerId ?? null,
           }).catch(() => false);
         }
       }

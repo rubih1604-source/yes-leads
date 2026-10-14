@@ -37,25 +37,38 @@ export async function queueDelivery(args: {
   leadId: string;
   entryId: string;
   campaign: string | null;
+  /**
+   * הקונה, כשהוא כבר ידוע.
+   *
+   * ליד ששויך לפי **טופס** לא עובר דרך שם קמפיין, ולכן
+   * חיפוש לפי קמפיין לא היה מוצא לו קונה - והוא לא היה
+   * נשלח לאף אחד. כאן הקונה מגיע ישירות מהטופס.
+   */
+  buyerId?: string | null;
 }): Promise<boolean> {
-  if (!args.campaign) return false;
+  let buyerId = args.buyerId ?? null;
 
-  const { normalizeName } = await import("./sales-campaigns");
+  if (!buyerId) {
+    if (!args.campaign) return false;
 
-  const campaigns = await db.salesCampaign
-    .findMany({
-      where: { active: true },
-      select: { name: true, buyerId: true },
-    })
-    .catch(() => []);
+    const { normalizeName } = await import("./sales-campaigns");
 
-  const key = normalizeName(args.campaign);
-  const match = campaigns.find((c) => normalizeName(c.name) === key);
+    const campaigns = await db.salesCampaign
+      .findMany({
+        where: { active: true },
+        select: { name: true, buyerId: true },
+      })
+      .catch(() => []);
 
-  if (!match?.buyerId) return false;
+    const key = normalizeName(args.campaign);
+    const match = campaigns.find((c) => normalizeName(c.name) === key);
+
+    if (!match?.buyerId) return false;
+    buyerId = match.buyerId;
+  }
 
   const buyer = await db.leadBuyer
-    .findUnique({ where: { id: match.buyerId } })
+    .findUnique({ where: { id: buyerId } })
     .catch(() => null);
 
   // אין כתובת או שהשליחה כבויה - אין מה לעשות

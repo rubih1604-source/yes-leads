@@ -340,6 +340,7 @@ model LeadBuyer {
 
   campaigns  SalesCampaign[]
   deliveries LeadDelivery[]
+  forms      LeadForm[]
 }
 
 /// ============================================================
@@ -513,4 +514,42 @@ model PushSubscription {
   auth      String
   label     String?
   createdAt DateTime @default(now())
+}
+
+/**
+ * ============================================================
+ *  טופס לידים של פייסבוק, ולמי הוא שייך
+ * ============================================================
+ *
+ *  הטופס הוא היחידה הנכונה לשיוך, ולא שם הקמפיין: טופס
+ *  מחובר לקונה אחד, ושמו לא משתנה כשמשנים שם מודעה.
+ *
+ *  הרשומות נוצרות מתוך רשימת הטפסים שנשלפת מפייסבוק, כדי
+ *  שלא תידרש הקלדה של מזהים.
+ */
+model LeadForm {
+  id       String @id @default(cuid())
+
+  /// מזהה הטופס בפייסבוק
+  formId   String @unique
+  formName String
+  pageId   String
+  pageName String
+
+  /// mine = הלידים שלך · sale = נמכרים לקונה
+  channel  String @default("mine")
+
+  buyerId  String?
+  buyer    LeadBuyer? @relation(fields: [buyerId], references: [id], onDelete: SetNull)
+
+  /// מחיר לליד, כשהטופס שייך לקונה
+  pricePerLead Float @default(0)
+
+  /// איזו שאלה בטופס היא שאלת הספק. ריק = זיהוי אוטומטי.
+  supplierKey String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([channel])
 }

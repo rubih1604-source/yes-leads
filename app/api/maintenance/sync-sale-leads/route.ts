@@ -44,8 +44,8 @@ type Change = {
   campaign: string;
   /** כמה כניסות יקבלו חותמת מכירה */
   stamping: number;
-  /** האם הבעלות עוברת לקונה, או שהליד נשאר גם שלך */
-  ownership: "עובר לקונה" | "נשאר גם אצלך";
+  /** לאן הליד עובר, ואם היה לו עבר גם אצלך */
+  ownership: "עובר לקונה" | "עובר לקונה (היה גם אצלך)";
 
   /** מה בדיוק ייעשה - נקבע כאן פעם אחת, ולא מחושב מחדש בביצוע */
   steps: {
@@ -108,7 +108,12 @@ async function plan(): Promise<{ campaigns: number; changes: Change[] }> {
 
     if (!hit) continue;
 
-    const shouldBe = mineLeft === 0 ? SALE_ORIGIN : "leadmanager";
+    /**
+     * כניסה אחת של מכירה מעבירה את הליד לקונה, גם אם יש
+     * לו כניסה שלך. mineLeft נשאר לתצוגה בלבד, כדי שתראה
+     * אם הליד נגע גם אצלך.
+     */
+    const shouldBe = SALE_ORIGIN;
 
     if (toStamp.length === 0 && lead.origin === shouldBe) continue;
 
@@ -119,7 +124,8 @@ async function plan(): Promise<{ campaigns: number; changes: Change[] }> {
       matchedOn: hit.matchedOn,
       campaign: hit.name,
       stamping: toStamp.length,
-      ownership: shouldBe === SALE_ORIGIN ? "עובר לקונה" : "נשאר גם אצלך",
+      ownership:
+        mineLeft > 0 ? "עובר לקונה (היה גם אצלך)" : "עובר לקונה",
       steps: {
         stamp: toStamp.map((e) => ({ entryId: e.id, price: e.price })),
         origin: shouldBe,
@@ -141,8 +147,10 @@ export async function GET() {
     ok: true,
     קמפייני_מכירה: campaigns,
     לידים_לתיקון: changes.length,
-    עוברים_לקונה: changes.filter((c) => c.ownership === "עובר לקונה").length,
-    נשארים_גם_אצלך: changes.filter((c) => c.ownership === "נשאר גם אצלך").length,
+    עוברים_לקונה: changes.length,
+    מתוכם_היו_גם_אצלך: changes.filter((c) =>
+      c.ownership.includes("היה גם אצלך")
+    ).length,
     changes: changes
       .slice(0, 200)
       .map(({ steps, ...rest }) => rest),

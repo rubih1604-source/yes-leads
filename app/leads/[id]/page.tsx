@@ -11,6 +11,7 @@ import LeadCardActions from "@/components/LeadCardActions";
 import CallLink from "@/components/CallLink";
 import { getSettings } from "@/lib/settings";
 import { doorLabel } from "@/lib/via";
+import { ownerOf, entryCountIn } from "@/lib/channel";
 import LeadTasks from "@/components/LeadTasks";
 import BackLink from "@/components/BackLink";
 import AutoRefresh from "@/components/AutoRefresh";
@@ -96,6 +97,17 @@ export default async function LeadPage({
       ? (lead.extra as Record<string, string>)
       : {};
 
+  /**
+   * של מי הליד, וכמה כניסות יש לו **בערוץ שלו**.
+   *
+   * כאן הייתה התקלה: התווית "ליד כפול" ספרה את הכניסות
+   * של שני הערוצים יחד. ליד של אלעד שנכנס פעם אחת אצלו
+   * ופעם אחת אצלך הוצג כ"ליד כפול · 2 כניסות" - למרות
+   * שבכל ערוץ הוא נכנס פעם אחת בלבד.
+   */
+  const owner = ownerOf(lead.entries);
+  const ownerEntryCount = entryCountIn(lead.entries, owner);
+
   const detailKeys = [
     ...FIELD_ORDER.filter((k) => extra[k]),
     ...Object.keys(extra).filter((k) => !FIELD_ORDER.includes(k) && extra[k]),
@@ -118,9 +130,17 @@ export default async function LeadPage({
           {isExistingCustomer(lead.extra, lead.status) && (
             <span className="existing-tag">לקוח קיים</span>
           )}
-          {lead.entries.length > 1 && (
+          {owner === "sale" && (
+            <span
+              className="existing-tag"
+              style={{ background: "#fef0c7", color: "#b54708" }}
+            >
+              ליד של הקונה
+            </span>
+          )}
+          {ownerEntryCount > 1 && (
             <span className="dup-tag">
-              ליד כפול · {lead.entries.length} כניסות
+              ליד כפול · {ownerEntryCount} כניסות
             </span>
           )}
         </h1>

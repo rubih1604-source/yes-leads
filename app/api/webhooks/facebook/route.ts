@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { db } from "@/lib/db";
 import { POST as intakeLead } from "../leadmanager/route";
+import { supplierKeyForForm } from "@/lib/lead-forms";
 
 export const dynamic = "force-dynamic";
 
@@ -307,6 +308,21 @@ export async function POST(request: Request) {
 
       // מזהה הטופס מההתראה, אם השליפה לא החזירה אותו
       if (!details.fb_form && formId) details.fb_form = formId;
+
+      /**
+       * שאלת הספק, כשנבחרה במפורש לטופס הזה.
+       *
+       * ברירת המחדל היא זיהוי לפי מילות מפתח בשם השאלה,
+       * וזה עובד - אבל שאלה שנוסחה אחרת נופלת ממנו.
+       * בחירה מפורשת גוברת.
+       */
+      const chosen = await supplierKeyForForm(details.fb_form).catch(
+        () => null
+      );
+
+      if (chosen && details[chosen]) {
+        details.supplier_question = details[chosen];
+      }
 
       if (log) {
         await db.webhookLog

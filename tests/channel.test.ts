@@ -12,6 +12,7 @@
 import {
   channelOfEntry,
   entryCountIn,
+  ownerOf,
   existsIn,
   lastEntryAtIn,
   isSameSubmission,
@@ -39,7 +40,7 @@ function check(name: string, actual: unknown, expected: unknown) {
 const t = (iso: string) => new Date(iso);
 
 // ------------------------------------------------------------
-console.log("\nהמקרה של רינת — כניסה אחת אצלך, כניסה אחת אצל אלעד");
+console.log("\nהמקרה של רינת — נכנסה אצלך, ואחר כך מקמפיין של אלעד");
 // ------------------------------------------------------------
 {
   const rinat = [
@@ -47,10 +48,19 @@ console.log("\nהמקרה של רינת — כניסה אחת אצלך, כניס
     { isSale: true, campaign: "אלעד - מכירה", at: t("2026-09-28T09:00:00Z") },
   ];
 
+  /**
+   * הכלל, במילים שלו: "מה שנכנס שהוא קשור לאלעד בהגדרה
+   * שייך אך ורק אליו, אין לערב עם הנתונים של מערכת
+   * הלידים האישית שלי."
+   *
+   * כאן הייתה הטעות שחזרה: היה כתוב שליד עם כניסה אחת
+   * שלך נשאר גם שלך. התוצאה בפועל - הליד נשאר ברשימה
+   * שלו, עם שתי כניסות ותווית "ליד כפול".
+   */
+  check("הליד עובר לאלעד ויוצא מהרשימה שלך", ownerOf(rinat), "sale");
+
   check("אצלך היא ליד יחיד, לא כפול", entryCountIn(rinat, "mine"), 1);
   check("אצל אלעד היא ליד יחיד, לא כפול", entryCountIn(rinat, "sale"), 1);
-  check("היא קיימת ברשימה שלך", existsIn(rinat, "mine"), true);
-  check("היא קיימת גם אצל אלעד", existsIn(rinat, "sale"), true);
   check(
     "התאריך שלך הוא של הכניסה שלך, לא של אלעד",
     lastEntryAtIn(rinat, "mine")?.toISOString(),
@@ -58,6 +68,37 @@ console.log("\nהמקרה של רינת — כניסה אחת אצלך, כניס
   );
   check("אצלך רואים כניסה אחת בלבד", mineOnly(rinat).length, 1);
   check("אצל אלעד רואים כניסה אחת בלבד", saleOnly(rinat).length, 1);
+}
+
+// ------------------------------------------------------------
+console.log("\nשל מי הליד");
+// ------------------------------------------------------------
+{
+  check(
+    "כניסה אחת של מכירה מספיקה כדי שהליד יהיה של הקונה",
+    ownerOf([{ isSale: true, at: t("2026-10-01T09:00:00Z") }]),
+    "sale"
+  );
+
+  check(
+    "ליד שכל כניסותיו שלך נשאר שלך",
+    ownerOf([
+      { isSale: false, at: t("2026-10-01T09:00:00Z") },
+      { isSale: false, at: t("2026-10-02T09:00:00Z") },
+    ]),
+    "mine"
+  );
+
+  check(
+    "סדר הכניסות לא משנה - גם אם המכירה ראשונה",
+    ownerOf([
+      { isSale: true, at: t("2026-10-01T09:00:00Z") },
+      { isSale: false, at: t("2026-10-02T09:00:00Z") },
+    ]),
+    "sale"
+  );
+
+  check("ליד בלי כניסות נשאר שלך", ownerOf([]), "mine");
 }
 
 // ------------------------------------------------------------
@@ -319,27 +360,37 @@ console.log("\nמי נכנס לרשימת הלידים — וואטסאפ אף �
    * במקום לבדוק מסך, בודקים את ההגדרה עצמה: **בכל ענף**
    * חייב להיות תנאי בעלות, ובשום ענף אסור שוואטסאפ יתקבל.
    */
-  const branches = MY_LEADS_WHERE.OR as Array<Record<string, any>>;
+  const where = MY_LEADS_WHERE as Record<string, any>;
 
-  check("יש לפחות ענף אחד בהגדרה", branches.length > 0, true);
+  // --- וואטסאפ לא נכנס ---
+  check(
+    "ההגדרה פוסלת וואטסאפ במפורש",
+    where.origin?.not === "whatsapp",
+    true
+  );
 
-  const everyBranchHasOrigin = branches.every((b) => "origin" in b);
-  check("לכל ענף יש תנאי בעלות", everyBranchHasOrigin, true);
+  // --- ליד של הקונה לא נכנס ---
+  check(
+    "ההגדרה דורשת שלא תהיה אף כניסת מכירה",
+    where.entries?.none?.isSale === true,
+    true
+  );
 
-  const whatsappAllowed = branches.some((b) => {
-    const o = b.origin;
-    if (typeof o === "string") return o === "whatsapp";
-    if (o && Array.isArray(o.in)) return o.in.includes("whatsapp");
-    return true; // תנאי שלא מזהים = לא בטוח, נכשל בכוונה
-  });
-  check("אף ענף לא מכניס וואטסאפ", whatsappAllowed, false);
+  /**
+   * ההגדרה חייבת לפסול **כל** ליד שיש לו כניסת מכירה, לא
+   * רק ליד שכולו מכירה. זה הכלל שנשבר שוב ושוב.
+   */
+  check(
+    "אין בהגדרה תנאי שמחזיר ליד עם כניסת מכירה",
+    JSON.stringify(where).includes('"isSale":false'),
+    false
+  );
 
-  const saleOnlyBlocked = branches.every((b) => {
-    if (b.entries?.some?.isSale === false) return true; // דורש כניסה שלך
-    if (b.entries?.none !== undefined) return b.origin === "leadmanager";
-    return false;
-  });
-  check("ליד שקיים רק אצל אלעד לא נכנס לרשימה שלך", saleOnlyBlocked, true);
+  check(
+    "ההגדרה לא מכילה ענפי OR שיכולים לעקוף את התנאי",
+    where.OR === undefined,
+    true
+  );
 }
 
 // ------------------------------------------------------------

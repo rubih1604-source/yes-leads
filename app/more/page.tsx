@@ -93,6 +93,12 @@ export default async function MorePage() {
           desc: "מתי נכנסים לידים, מתי עונים, ומה מאפיין סגירה",
         },
         {
+          href: "/forms",
+          glyph: "⊞",
+          label: "התממשקות",
+          desc: "הטפסים של פייסבוק, ולמי שייך כל טופס - שלך או של קונה",
+        },
+        {
           href: "/buyers",
           glyph: "⇄",
           label: "קונים ושליחות",
