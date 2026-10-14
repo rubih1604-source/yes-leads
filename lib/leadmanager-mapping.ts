@@ -88,7 +88,7 @@ export const FIELD_LABELS: Record<string, string> = {
   fb_ad: "מודעה",
   fb_adset: "קבוצת מודעות",
   fb_adgroup: "קבוצת מודעות",
-  fb_form: "טופס",
+  fb_form: "מזהה טופס",
   fb_page: "עמוד פייסבוק",
   fb_platform: "פלטפורמה",
   fb_leadid: "מזהה ליד בפייסבוק",

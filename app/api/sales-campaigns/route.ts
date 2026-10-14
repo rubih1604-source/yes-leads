@@ -6,6 +6,12 @@ import {
   normalizeName,
   SALE_ORIGIN,
 } from "@/lib/sales-campaigns";
+import {
+  parseMatchKeys,
+  buildLookup,
+  findSaleCampaign,
+  identifiersOf,
+} from "@/lib/campaign-match";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +21,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const { name, pricePerLead, buyer, moveExisting } = await request
+  const { name, pricePerLead, buyer, moveExisting, matchKeys } = await request
     .json()
     .catch(() => ({}));
 
@@ -43,6 +49,8 @@ export async function POST(request: Request) {
       name: name.trim().slice(0, 200),
       pricePerLead: price,
       buyer: typeof buyer === "string" && buyer.trim() ? buyer.trim() : null,
+      matchKeys:
+        typeof matchKeys === "string" ? parseMatchKeys(matchKeys) : [],
     },
   });
 
@@ -54,7 +62,19 @@ export async function POST(request: Request) {
    */
   let moved = 0;
   if (moveExisting === true) {
-    const key = normalizeName(created.name);
+    /**
+     * ההעברה נעשית לפי אותה טבלת זיהוי של הקליטה - שם
+     * **וגם** מזהים. ליד שנכנס בלי שם קמפיין יימצא לפי
+     * מזהה הטופס שלו, במקום להישאר ברשימה שלך.
+     */
+    const lookup = buildLookup([
+      {
+        id: created.id,
+        name: created.name,
+        pricePerLead: created.pricePerLead,
+        matchKeys: created.matchKeys ?? [],
+      },
+    ]);
 
     const candidates = await db.lead.findMany({
       where: { origin: "leadmanager" },
@@ -64,10 +84,10 @@ export async function POST(request: Request) {
     for (const lead of candidates) {
       const extra =
         lead.extra && typeof lead.extra === "object" && !Array.isArray(lead.extra)
-          ? (lead.extra as Record<string, string>)
-          : {};
-      const campaign = extra.fb_campaign || extra.campaign || "";
-      if (!campaign || normalizeName(campaign) !== key) continue;
+          ? (lead.extra as Record<string, unknown>)
+          : null;
+
+      if (!findSaleCampaign(identifiersOf(extra), lookup)) continue;
 
       await db.lead
         .update({ where: { id: lead.id }, data: { origin: SALE_ORIGIN } })

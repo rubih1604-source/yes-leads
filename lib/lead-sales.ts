@@ -22,6 +22,8 @@ export type CampaignStat = {
   buyerId: string | null;
   buyerName: string | null;
   pricePerLead: number;
+  /** מזהים נוספים שמסמנים ליד כשייך לקמפיין הזה */
+  matchKeys: string[];
   active: boolean;
   leadsMonth: number;
   leadsTotal: number;
@@ -223,6 +225,7 @@ export async function getLeadSales(
       buyerId: c.buyerId ?? null,
       buyerName: buyer?.name ?? c.buyer ?? null,
       pricePerLead: price,
+      matchKeys: c.matchKeys ?? [],
       active: c.active,
       leadsMonth: row.month,
       leadsTotal: row.total,

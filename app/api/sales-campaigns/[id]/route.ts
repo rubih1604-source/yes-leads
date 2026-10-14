@@ -5,6 +5,7 @@ import {
   clearSalesCampaignCache,
   normalizeName,
 } from "@/lib/sales-campaigns";
+import { parseMatchKeys } from "@/lib/campaign-match";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,14 @@ export async function PATCH(
   }
 
   if (typeof body.active === "boolean") data.active = body.active;
+
+  /**
+   * מזהים נוספים לזיהוי הקמפיין: טופס, קמפיין, מודעה או שם חלופי.
+   * זה מה שמחזיק את השיוך גם כששם הקמפיין לא מגיע.
+   */
+  if (typeof body.matchKeys === "string") {
+    data.matchKeys = parseMatchKeys(body.matchKeys);
+  }
 
   // שיוך לקמפיין של לקוח מסוים. null מנתק.
   if (body.buyerId !== undefined) {

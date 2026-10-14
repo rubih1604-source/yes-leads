@@ -119,6 +119,8 @@ export default function LeadSalesScreen({
   const [addingBuyer, setAddingBuyer] = useState(false);
   const [bName, setBName] = useState("");
 
+  const [keys, setKeys] = useState<Record<string, string>>({});
+  const [keysOpen, setKeysOpen] = useState<Record<string, boolean>>({});
   const [rates, setRates] = useState<Record<string, string>>({});
 
   const visible = useMemo(
@@ -828,6 +830,71 @@ export default function LeadSalesScreen({
                   שמור
                 </button>
               </div>
+
+              {/**
+                * מזהי הקמפיין - מה שמחזיק את השיוך לקונה.
+                *
+                * שם קמפיין הוא טקסט חופשי, והוא לא תמיד מגיע עם
+                * הליד. מזהה מגיע תמיד ולא משתנה, ולכן הוא מה
+                * שמונע מליד של הקונה ליפול לרשימה האישית.
+                */}
+              <button
+                className="btn"
+                style={{ marginTop: 10 }}
+                onClick={() =>
+                  setKeysOpen((p) => ({ ...p, [c.id]: !p[c.id] }))
+                }
+              >
+                מזהי זיהוי
+                {c.matchKeys.length > 0 ? ` · ${c.matchKeys.length}` : " · אין"}
+                {keysOpen[c.id] ? " ⌃" : " ⌄"}
+              </button>
+
+              {keysOpen[c.id] && (
+                <div style={{ marginTop: 8 }}>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: c.matchKeys.length === 0 ? "#b54708" : "#475467",
+                      marginBottom: 6,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {c.matchKeys.length === 0
+                      ? "אין כאן מזהה, ולכן השיוך מסתמך על שם הקמפיין בלבד. אם השם לא יגיע עם הליד - הליד ייכנס לרשימה האישית שלך."
+                      : "הליד ישויך לקמפיין הזה אם אחד מהמזהים האלה מופיע בו, גם בלי שם קמפיין."}
+                    <br />
+                    מזהה טופס, קמפיין, מודעה או שם חלופי. שורה לכל
+                    מזהה. את מזהה הטופס רואים בכרטיס הליד תחת
+                    &quot;מזהה טופס&quot;.
+                  </div>
+
+                  <textarea
+                    className="field"
+                    style={{ width: "100%", minHeight: 78, direction: "ltr" }}
+                    value={keys[c.id] ?? c.matchKeys.join("\n")}
+                    placeholder={"998877665544332\n120254104380610184"}
+                    onChange={(e) =>
+                      setKeys((p) => ({ ...p, [c.id]: e.target.value }))
+                    }
+                  />
+
+                  <button
+                    className="btn"
+                    onClick={async () => {
+                      const { ok } = await call(
+                        `/api/sales-campaigns/${c.id}`,
+                        { matchKeys: keys[c.id] ?? c.matchKeys.join("\n") },
+                        "PATCH"
+                      );
+                      if (ok) setMessage("המזהים נשמרו");
+                    }}
+                    disabled={busy}
+                  >
+                    שמור מזהים
+                  </button>
+                </div>
+              )}
 
               {buyers.length > 0 && (
                 <select

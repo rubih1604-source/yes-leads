@@ -11,6 +11,7 @@ import { isKnownStatus } from "@/lib/status-store";
 import { scheduleForStatus } from "@/lib/rules";
 import { queueDelivery } from "@/lib/delivery";
 import { doorOf, addDoor } from "@/lib/via";
+import { identifiersOf } from "@/lib/campaign-match";
 import {
   channelForIncoming,
   isSameSubmission,
@@ -149,7 +150,19 @@ async function handle(request: Request) {
      * ולא מנחש מחדש.
      */
     const incomingCampaign = extra.fb_campaign || extra.campaign || null;
-    const channel = await channelForIncoming(incomingCampaign);
+
+    /**
+     * ההכרעה נעשית לפי **כל** המזהים שהגיעו, לא רק לפי השם.
+     *
+     * כאן היה הכשל שחזר בכל עדכון: ההחלטה הסתמכה על שם
+     * הקמפיין בלבד. כשהשם לא הגיע - והחיבור הישיר לפייסבוק
+     * מקבל אותו רק עם הרשאה לחשבון המודעות - ההתאמה נפלה,
+     * והליד של הקונה נכנס לרשימה האישית שלך.
+     *
+     * מזהה טופס או מודעה תמיד מגיע, ולכן עכשיו ההכרעה
+     * מחזיקה גם בלי שם.
+     */
+    const channel = await channelForIncoming(identifiersOf(extra));
 
     /**
      * מאיזו דלת הליד נכנס.

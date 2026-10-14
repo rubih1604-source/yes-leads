@@ -255,11 +255,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, ignored: "not json" });
   }
 
-  const leadIds: string[] = [];
+  /**
+   * שומרים גם את מזהה הטופס שההתראה עצמה נושאת.
+   *
+   * למה זה קריטי: שם הקמפיין נמשך מה-Graph API ומגיע רק
+   * עם הרשאה לחשבון המודעות. מזהה הטופס מגיע **תמיד**,
+   * כבר בהתראה. הוא מה שמאפשר לדעת שהליד שייך לקונה גם
+   * כשאין שם קמפיין - ולכן הוא לא נזרק.
+   */
+  const leadIds: Array<{ id: string; formId: string | null }> = [];
+
   for (const entry of parsed.entry ?? []) {
     for (const change of entry.changes ?? []) {
       if (change.field === "leadgen" && change.value?.leadgen_id) {
-        leadIds.push(change.value.leadgen_id);
+        leadIds.push({
+          id: change.value.leadgen_id,
+          formId: change.value.form_id ?? null,
+        });
       }
     }
   }
@@ -267,7 +279,7 @@ export async function POST(request: Request) {
   const intakeToken = process.env.LEADMANAGER_WEBHOOK_TOKEN?.trim() ?? "";
   const base = process.env.APP_URL?.trim() || "https://localhost";
 
-  for (const leadId of leadIds) {
+  for (const { id: leadId, formId } of leadIds) {
     try {
       const lead = await fetchLead(leadId);
 
@@ -292,6 +304,9 @@ export async function POST(request: Request) {
        * רואים באותה שורה גם מה הגיע וגם מה קיבלנו.
        */
       const details = toIntakePayload(lead);
+
+      // מזהה הטופס מההתראה, אם השליפה לא החזירה אותו
+      if (!details.fb_form && formId) details.fb_form = formId;
 
       if (log) {
         await db.webhookLog

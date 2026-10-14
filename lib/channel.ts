@@ -42,6 +42,8 @@
  * בעצלתיים בתוך הפונקציה שמשתמשת בה.
  */
 
+import type { LeadIdentifiers } from "./campaign-match";
+
 export type Channel = "mine" | "sale";
 
 /** כניסה כפי שהיא נשמרת - רק מה שצריך כדי להחליט על ערוץ */
@@ -80,13 +82,44 @@ export function isSaleEntry(entry: EntryLike): boolean {
  * ההכנסה של כניסות ישנות.
  */
 export async function channelForIncoming(
-  campaign: string | null | undefined
-): Promise<{ channel: Channel; isSale: boolean; price: number }> {
-  const { salesPriceFor } = await import("./sales-campaigns");
-  const price = await salesPriceFor(campaign);
-  return price === null
-    ? { channel: "mine", isSale: false, price: 0 }
-    : { channel: "sale", isSale: true, price };
+  incoming: string | null | undefined | LeadIdentifiers
+): Promise<{
+  channel: Channel;
+  isSale: boolean;
+  price: number;
+  campaignName: string | null;
+  matchedOn: string | null;
+}> {
+  /**
+   * מקבלים גם שם בלבד וגם את כל המזהים.
+   *
+   * שם בלבד נשאר נתמך כדי שקוד ותיק לא יישבר, אבל הקליטה
+   * מעבירה את כל המזהים - וזה מה שמונע מליד של קונה ליפול
+   * לרשימה שלך כששם הקמפיין לא הגיע.
+   */
+  const ids: LeadIdentifiers =
+    incoming === null || incoming === undefined || typeof incoming === "string"
+      ? { campaign: incoming ?? null }
+      : incoming;
+
+  const { saleCampaignFor } = await import("./sales-campaigns");
+  const hit = await saleCampaignFor(ids);
+
+  return hit
+    ? {
+        channel: "sale",
+        isSale: true,
+        price: hit.price,
+        campaignName: hit.name,
+        matchedOn: hit.matchedOn,
+      }
+    : {
+        channel: "mine",
+        isSale: false,
+        price: 0,
+        campaignName: null,
+        matchedOn: null,
+      };
 }
 
 /** רק הכניסות של הערוץ שלך */

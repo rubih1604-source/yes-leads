@@ -299,6 +299,16 @@ model ImportRun {
 model SalesCampaign {
   id           String   @id @default(cuid())
   name         String   @unique
+
+  /// מזהים נוספים שמסמנים ליד כשייך לקמפיין הזה:
+  /// מזהה טופס, קמפיין, מודעה או קבוצת מודעות בפייסבוק,
+  /// או שם חלופי של הקמפיין.
+  ///
+  /// למה: שם קמפיין הוא טקסט חופשי. הוא יכול להשתנות,
+  /// ולא תמיד מגיע בכלל - ואז הליד נחשב בטעות שלך ונכנס
+  /// לרשימה שלך. מזהה לא משתנה ותמיד מגיע.
+  matchKeys    String[] @default([])
+
   pricePerLead Float    @default(0)
   buyer        String?
   buyerId      String?

@@ -156,6 +156,12 @@ export default async function LeadPage({
           leadId={lead.id}
           status={lead.status}
           phone={dialPhone(lead.phone)}
+          /**
+           * השם הפרטי לא הועבר כאן בכלל, ולכן בתצוגה המקדימה
+           * של ההודעה המקום של השם נראה ריק - לא כמו ההודעה
+           * שבאמת נשלחת.
+           */
+          firstName={lead.firstName ?? ""}
           templates={templates as unknown as TemplateOption[]}
           doNotContact={lead.doNotContact}
           canUndo={Boolean(lastAutoChange?.fromStatus)}
@@ -201,6 +207,24 @@ export default async function LeadPage({
                       <span style={{ color: "#667085", fontSize: 12.5 }}>
                         {" · "}
                         {door}
+                      </span>
+                    )}
+                    {/**
+                      * לאיזה ערוץ הכניסה שויכה.
+                      *
+                      * מוצג במפורש כדי שטעות שיוך לא תהיה שקופה:
+                      * כניסה של קונה שלא סומנה "מכירה" היא בדיוק
+                      * מה שמכניס ליד של אלעד לרשימה שלך.
+                      */}
+                    {entry.isSale && (
+                      <span
+                        style={{
+                          color: "#b54708",
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {" · מכירה"}
                       </span>
                     )}
                   </span>

@@ -19,6 +19,11 @@ import { getSettings } from "./settings";
 import { leadsForSlot, markSent, type Slot } from "./callback-list";
 import { israelParts } from "./working-hours";
 import { runDeliveries } from "./delivery";
+import {
+  buildLookup,
+  identifiersOf,
+  planEntries,
+} from "./campaign-match";
 
 export type RunSummary = {
   picked: number;
@@ -543,17 +548,29 @@ async function syncSaleLeads() {
   const campaigns = await db.salesCampaign
     .findMany({
       where: { active: true },
-      select: { name: true, pricePerLead: true },
+      select: { id: true, name: true, pricePerLead: true, matchKeys: true },
     })
     .catch(() => []);
 
   if (campaigns.length === 0) return;
 
-  const priceByKey = new Map<string, number>(
-    campaigns.map((c) => [
-      c.name.trim().replace(/\s+/g, " ").toLowerCase(),
-      Number(c.pricePerLead ?? 0),
-    ])
+  /**
+   * אותה טבלת זיהוי שהקליטה משתמשת בה - לפי מזהים ולא
+   * רק לפי שם.
+   *
+   * כאן היה חצי מהבעיה: הסריקה הזו תיקנה רק כניסות שיש
+   * להן שם קמפיין. כניסה שנרשמה בלי שם - וזה בדיוק מה
+   * שקורה בליד מפייסבוק בלי הרשאה לחשבון המודעות - לא
+   * נגעו בה לעולם. לכן הליד נשאר ברשימה שלך ושום דבר
+   * לא תיקן את זה מעצמו.
+   */
+  const lookup = buildLookup(
+    campaigns.map((c) => ({
+      id: c.id,
+      name: c.name,
+      pricePerLead: Number(c.pricePerLead ?? 0),
+      matchKeys: c.matchKeys ?? [],
+    }))
   );
 
   /**
@@ -562,14 +579,15 @@ async function syncSaleLeads() {
    */
   const since = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
 
-  const key = (v: string) => v.trim().replace(/\s+/g, " ").toLowerCase();
-
   /**
    * סורקים לפי **כניסות**, לא לפי הקמפיין שרשום על הליד.
    *
    * הקמפיין שעל הליד הוא תמיד האחרון שנכנס, ולכן ליד שחזר
    * אליך מקמפיין שלך עדיין נראה כאילו הוא של המכירה. הכניסות
    * הן מה שבאמת קרה, וכל אחת מהן שייכת לערוץ אחד בלבד.
+   *
+   * שולפים **את כל הכניסות**, גם בלי שם קמפיין, ואת השדות
+   * הנוספים של הליד - שם שמורים מזהי הטופס והמודעה.
    */
   const leads = await db.lead
     .findMany({
@@ -577,8 +595,8 @@ async function syncSaleLeads() {
       select: {
         id: true,
         origin: true,
+        extra: true,
         entries: {
-          where: { campaign: { not: null } },
           orderBy: { at: "desc" },
           select: { id: true, campaign: true, isSale: true },
         },
@@ -603,17 +621,26 @@ async function syncSaleLeads() {
      */
     let stampedAny = false;
 
-    for (const entry of lead.entries) {
-      if (!entry.campaign || entry.isSale) continue;
+    /**
+     * המזהים של הליד: הטופס והמודעה שנשמרו בשדות הנוספים.
+     * הם מה שמזהה ליד של קונה גם כשאין שם קמפיין.
+     */
+    const leadIds = identifiersOf(
+      lead.extra && typeof lead.extra === "object" && !Array.isArray(lead.extra)
+        ? (lead.extra as Record<string, unknown>)
+        : null
+    );
 
-      const price = priceByKey.get(key(entry.campaign));
-      if (price === undefined) continue; // קמפיין שלך - נשאר שלך
+    const plan = planEntries(lead.entries, leadIds, lookup);
 
+    for (const entry of plan.stamp) {
       await db.leadEntry
-        .update({ where: { id: entry.id }, data: { isSale: true, price } })
+        .update({
+          where: { id: entry.id },
+          data: { isSale: true, price: entry.price },
+        })
         .catch(() => null);
 
-      entry.isSale = true;
       stampedAny = true;
     }
 
@@ -627,11 +654,10 @@ async function syncSaleLeads() {
      * קודם הכלל היה "הכניסה האחרונה קובעת", ולכן ליד שעבדת
      * עליו עבר לאלעד ברגע שנכנס אצלו - ונעלם לך מהרשימה.
      *
-     * הספירה רצה אחרי החתימה, כדי שכניסה שזה עתה סומנה
-     * כמכירה לא תיחשב בטעות ככניסה שלך.
+     * הספירה מגיעה מאותה פונקציה שקבעה את החתימות, ולכן
+     * כניסה שזה עתה סומנה כמכירה לא נספרת בטעות ככניסה שלך.
      */
-    const mineCount = lead.entries.filter((e) => !e.isSale).length;
-    const shouldBe = mineCount === 0 ? "sale" : "leadmanager";
+    const shouldBe = plan.mineLeft === 0 ? "sale" : "leadmanager";
 
     if (lead.origin !== shouldBe) {
       await db.lead
