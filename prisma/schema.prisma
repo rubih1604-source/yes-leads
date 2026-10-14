@@ -37,6 +37,7 @@ model Lead {
   alerts         Alert[]
   tasks          Task[]
   entries        LeadEntry[]
+  deliveries     LeadDelivery[]
 
   @@index([status])
   @@index([origin, intakeAt])
@@ -316,7 +317,52 @@ model LeadBuyer {
   note      String?
   createdAt DateTime @default(now())
 
-  campaigns SalesCampaign[]
+  /// לאן לשלוח כל ליד שנמכר לו. ריק = לא נשלח כלום
+  webhookUrl    String?
+  /// נוסף לבקשה כ-token, אם הקונה דורש אימות
+  webhookSecret String?
+  /// json (ברירת מחדל) או form, לפי מה שהצד השני מצפה לו
+  webhookFormat String  @default("json")
+  /// שינוי שמות שדות: { "phone": "telephone" } - לכל קונה המבנה שלו
+  fieldMap      Json?
+  /// כיבוי זמני בלי למחוק את ההגדרות
+  sendEnabled   Boolean @default(true)
+
+  campaigns  SalesCampaign[]
+  deliveries LeadDelivery[]
+}
+
+/// ============================================================
+///  יומן השליחות לקונים
+/// ============================================================
+///
+///  שורה לכל ניסיון שליחה. בלי זה אי אפשר לענות על השאלה
+///  הכי חשובה בעסק הזה: "הליד הגיע אליו או לא?"
+///
+///  כישלון לא נמחק - הוא נשאר עם הסיבה, ואפשר לשלוח שוב.
+model LeadDelivery {
+  id        String   @id @default(cuid())
+  buyerId   String
+  buyer     LeadBuyer @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  leadId    String
+  lead      Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  /// הכניסה שבגללה נשלח, כדי שלא נשלח פעמיים על אותה הגעה
+  entryId   String?
+
+  state      String   @default("pending") // pending | sent | failed
+  attempts   Int      @default(0)
+  httpStatus Int?
+  error      String?
+  payload    Json?
+  response   String?
+
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+  nextTryAt DateTime?
+
+  @@unique([buyerId, entryId])
+  @@index([state, nextTryAt])
+  @@index([leadId])
 }
 
 /// כל כניסה של ליד, בנפרד.
@@ -325,6 +371,9 @@ model LeadEntry {
   id        String   @id @default(cuid())
   leadId    String
   lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  /// מאיזו דלת הליד נכנס: leadmanager או facebook.
+  /// זה מה שמאפשר לדעת אם החיבור הישיר באמת מביא לידים.
+  via       String?
   campaign  String?
   source    String?
   isSale    Boolean  @default(false)

@@ -18,6 +18,7 @@ import { isExistingCustomer, supplierAnswer } from "./existing-customer";
 import { getSettings } from "./settings";
 import { leadsForSlot, markSent, type Slot } from "./callback-list";
 import { israelParts } from "./working-hours";
+import { runDeliveries } from "./delivery";
 
 export type RunSummary = {
   picked: number;
@@ -287,6 +288,7 @@ export async function runDueJobs(limit = 50): Promise<RunSummary> {
     ["סימון לקוחות קיימים", () => enforceExistingCustomer()],
     ["רשימת חזרה", () => sendCallbackList()],
     ["סנכרון לידי מכירה", () => syncSaleLeads()],
+    ["שליחת לידים לקונים", () => runDeliveries()],
     ["בדיקת קמפיינים", () => checkCampaigns()],
     ["לידים חוזרים", () => bumpReturningLeads()],
   ];

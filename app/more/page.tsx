@@ -93,6 +93,12 @@ export default async function MorePage() {
           desc: "מתי נכנסים לידים, מתי עונים, ומה מאפיין סגירה",
         },
         {
+          href: "/buyers",
+          glyph: "⇄",
+          label: "קונים ושליחות",
+          desc: "לאן כל קונה מקבל לידים, ויומן של מה נשלח ומה נכשל",
+        },
+        {
           href: "/competition",
           glyph: "⚑",
           label: "איפה אני מאבד",

@@ -10,6 +10,7 @@ import { isExistingCustomer, supplierAnswer } from "@/lib/existing-customer";
 import LeadCardActions from "@/components/LeadCardActions";
 import CallLink from "@/components/CallLink";
 import { getSettings } from "@/lib/settings";
+import { doorLabel } from "@/lib/via";
 import LeadTasks from "@/components/LeadTasks";
 import BackLink from "@/components/BackLink";
 import AutoRefresh from "@/components/AutoRefresh";
@@ -172,21 +173,43 @@ export default async function LeadPage({
         />
       </div>
 
-      {lead.entries.length > 1 && (
+      {/**
+        * מתי הוא נכנס - ודרך איזו דלת.
+        *
+        * מוצג גם כשיש כניסה אחת, כי זו השורה שעונה על
+        * השאלה "זה הגיע מהחיבור הישיר או מליד מנגר".
+        * הפרטים בכרטיס נראים זהים משני המקורות, ולכן בלי
+        * השורה הזו אין שום דרך להבדיל.
+        */}
+      {lead.entries.length > 0 && (
         <>
           <div className="section-title">מתי הוא נכנס</div>
           <div className="card">
-            {lead.entries.map((entry, i) => (
-              <div className="stat-row" key={entry.id}>
-                <span>
-                  {i === 0 ? "האחרונה" : `כניסה ${lead.entries.length - i}`}
-                  {entry.campaign ? ` · ${entry.campaign}` : ""}
-                </span>
-                <strong style={{ fontSize: 14 }}>
-                  {formatDate(entry.at)}
-                </strong>
-              </div>
-            ))}
+            {lead.entries.map((entry, i) => {
+              const door = doorLabel(entry.via);
+
+              return (
+                <div className="stat-row" key={entry.id}>
+                  <span>
+                    {lead.entries.length === 1
+                      ? "נכנס"
+                      : i === 0
+                        ? "האחרונה"
+                        : `כניסה ${lead.entries.length - i}`}
+                    {entry.campaign ? ` · ${entry.campaign}` : ""}
+                    {door && (
+                      <span style={{ color: "#667085", fontSize: 12.5 }}>
+                        {" · "}
+                        {door}
+                      </span>
+                    )}
+                  </span>
+                  <strong style={{ fontSize: 14 }}>
+                    {formatDate(entry.at)}
+                  </strong>
+                </div>
+              );
+            })}
           </div>
         </>
       )}

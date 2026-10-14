@@ -9,6 +9,8 @@ import {
 import { isExistingCustomer } from "@/lib/existing-customer";
 import { isKnownStatus } from "@/lib/status-store";
 import { scheduleForStatus } from "@/lib/rules";
+import { queueDelivery } from "@/lib/delivery";
+import { doorOf, addDoor } from "@/lib/via";
 import {
   channelForIncoming,
   isSameSubmission,
@@ -149,6 +151,15 @@ async function handle(request: Request) {
     const incomingCampaign = extra.fb_campaign || extra.campaign || null;
     const channel = await channelForIncoming(incomingCampaign);
 
+    /**
+     * מאיזו דלת הליד נכנס.
+     *
+     * החיבור הישיר לפייסבוק מסמן את עצמו ב-_source, ולכן
+     * אפשר לדעת מי הביא את הליד - וזה מה שמאפשר לראות אם
+     * החיבור הישיר באמת עובד או שליד מנגר עושה הכל.
+     */
+    const via = doorOf(raw);
+
     if (!existing) {
       const lead = await db.lead.create({
         data: {
@@ -201,18 +212,32 @@ async function handle(request: Request) {
        * שזו מכירה - ואותה הגעה אחת נספרה כשתיים. זה מה
        * שהפך ליד של אלעד ל"כפול 2" אצלך.
        */
-      await db.leadEntry
+      const firstEntry = await db.leadEntry
         .create({
           data: {
             leadId: lead.id,
             campaign: incomingCampaign,
             source: mapped.source,
+            via,
             isSale: channel.isSale,
             price: channel.price,
             at: new Date(),
           },
         })
         .catch(() => null);
+
+      /**
+       * ליד של קונה נשלח אליו אוטומטית.
+       * רק נרשם לתור כאן - השליחה עצמה במנוע, כדי שהקליטה
+       * לא תחכה לשרת של הקונה.
+       */
+      if (channel.isSale && firstEntry) {
+        await queueDelivery({
+          leadId: lead.id,
+          entryId: firstEntry.id,
+          campaign: incomingCampaign,
+        }).catch(() => false);
+      }
 
       /**
        * אוטומציות רצות רק על הערוץ שלך.
@@ -281,7 +306,7 @@ async function handle(request: Request) {
             leadId: existing.id,
             at: { gte: new Date(Date.now() - lookback) },
           },
-          select: { isSale: true, campaign: true, at: true },
+          select: { id: true, isSale: true, campaign: true, at: true, via: true },
         })
         .catch(() => []);
 
@@ -347,24 +372,63 @@ async function handle(request: Request) {
       });
 
       /**
+       * ============================================================
+       *  אותה הגעה, דלת שנייה
+       * ============================================================
+       *
+       *  החיבור הישיר וליד מנגר רצים במקביל, ולכן אותו ליד
+       *  מגיע פעמיים - פעם מכל דלת. זו **לא** הגעה כפולה
+       *  ולכן לא נרשמת כניסה נוספת, אבל כן נרשם מי הביא:
+       *  שתי הדלתות נשמרות על אותה כניסה, בסדר שבו הגיעו.
+       *
+       *  זה מה שמאפשר לראות בכרטיס הליד שהחיבור הישיר באמת
+       *  עובד, גם כשליד מנגר הביא את אותו ליד שנייה אחר כך.
+       */
+      if (sameSubmission) {
+        const matching = recentEntries
+          .filter((e) => e.isSale === channel.isSale)
+          .sort((a, b) => b.at.getTime() - a.at.getTime())[0];
+
+        if (matching) {
+          const merged = addDoor(matching.via, via);
+
+          if (merged) {
+            await db.leadEntry
+              .update({ where: { id: matching.id }, data: { via: merged } })
+              .catch(() => null);
+          }
+        }
+      }
+
+      /**
        * כניסה נוספת נרשמת עם הערוץ שלה חתום עליה.
        *
        * תגית "כפול" נספרת מתוך הכניסות של אותו ערוץ בלבד,
        * ולכן כניסה אצל אלעד לא תסמן לך כפול ברשימה שלך.
        */
       if (!sameSubmission) {
-        await db.leadEntry
+        const entry = await db.leadEntry
           .create({
             data: {
               leadId: existing.id,
               campaign: incomingCampaign,
               source: mapped.source,
+              via,
               isSale: channel.isSale,
               price: channel.price,
               at: new Date(),
             },
           })
           .catch(() => null);
+
+        // הגעה חדשה בערוץ המכירה = שליחה חדשה לקונה
+        if (channel.isSale && entry) {
+          await queueDelivery({
+            leadId: existing.id,
+            entryId: entry.id,
+            campaign: incomingCampaign,
+          }).catch(() => false);
+        }
       }
 
       await db.leadEvent.create({

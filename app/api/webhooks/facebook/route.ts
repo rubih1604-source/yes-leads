@@ -284,12 +284,35 @@ export async function POST(request: Request) {
         continue;
       }
 
+      /**
+       * מעשירים את שורת היומן בפרטים שנמשכו.
+       *
+       * פייסבוק שולחת רק מזהים, ולכן השורה נראתה ריקה
+       * מתוכן ולא היה ברור אם הליד באמת נמשך. עכשיו
+       * רואים באותה שורה גם מה הגיע וגם מה קיבלנו.
+       */
+      const details = toIntakePayload(lead);
+
+      if (log) {
+        await db.webhookLog
+          .update({
+            where: { id: log.id },
+            data: {
+              rawPayload: {
+                התראה_מפייסבוק: raw,
+                פרטי_הליד_שנמשכו: details,
+              } as never,
+            },
+          })
+          .catch(() => null);
+      }
+
       // אותו מסלול קליטה בדיוק כמו ליד מנגר
       await intakeLead(
         new Request(`${base}/api/webhooks/leadmanager?token=${encodeURIComponent(intakeToken)}`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify(toIntakePayload(lead)),
+          body: JSON.stringify(details),
         })
       );
     } catch (err) {

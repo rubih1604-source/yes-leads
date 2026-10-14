@@ -47,6 +47,7 @@ export default function Nav({
         "/reports",
         "/insights",
         "/competition",
+        "/buyers",
         "/campaign-alerts",
         "/callbacks",
         "/tasks",
