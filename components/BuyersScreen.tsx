@@ -4,7 +4,11 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { displayPhone } from "@/lib/phone";
-import { DELIVERY_FIELDS } from "@/lib/delivery-payload";
+import {
+  DELIVERY_FIELDS,
+  checkTemplate,
+  headersToText,
+} from "@/lib/delivery-payload";
 
 /**
  * ============================================================
@@ -26,6 +30,10 @@ export type BuyerRow = {
   webhookFormat: string;
   sendEnabled: boolean;
   fieldMap: Record<string, string>;
+  headers: Record<string, string>;
+  bodyTemplate: string;
+  successContains: string;
+  failureContains: string;
   campaigns: string[];
   totalSent: number;
 };
@@ -73,6 +81,12 @@ function BuyerCard({ buyer }: { buyer: BuyerRow }) {
   const [enabled, setEnabled] = useState(buyer.sendEnabled);
   const [mapOpen, setMapOpen] = useState(false);
   const [fieldMap, setFieldMap] = useState(buyer.fieldMap);
+  const [headers, setHeaders] = useState(headersToText(buyer.headers));
+  const [template, setTemplate] = useState(buyer.bodyTemplate);
+  const [okText, setOkText] = useState(buyer.successContains);
+  const [failText, setFailText] = useState(buyer.failureContains);
+  const [advanced, setAdvanced] = useState(false);
+  const [verdict, setVerdict] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const router = useRouter();
@@ -90,6 +104,10 @@ function BuyerCard({ buyer }: { buyer: BuyerRow }) {
         webhookFormat: format,
         sendEnabled: enabled,
         fieldMap,
+        headers,
+        bodyTemplate: template,
+        successContains: okText,
+        failureContains: failText,
       }),
     }).catch(() => null);
 
@@ -226,6 +244,157 @@ function BuyerCard({ buyer }: { buyer: BuyerRow }) {
               />
             </div>
           ))}
+        </div>
+      )}
+
+      {/**
+        * ההגדרות שמפרט השידור של ליד מנגר דורש: כותרת אימות
+        * בשם מותאם, ותבנית גוף חופשית עם שדות קבועים.
+        * בלי אלה אי אפשר לשדר למערכת כמו ActiveFlow.
+        */}
+      <button
+        className="chip"
+        style={{ marginTop: 10 }}
+        onClick={() => setAdvanced((v) => !v)}
+      >
+        אימות ותבנית שידור {advanced ? "⌃" : "⌄"}
+      </button>
+
+      {advanced && (
+        <div style={{ marginTop: 11 }}>
+          <label
+            style={{ display: "block", fontSize: 13, color: "#475467", marginBottom: 4 }}
+          >
+            כותרות (Headers)
+          </label>
+          <div style={{ fontSize: 12.5, color: "#667085", marginBottom: 6 }}>
+            שורה לכל כותרת, בפורמט <span dir="ltr">שם=ערך</span> — אפשר
+            להעתיק ישר מהמפרט של הקונה.
+          </div>
+          <textarea
+            className="search"
+            style={{
+              width: "100%",
+              minHeight: 62,
+              direction: "ltr",
+              fontFamily: "monospace",
+              fontSize: 12.5,
+            }}
+            value={headers}
+            placeholder="X-API-Key=..."
+            onChange={(e) => setHeaders(e.target.value)}
+          />
+
+          <label
+            style={{
+              display: "block",
+              fontSize: 13,
+              color: "#475467",
+              margin: "11px 0 4px",
+            }}
+          >
+            תבנית גוף השידור
+          </label>
+          <div
+            style={{ fontSize: 12.5, color: "#667085", marginBottom: 6, lineHeight: 1.6 }}
+          >
+            השאר ריק כדי לשלוח את המטען הרגיל. אסימונים זמינים:
+            <br />
+            <span dir="ltr" style={{ fontFamily: "monospace", fontSize: 11.5 }}>
+              {DELIVERY_FIELDS.map((f) => `{${f.key}}`).join(" ")}
+            </span>
+          </div>
+          <textarea
+            className="search"
+            style={{
+              width: "100%",
+              minHeight: 130,
+              direction: "ltr",
+              fontFamily: "monospace",
+              fontSize: 12.5,
+            }}
+            value={template}
+            placeholder={
+              '{\n  "name": "{full_name}",\n  "phone": "{phone}",\n  "email": "{email}"\n}'
+            }
+            onChange={(e) => setTemplate(e.target.value)}
+          />
+
+          <button
+            className="chip"
+            style={{ marginTop: 7 }}
+            onClick={() => {
+              if (!template.trim()) {
+                setVerdict("אין תבנית — יישלח המטען הרגיל");
+                return;
+              }
+
+              const result = checkTemplate(template);
+              setVerdict(
+                result.ok
+                  ? `התבנית תקינה · ${result.tokens.length} אסימונים`
+                  : result.error ?? "התבנית לא תקינה"
+              );
+            }}
+          >
+            בדוק תקינות תבנית
+          </button>
+
+          {verdict && (
+            <div style={{ fontSize: 13, color: "#475467", marginTop: 7 }}>
+              {verdict}
+            </div>
+          )}
+
+          {/**
+            * בדיקת הצלחה וכשלון, כמו במפרט של ליד מנגר.
+            *
+            * יש מערכות שמחזירות 200 גם כשהליד נדחה, ואומרות
+            * את זה בגוף התשובה. בלי זה היומן היה מסמן "נשלח"
+            * לליד שלא נכנס אצל הקונה.
+            */}
+          <label
+            style={{
+              display: "block",
+              fontSize: 13,
+              color: "#475467",
+              margin: "13px 0 4px",
+            }}
+          >
+            מתי השליחה נחשבת הצליחה
+          </label>
+          <div style={{ fontSize: 12.5, color: "#667085", marginBottom: 6 }}>
+            השאר ריק כדי להכריע לפי קוד התשובה. סימן כשלון גובר על
+            סימן הצלחה.
+          </div>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ flex: "1 1 160px" }}>
+              <div style={{ fontSize: 12, color: "#12805c", marginBottom: 3 }}>
+                חייב להופיע בתשובה
+              </div>
+              <input
+                className="search"
+                style={{ width: "100%", direction: "ltr", fontSize: 12.5 }}
+                value={okText}
+                placeholder='"success":true'
+                onChange={(e) => setOkText(e.target.value)}
+              />
+            </div>
+
+            <div style={{ flex: "1 1 160px" }}>
+              <div style={{ fontSize: 12, color: "#b42318", marginBottom: 3 }}>
+                אם הופיע — נכשל
+              </div>
+              <input
+                className="search"
+                style={{ width: "100%", direction: "ltr", fontSize: 12.5 }}
+                value={failText}
+                placeholder='"error"'
+                onChange={(e) => setFailText(e.target.value)}
+              />
+            </div>
+          </div>
         </div>
       )}
 

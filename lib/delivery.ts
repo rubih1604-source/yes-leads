@@ -20,11 +20,13 @@
 
 import { db } from "./db";
 import {
+  deliveryVerdict,
   buildPayload,
   applyFieldMap,
   shouldRetry,
   retryDelayMinutes,
   isSuccess,
+  renderTemplate,
 } from "./delivery-payload";
 
 /**
@@ -137,12 +139,43 @@ export async function sendDelivery(deliveryId: string): Promise<boolean> {
     // הסוד נשלח גם ככותרת וגם כשדה, כי לכל קונה דרישה אחרת
     if (secret) headers["Authorization"] = `Bearer ${secret}`;
 
-    const body = asForm
-      ? new URLSearchParams({
-          ...payload,
-          ...(secret ? { token: secret } : {}),
-        }).toString()
-      : JSON.stringify({ ...payload, ...(secret ? { token: secret } : {}) });
+    /**
+     * כותרות של הקונה.
+     *
+     * נכתבות **אחרי** ברירת המחדל, כדי שהן יגברו: קונה
+     * שדורש X-API-Key או Content-Type משלו מקבל בדיוק מה
+     * שהוא דורש. בלי זה הבקשה נדחית באימות והליד לא מגיע.
+     */
+    const custom =
+      delivery.buyer.headers &&
+      typeof delivery.buyer.headers === "object" &&
+      !Array.isArray(delivery.buyer.headers)
+        ? (delivery.buyer.headers as Record<string, unknown>)
+        : {};
+
+    for (const [name, value] of Object.entries(custom)) {
+      if (typeof value === "string" && name.trim() && value.trim()) {
+        headers[name.trim()] = value.trim();
+      }
+    }
+
+    /**
+     * תבנית גוף השידור, אם הוגדרה.
+     *
+     * זה מה שמאפשר לשלוח בדיוק את המבנה שהקונה מצפה לו,
+     * כולל שדות קבועים שלא באים מהליד. בלי תבנית נשלח
+     * המטען הרגיל, כמו עד היום.
+     */
+    const template = delivery.buyer.bodyTemplate?.trim();
+
+    const body = template
+      ? renderTemplate(template, payload)
+      : asForm
+        ? new URLSearchParams({
+            ...payload,
+            ...(secret ? { token: secret } : {}),
+          }).toString()
+        : JSON.stringify({ ...payload, ...(secret ? { token: secret } : {}) });
 
     /**
      * פסק זמן של 20 שניות. שרת שלא עונה תוך זה ייחשב
@@ -169,7 +202,25 @@ export async function sendDelivery(deliveryId: string): Promise<boolean> {
   }
 
   const attempts = delivery.attempts + 1;
-  const ok = httpStatus !== null && isSuccess(httpStatus);
+
+  /**
+   * ההכרעה אם הליד הגיע.
+   *
+   * לא רק קוד HTTP: יש מערכות שמחזירות 200 גם כשהליד
+   * נדחה, ואומרות את זה בגוף התשובה. לכן אם הוגדרו
+   * סימני הצלחה או כשלון - הם קובעים.
+   */
+  const verdict =
+    httpStatus === null
+      ? { ok: false, reason: networkError || "לא התקבלה תשובה" }
+      : deliveryVerdict({
+          httpStatus,
+          body: responseText,
+          successContains: delivery.buyer.successContains,
+          failureContains: delivery.buyer.failureContains,
+        });
+
+  const ok = verdict.ok;
 
   if (ok) {
     await db.leadDelivery
@@ -203,6 +254,7 @@ export async function sendDelivery(deliveryId: string): Promise<boolean> {
         response: responseText,
         error:
           networkError ||
+          verdict.reason ||
           `השרת של הקונה החזיר ${httpStatus}${
             responseText ? ` - ${responseText.slice(0, 120)}` : ""
           }`,

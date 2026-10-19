@@ -16,6 +16,7 @@ import {
   existsIn,
   lastEntryAtIn,
   isSameSubmission,
+  isStatusUpdate,
   mineOnly,
   saleOnly,
   MY_LEADS_WHERE,
@@ -212,13 +213,13 @@ console.log('\n"אותה הגשה" — בתוך הערוץ בלבד');
   );
 
   /**
-   * שונה בכוונה: בלי מזהה הגשה, הפרש של כמה שעות נחשב
-   * לאותה הגשה. זה מה שמונע מכל שינוי סטטוס בליד מנגר
-   * להירשם ככניסה חדשה. ההבחנה האמיתית נעשית לפי מזהה
-   * ההגשה, כפי שהבדיקה הבאה מראה.
+   * כאן הייתה הטעות היקרה: החלון היה 24 שעות, ולכן הגעה
+   * אמיתית של אותו אדם באותו יום נבלעה והליד לא הופיע
+   * ברשימה. החלון קיים רק לאותה הגשה שמגיעה משתי דלתות
+   * בהפרש של דקות.
    */
   check(
-    "בלי מזהה הגשה, הפרש של שעות = אותה הגשה",
+    "בלי מזהה הגשה, הפרש של שעות = הגעה חדשה",
     isSameSubmission({
       incomingFbId: null,
       knownFbId: null,
@@ -228,7 +229,35 @@ console.log('\n"אותה הגשה" — בתוך הערוץ בלבד');
       ],
       now,
     }),
+    false
+  );
+
+  check(
+    "אותה הגשה משתי דלתות, בהפרש של דקה = לא כפול",
+    isSameSubmission({
+      incomingFbId: null,
+      knownFbId: null,
+      channel: "mine",
+      entries: [
+        { isSale: false, campaign: "גאוגרפי", at: t("2026-09-28T11:59:00Z") },
+      ],
+      now: t("2026-09-28T12:00:00Z"),
+    }),
     true
+  );
+
+  check(
+    "הגעה 40 דקות אחר כך כבר נספרת",
+    isSameSubmission({
+      incomingFbId: null,
+      knownFbId: null,
+      channel: "mine",
+      entries: [
+        { isSale: false, campaign: "גאוגרפי", at: t("2026-09-28T11:20:00Z") },
+      ],
+      now: t("2026-09-28T12:00:00Z"),
+    }),
+    false
   );
 
   check(
@@ -270,85 +299,136 @@ console.log("\nחותמת הערוץ היא הקובעת");
 }
 
 // ------------------------------------------------------------
-console.log("\nעדכון סטטוס מליד מנגר אינו כניסה חדשה");
+console.log("\nכל הגעה נספרת — גם ארבע פעמים ביום");
 // ------------------------------------------------------------
 {
   /**
-   * ליד מנגר שולח webhook גם כשמשתנה סטטוס. בלי מזהה הגשה
-   * אין איך להבדיל בינו לבין ליד חדש, וחלון קצר הפך כל
-   * שינוי סטטוס לכניסה — מה ששבר את הסינון לפי תקופה.
+   * הכלל שלו, במילים שלו: "גם אם נכנס ביום 4 פעמים אותו
+   * ליד — הוא יופיע ברשימה עם תווית ליד כפול".
+   *
+   * כאן נבלעה בדיוק ההגעה שקרתה: חלון של 24 שעות שקבעתי
+   * גרם לכך שהליד לא הופיע ביום שבו נכנס.
    */
-  const now = t("2026-10-07T12:00:00Z");
-  const morning = [
-    { isSale: false, campaign: "גאוגרפי", at: t("2026-10-07T06:00:00Z") },
+  const day = "2026-10-19";
+  const arrivals = [
+    t(`${day}T06:00:00Z`),
+    t(`${day}T09:30:00Z`),
+    t(`${day}T13:00:00Z`),
   ];
 
-  check(
-    "שינוי סטטוס 6 שעות אחרי הכניסה — לא כניסה חדשה",
-    isSameSubmission({
-      incomingFbId: null,
-      knownFbId: null,
-      channel: "mine",
-      entries: morning,
-      now,
-    }),
-    true
-  );
+  const entries = arrivals.map((at) => ({
+    isSale: false,
+    campaign: "גאוגרפי",
+    at,
+  }));
 
   check(
-    "גם יום אחרי — עדיין לא כניסה חדשה",
+    "הגעה רביעית באותו יום היא הגעה, לא כפילות",
     isSameSubmission({
       incomingFbId: null,
       knownFbId: null,
       channel: "mine",
-      entries: [
-        { isSale: false, campaign: "גאוגרפי", at: t("2026-10-06T13:00:00Z") },
-      ],
-      now,
-    }),
-    true
-  );
-
-  check(
-    "אחרי יומיים — זו באמת הגעה חדשה",
-    isSameSubmission({
-      incomingFbId: null,
-      knownFbId: null,
-      channel: "mine",
-      entries: [
-        { isSale: false, campaign: "גאוגרפי", at: t("2026-10-05T06:00:00Z") },
-      ],
-      now,
+      entries,
+      now: t(`${day}T17:00:00Z`),
     }),
     false
   );
 
   check(
-    "עם מזהה הגשה שונה — הגעה חדשה גם באותו יום",
-    isSameSubmission({
-      incomingFbId: "fb-999",
-      knownFbId: "fb-111",
-      channel: "mine",
-      entries: morning,
-      now,
+    "ארבע הגעות = ארבע כניסות אצלך",
+    entryCountIn(
+      [
+        ...entries,
+        { isSale: false, campaign: "גאוגרפי", at: t(`${day}T17:00:00Z`) },
+      ],
+      "mine"
+    ),
+    4
+  );
+
+  check(
+    "ואותו דבר בערוץ המכירה",
+    entryCountIn(
+      arrivals.map((at) => ({ isSale: true, campaign: "אלעד", at })),
+      "sale"
+    ),
+    3
+  );
+}
+
+// ------------------------------------------------------------
+console.log("\nעדכון סטטוס אינו הגעה — לפי תוכן, לא לפי שעון");
+// ------------------------------------------------------------
+{
+  /**
+   * ליד מנגר שולחת webhook גם כששינית סטטוס. ההבחנה נעשית
+   * לפי **מה שהגיע** ולא לפי כמה זמן עבר: הגשה חדשה באה
+   * בלי סטטוס או עם סטטוס התחלתי, ועדכון נושא סטטוס מתקדם
+   * על ליד שכבר קיים.
+   */
+  check(
+    "סטטוס מתקדם על ליד קיים = עדכון, לא הגעה",
+    isStatusUpdate({
+      incomingStatus: "אין מענה",
+      hasSubmissionId: false,
+      leadExists: true,
+    }),
+    true
+  );
+
+  check(
+    "סטטוס התחלתי = הגעה אמיתית",
+    isStatusUpdate({
+      incomingStatus: "חדש",
+      hasSubmissionId: false,
+      leadExists: true,
     }),
     false
   );
 
   check(
-    "ההפרדה מאלעד נשמרה — כניסה שלו לא נבלעת גם בחלון הארוך",
-    isSameSubmission({
-      incomingFbId: null,
-      knownFbId: null,
-      channel: "sale",
-      entries: morning,
-      now,
+    "לקוח קיים הוא גם סטטוס התחלתי",
+    isStatusUpdate({
+      incomingStatus: "לקוח קיים",
+      hasSubmissionId: false,
+      leadExists: true,
+    }),
+    false
+  );
+
+  check(
+    "בלי סטטוס בכלל = הגעה",
+    isStatusUpdate({
+      incomingStatus: null,
+      hasSubmissionId: false,
+      leadExists: true,
+    }),
+    false
+  );
+
+  check(
+    "ליד חדש לגמרי הוא תמיד הגעה",
+    isStatusUpdate({
+      incomingStatus: "אין מענה",
+      hasSubmissionId: false,
+      leadExists: false,
+    }),
+    false
+  );
+
+  check(
+    "הגשה עם מזהה פייסבוק היא תמיד הגעה, גם עם סטטוס",
+    isStatusUpdate({
+      incomingStatus: "אין מענה",
+      hasSubmissionId: true,
+      leadExists: true,
     }),
     false
   );
 }
 
 // ------------------------------------------------------------
+
 console.log("\nמי נכנס לרשימת הלידים — וואטסאפ אף פעם לא");
 // ------------------------------------------------------------
 {

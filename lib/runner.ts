@@ -19,6 +19,7 @@ import { getSettings } from "./settings";
 import { leadsForSlot, markSent, type Slot } from "./callback-list";
 import { israelParts } from "./working-hours";
 import { runDeliveries } from "./delivery";
+import { syncAdSpendDaily } from "./ad-spend";
 import {
   buildLookup,
   identifiersOf,
@@ -295,6 +296,7 @@ export async function runDueJobs(limit = 50): Promise<RunSummary> {
     ["סנכרון לידי מכירה", () => syncSaleLeads()],
     ["שליחת לידים לקונים", () => runDeliveries()],
     ["בדיקת קמפיינים", () => checkCampaigns()],
+    ["הוצאת פרסום מפייסבוק", () => syncAdSpendDaily()],
     ["לידים חוזרים", () => bumpReturningLeads()],
   ];
 

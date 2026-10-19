@@ -5,6 +5,9 @@ import {
   buildPayload,
   applyFieldMap,
   isSuccess,
+  parseHeaders,
+  checkTemplate,
+  renderTemplate,
 } from "@/lib/delivery-payload";
 
 export const dynamic = "force-dynamic";
@@ -56,6 +59,52 @@ export async function PATCH(
 
   if (typeof body.sendEnabled === "boolean") {
     data.sendEnabled = body.sendEnabled;
+  }
+
+  /**
+   * כותרות חופשיות. נשמרות כאובייקט, מגיעות כטקסט של
+   * שורות "שם=ערך" - כדי שאפשר להעתיק ישר מהמפרט של הקונה.
+   */
+  /**
+   * סימני הצלחה וכשלון, כמו "בדיקת הצלחת שליחה" במפרט.
+   * ריק = מכריעים לפי קוד ה-HTTP, כמו עד היום.
+   */
+  if (typeof body.successContains === "string") {
+    data.successContains = body.successContains.trim().slice(0, 300) || null;
+  }
+
+  if (typeof body.failureContains === "string") {
+    data.failureContains = body.failureContains.trim().slice(0, 300) || null;
+  }
+
+  if (typeof body.headers === "string") {
+    const parsed = parseHeaders(body.headers);
+    data.headers = Object.keys(parsed).length ? parsed : null;
+  }
+
+  /**
+   * תבנית גוף השידור.
+   *
+   * תבנית שבורה היא כל הלידים של הקונה נדחים, ולכן היא
+   * נבדקת **לפני** שמירה ולא אחרי.
+   */
+  if (typeof body.bodyTemplate === "string") {
+    const template = body.bodyTemplate.trim();
+
+    if (!template) {
+      data.bodyTemplate = null;
+    } else {
+      const result = checkTemplate(template);
+
+      if (!result.ok) {
+        return NextResponse.json(
+          { error: `התבנית לא נשמרה — ${result.error}` },
+          { status: 400 }
+        );
+      }
+
+      data.bodyTemplate = template;
+    }
   }
 
   if (body.fieldMap !== undefined) {
@@ -126,24 +175,50 @@ export async function POST(
   const asForm = buyer.webhookFormat === "form";
   const secret = buyer.webhookSecret?.trim();
 
+  /**
+   * הבדיקה חייבת לשלוח **בדיוק** כמו השליחה האמיתית -
+   * אותן כותרות ואותה תבנית.
+   *
+   * בדיקה שעוברת ושליחה אמיתית שנכשלת היא הדבר הגרוע
+   * ביותר כאן: אתה בטוח שהחיבור תקין, והלידים לא מגיעים.
+   */
+  const headers: Record<string, string> = {
+    "Content-Type": asForm
+      ? "application/x-www-form-urlencoded"
+      : "application/json",
+    ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
+  };
+
+  const custom =
+    buyer.headers && typeof buyer.headers === "object" && !Array.isArray(buyer.headers)
+      ? (buyer.headers as Record<string, unknown>)
+      : {};
+
+  for (const [name, value] of Object.entries(custom)) {
+    if (typeof value === "string" && name.trim() && value.trim()) {
+      headers[name.trim()] = value.trim();
+    }
+  }
+
+  const template = buyer.bodyTemplate?.trim();
+
+  const body = template
+    ? renderTemplate(template, demo)
+    : asForm
+      ? new URLSearchParams({
+          ...demo,
+          ...(secret ? { token: secret } : {}),
+        }).toString()
+      : JSON.stringify({ ...demo, ...(secret ? { token: secret } : {}) });
+
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20_000);
 
     const response = await fetch(buyer.webhookUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": asForm
-          ? "application/x-www-form-urlencoded"
-          : "application/json",
-        ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
-      },
-      body: asForm
-        ? new URLSearchParams({
-            ...demo,
-            ...(secret ? { token: secret } : {}),
-          }).toString()
-        : JSON.stringify({ ...demo, ...(secret ? { token: secret } : {}) }),
+      headers,
+      body,
       signal: controller.signal,
       cache: "no-store",
     });
@@ -157,6 +232,8 @@ export async function POST(
       httpStatus: response.status,
       response: text,
       sent: demo,
+      נשלח_בפועל: body.slice(0, 600),
+      כותרות: Object.keys(headers),
       verdict: isSuccess(response.status)
         ? "החיבור עובד. הקונה קיבל את ליד הבדיקה"
         : `השרת של הקונה החזיר ${response.status}`,

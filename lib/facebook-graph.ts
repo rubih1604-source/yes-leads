@@ -104,3 +104,96 @@ export async function formQuestions(
       type: q.type,
     }));
 }
+
+export type AdAccount = {
+  id: string;
+  name?: string;
+  account_status?: number;
+};
+
+export type InsightRow = {
+  campaign_id?: string;
+  campaign_name?: string;
+  spend?: string;
+  impressions?: string;
+  clicks?: string;
+  actions?: Array<{ action_type?: string; value?: string }>;
+  date_start?: string;
+  date_stop?: string;
+};
+
+/**
+ * חשבונות המודעות שהטוקן רואה.
+ *
+ * זה הסעיף שנפרד מהדפים: דף מוקצה למשתמש המערכת לא מקצה
+ * איתו את חשבון המודעות. בלי ההקצאה הזו השליפה תחזור ריקה
+ * או עם שגיאת הרשאה - וזו בדיוק הנקודה להסביר לך, ולא
+ * להציג אפס כאילו לא הוצאת כלום.
+ */
+export async function listAdAccounts(token: string): Promise<AdAccount[]> {
+  const data = await graph<{ data?: AdAccount[] }>(
+    `/me/adaccounts?fields=id,name,account_status&limit=100&access_token=${encodeURIComponent(
+      token
+    )}`
+  );
+
+  return data.data ?? [];
+}
+
+/**
+ * הוצאה לפי קמפיין לפי יום.
+ *
+ * `time_increment=1` מחזיר שורה ליום, ולא סכום לכל הטווח -
+ * ככה אפשר לשמור היסטוריה ולראות מגמה, ולא רק תמונת רגע.
+ *
+ * מספר הלידים שפייסבוק מדווחת נשלף מתוך actions, כדי
+ * שאפשר יהיה להשוות אותו למה שבאמת נקלט אצלך. פער קבוע
+ * שם אומר שלידים לא מגיעים.
+ */
+export async function campaignInsights(
+  accountId: string,
+  token: string,
+  since: string,
+  until: string
+): Promise<InsightRow[]> {
+  const fields = [
+    "campaign_id",
+    "campaign_name",
+    "spend",
+    "impressions",
+    "clicks",
+    "actions",
+  ].join(",");
+
+  const range = encodeURIComponent(JSON.stringify({ since, until }));
+
+  const data = await graph<{ data?: InsightRow[] }>(
+    `/${accountId}/insights?level=campaign&time_increment=1&fields=${fields}&time_range=${range}&limit=500&access_token=${encodeURIComponent(
+      token
+    )}`
+  );
+
+  return data.data ?? [];
+}
+
+/** מספר הלידים מתוך actions של פייסבוק */
+export function leadsFromActions(row: InsightRow): number {
+  for (const action of row.actions ?? []) {
+    const type = action.action_type ?? "";
+
+    /**
+     * פייסבוק מדווחת על זה בכמה שמות לפי סוג הטופס.
+     * מחפשים את כולם, אחרת המספר יוצא אפס בלי סיבה.
+     */
+    if (
+      type === "lead" ||
+      type === "leadgen.other" ||
+      type === "onsite_conversion.lead_grouped"
+    ) {
+      const value = Number(action.value ?? 0);
+      if (Number.isFinite(value) && value > 0) return Math.round(value);
+    }
+  }
+
+  return 0;
+}

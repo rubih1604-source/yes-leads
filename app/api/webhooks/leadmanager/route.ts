@@ -16,6 +16,7 @@ import { assignmentForForm } from "@/lib/lead-forms";
 import {
   channelForIncoming,
   isSameSubmission,
+  isStatusUpdate,
   SAME_SUBMISSION_MINUTES_NO_ID,
 } from "@/lib/channel";
 
@@ -347,12 +348,33 @@ async function handle(request: Request) {
         })
         .catch(() => []);
 
-      const sameSubmission = isSameSubmission({
-        incomingFbId,
-        knownFbId: previousExtra.fb_leadid ?? null,
-        channel: channel.channel,
-        entries: recentEntries,
+      /**
+       * שתי שאלות שונות, ואסור לבלבל ביניהן:
+       *
+       *  1. האם זו בכלל **הגעה**, או רק עדכון סטטוס מליד
+       *     מנגר. עדכון סטטוס לא יוצר כניסה ולא מקפיץ
+       *     תאריך.
+       *
+       *  2. אם זו הגעה - האם היא **אותה הגשה** שכבר נרשמה
+       *     מהדלת השנייה, בהפרש של דקות.
+       *
+       * כל הגעה אחרת נספרת, גם אם אותו אדם נכנס ארבע פעמים
+       * באותו יום. זה הכלל שלך, וזה מה שהקוד עושה עכשיו.
+       */
+      const statusOnly = isStatusUpdate({
+        incomingStatus,
+        hasSubmissionId: Boolean(incomingFbId),
+        leadExists: true,
       });
+
+      const sameSubmission =
+        statusOnly ||
+        isSameSubmission({
+          incomingFbId,
+          knownFbId: previousExtra.fb_leadid ?? null,
+          channel: channel.channel,
+          entries: recentEntries,
+        });
 
       /**
        * של מי הליד.
@@ -421,7 +443,7 @@ async function handle(request: Request) {
        *  זה מה שמאפשר לראות בכרטיס הליד שהחיבור הישיר באמת
        *  עובד, גם כשליד מנגר הביא את אותו ליד שנייה אחר כך.
        */
-      if (sameSubmission) {
+      if (sameSubmission && !statusOnly) {
         const matching = recentEntries
           .filter((e) => e.isSale === channel.isSale)
           .sort((a, b) => b.at.getTime() - a.at.getTime())[0];

@@ -43,6 +43,13 @@ export default async function BuyersPage() {
             b.fieldMap && typeof b.fieldMap === "object"
               ? (b.fieldMap as Record<string, string>)
               : {},
+          headers:
+            b.headers && typeof b.headers === "object" && !Array.isArray(b.headers)
+              ? (b.headers as Record<string, string>)
+              : {},
+          bodyTemplate: b.bodyTemplate ?? "",
+          successContains: b.successContains ?? "",
+          failureContains: b.failureContains ?? "",
           campaigns: b.campaigns.filter((c) => c.active).map((c) => c.name),
           totalSent: b._count.deliveries,
         }))}

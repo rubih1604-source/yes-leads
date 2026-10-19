@@ -47,6 +47,38 @@ export default function FormsScreen() {
   /** טיוטות לפני שמירה, לכל טופס בנפרד */
   const [draft, setDraft] = useState<Record<string, Partial<FormRow>>>({});
 
+  /** השאלות שנשלפו מכל טופס, לבחירת שאלת הספק */
+  const [questions, setQuestions] = useState<
+    Record<string, Array<{ key: string; label: string }>>
+  >({});
+  const [fieldsOpen, setFieldsOpen] = useState<Record<string, boolean>>({});
+  const [loadingFields, setLoadingFields] = useState("");
+
+  async function loadFields(page: PageRow, form: FormRow) {
+    const open = !fieldsOpen[form.formId];
+    setFieldsOpen((p) => ({ ...p, [form.formId]: open }));
+
+    if (!open || questions[form.formId]) return;
+
+    setLoadingFields(form.formId);
+
+    const res = await fetch(
+      `/api/facebook/forms/${encodeURIComponent(
+        form.formId
+      )}/questions?pageId=${encodeURIComponent(page.id)}`
+    ).catch(() => null);
+
+    const data = await res?.json().catch(() => ({}));
+    setLoadingFields("");
+
+    if (!data?.ok) {
+      setMessage(data?.error ?? "לא ניתן לשלוף את שאלות הטופס");
+      return;
+    }
+
+    setQuestions((p) => ({ ...p, [form.formId]: data.questions ?? [] }));
+  }
+
   async function load() {
     setLoading(true);
     setError("");
@@ -101,6 +133,7 @@ export default function FormsScreen() {
         channel,
         buyerId,
         pricePerLead: price,
+        supplierKey: valueOf(form, "supplierKey") ?? "",
       }),
     }).catch(() => null);
 
@@ -317,6 +350,83 @@ export default function FormsScreen() {
                           )
                         }
                       />
+                    </div>
+                  )}
+
+                  {/**
+                    * שדות הטופס, כמו בליד מנגר: הרשימה נשלפת
+                    * מפייסבוק ואתה בוחר איזו שאלה היא שאלת הספק.
+                    *
+                    * בלי בחירה מפורשת הזיהוי הוא לפי מילת מפתח -
+                    * עובד כל עוד המילה "ספק" מופיעה בשאלה, ונכשל
+                    * בשקט אם תנסח אותה אחרת.
+                    */}
+                  <button
+                    className="chip"
+                    style={{ marginTop: 9 }}
+                    onClick={() => loadFields(page, form)}
+                  >
+                    שדות הטופס
+                    {form.supplierKey ? " · מוגדר" : ""}
+                    {fieldsOpen[form.formId] ? " ⌃" : " ⌄"}
+                  </button>
+
+                  {fieldsOpen[form.formId] && (
+                    <div style={{ marginTop: 8 }}>
+                      {loadingFields === form.formId ? (
+                        <div style={{ fontSize: 13, color: "#667085" }}>
+                          שולף את השאלות מפייסבוק...
+                        </div>
+                      ) : (
+                        <>
+                          <div
+                            style={{
+                              fontSize: 12.5,
+                              color: "#475467",
+                              marginBottom: 6,
+                              lineHeight: 1.6,
+                            }}
+                          >
+                            איזו שאלה בטופס היא שאלת הספק. זו השאלה
+                            שלפיה המערכת מזהה לקוח קיים של yes.
+                          </div>
+
+                          <select
+                            className="search"
+                            style={{ width: "100%" }}
+                            value={(valueOf(form, "supplierKey") as string) ?? ""}
+                            onChange={(e) =>
+                              setValue(
+                                form.formId,
+                                "supplierKey",
+                                e.target.value || null
+                              )
+                            }
+                          >
+                            <option value="">— זיהוי אוטומטי —</option>
+                            {(questions[form.formId] ?? []).map((q) => (
+                              <option key={q.key} value={q.key}>
+                                {q.label}
+                              </option>
+                            ))}
+                          </select>
+
+                          {(questions[form.formId] ?? []).length > 0 && (
+                            <div
+                              style={{
+                                fontSize: 12,
+                                color: "#98a2b3",
+                                marginTop: 6,
+                                lineHeight: 1.6,
+                              }}
+                            >
+                              כל השדות בטופס נקלטים אוטומטית ומוצגים
+                              בכרטיס הליד. הבחירה כאן היא רק לשאלת
+                              הספק.
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                   )}
 

@@ -335,6 +335,19 @@ model LeadBuyer {
   webhookFormat String  @default("json")
   /// שינוי שמות שדות: { "phone": "telephone" } - לכל קונה המבנה שלו
   fieldMap      Json?
+
+  /// גוף השידור כתבנית, עם אסימונים: { "name": "{full_name}" }
+  /// ריק = נשלח המטען הרגיל לפי מיפוי השמות
+  bodyTemplate  String?
+
+  /// כותרות מותאמות, שורה לכל אחת: X-API-Key=abc
+  headers       Json?
+
+  /// טקסט שחייב להופיע בתשובה כדי שהשליחה תיחשב הצליחה
+  successContains String?
+
+  /// טקסט שאם הופיע בתשובה - השליחה נחשבת שנכשלה, גם ב-200
+  failureContains String?
   /// כיבוי זמני בלי למחוק את ההגדרות
   sendEnabled   Boolean @default(true)
 
@@ -550,4 +563,36 @@ model LeadForm {
   updatedAt DateTime @updatedAt
 
   @@index([channel])
+}
+
+/// ============================================================
+///  הוצאת פרסום לפי קמפיין, מפייסבוק
+/// ============================================================
+///
+///  שורה אחת לכל קמפיין לכל יום. זה מה שמאפשר לחשב עלות
+///  לליד ועלות לסגירה - המספרים שלפיהם מחליטים מה להגדיל
+///  ומה לסגור.
+///
+///  מכוון **לא** נכנס לתמונת הרווח של מסך ההוצאות: שם אתה
+///  מזין הוצאות ידנית, וספירה כפולה של אותו כסף הייתה
+///  מעוותת לך את הרווח בשקט.
+model AdSpend {
+  id          String   @id @default(cuid())
+
+  /// היום שאליו ההוצאה שייכת, בשעון ישראל
+  date        DateTime
+  accountId   String
+  accountName String?
+  campaignId  String
+  campaignName String
+  spend       Float    @default(0)
+  impressions Int      @default(0)
+  clicks      Int      @default(0)
+  /// מספר הלידים שפייסבוק עצמה מדווחת, להשוואה מול מה שנקלט אצלך
+  fbLeads     Int      @default(0)
+  syncedAt    DateTime @default(now())
+
+  @@unique([date, campaignId])
+  @@index([date])
+  @@index([campaignId])
 }

@@ -93,6 +93,12 @@ export default async function MorePage() {
           desc: "מתי נכנסים לידים, מתי עונים, ומה מאפיין סגירה",
         },
         {
+          href: "/ad-performance",
+          glyph: "₪",
+          label: "ביצועי קמפיינים",
+          desc: "כמה שילמת, כמה נכנס, וכמה נשאר — לכל קמפיין",
+        },
+        {
           href: "/forms",
           glyph: "⊞",
           label: "התממשקות",

@@ -146,3 +146,186 @@ export function retryDelayMinutes(attempts: number): number {
 export function isSuccess(httpStatus: number): boolean {
   return httpStatus >= 200 && httpStatus < 300;
 }
+
+/**
+ * ============================================================
+ *  Headers חופשיים
+ * ============================================================
+ *
+ *  לא כל קונה מאמת ב-Bearer. אלעד, למשל, דורש כותרת בשם
+ *  X-API-Key - וקונה אחר ידרוש שם אחר. בלי זה השליחה
+ *  נדחית באימות, והליד פשוט לא מגיע.
+ *
+ *  הקלט הוא שורות "שם=ערך", כמו שרשום במפרט של ליד מנגר,
+ *  כדי שאפשר להעתיק משם בלי לתרגם כלום.
+ */
+export function parseHeaders(input: string): Record<string, string> {
+  const out: Record<string, string> = {};
+
+  for (const raw of input.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+
+    /**
+     * מפצלים על ההופעה הראשונה בלבד.
+     * מפתחות מכילים לעיתים "=" בתוך הערך, ואסור לחתוך אותם.
+     */
+    const at = line.indexOf("=");
+    const colon = line.indexOf(":");
+    const cut =
+      at === -1 ? colon : colon === -1 ? at : Math.min(at, colon);
+
+    if (cut <= 0) continue;
+
+    const name = line.slice(0, cut).trim();
+    const value = line.slice(cut + 1).trim();
+
+    // כותרת בלי שם או בלי ערך היא שגיאת הקלדה, לא הגדרה
+    if (!name || !value) continue;
+
+    out[name] = value;
+  }
+
+  return out;
+}
+
+/** חזרה לטקסט, לעריכה במסך */
+export function headersToText(
+  headers: Record<string, string> | null | undefined
+): string {
+  if (!headers) return "";
+  return Object.entries(headers)
+    .map(([name, value]) => `${name}=${value}`)
+    .join("\n");
+}
+
+/**
+ * ============================================================
+ *  תבנית גוף השידור
+ * ============================================================
+ *
+ *  בליד מנגר אתה כותב את ה-JSON בעצמך ומשתמל אסימונים.
+ *  אותו דבר כאן, עם השמות של המערכת:
+ *
+ *    { "name": "{full_name}", "phone": "{phone}" }
+ *
+ *  למה תבנית ולא רק מיפוי שמות: המפרט שלך כולל גם שדות
+ *  קבועים שלא באים מהליד - engagement_score ו-notes.
+ *  מיפוי שמות לא יודע לייצר אותם.
+ */
+
+/** אסימון שלא מוכר מוחלף במחרוזת ריקה, כדי שה-JSON יישאר תקין */
+export function renderTemplate(
+  template: string,
+  values: Record<string, string>
+): string {
+  return template.replace(/\{([a-zA-Z0-9_.]+)\}/g, (_, key: string) => {
+    const value = values[key];
+    if (value === undefined || value === null) return "";
+
+    /**
+     * בריחה של תווים שישברו JSON.
+     *
+     * שם עם מרכאות או ירידת שורה הוא מה שהופך תבנית תקינה
+     * לבקשה שהצד השני דוחה כ-malformed.
+     */
+    return String(value)
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, '\\"')
+      .replace(/\r?\n/g, "\\n")
+      .replace(/\t/g, "\\t");
+  });
+}
+
+/**
+ * בדיקת תקינות התבנית, כמו "בדוק תקינות תבנית" בליד מנגר.
+ *
+ * מריצים אותה על ליד לדוגמה ומוודאים שהתוצאה JSON תקין.
+ * עדיף לגלות את זה כאן מאשר מליד אמיתי שנדחה.
+ */
+export function checkTemplate(template: string): {
+  ok: boolean;
+  error?: string;
+  tokens: string[];
+} {
+  const tokens = [
+    ...new Set(
+      [...template.matchAll(/\{([a-zA-Z0-9_.]+)\}/g)].map((m) => m[1])
+    ),
+  ];
+
+  if (!template.trim()) {
+    return { ok: false, error: "התבנית ריקה", tokens };
+  }
+
+  const sample: Record<string, string> = {};
+  for (const token of tokens) sample[token] = "בדיקה";
+
+  const rendered = renderTemplate(template, sample);
+
+  try {
+    JSON.parse(rendered);
+  } catch (err) {
+    return {
+      ok: false,
+      error: `ה-JSON לא תקין: ${
+        err instanceof Error ? err.message : "שגיאה"
+      }`,
+      tokens,
+    };
+  }
+
+  const unknown = tokens.filter(
+    (t) => !DELIVERY_FIELDS.some((f) => f.key === t)
+  );
+
+  if (unknown.length > 0) {
+    return {
+      ok: false,
+      error: `אסימונים שהמערכת לא מכירה, הם יישלחו ריקים: ${unknown.join(", ")}`,
+      tokens,
+    };
+  }
+
+  return { ok: true, tokens };
+}
+
+/**
+ * ============================================================
+ *  האם השליחה באמת הצליחה
+ * ============================================================
+ *
+ *  במפרט שלך יש "בדיקת הצלחת שליחה" ו"בדיקת כשלון שליחה",
+ *  וזה לא קישוט: יש מערכות שמחזירות 200 גם כשהליד נדחה,
+ *  ואומרות את זה בגוף התשובה.
+ *
+ *  בלי הבדיקה הזו היינו מסמנים "נשלח" לליד שלא נכנס אצל
+ *  הקונה - וזו בדיוק הטענה שאי אפשר לענות עליה אחר כך.
+ *
+ *  סדר ההכרעה: סימן כשלון גובר על סימן הצלחה, ואם לא
+ *  הוגדר כלום - קוד ה-HTTP מכריע, כמו עד היום.
+ */
+export function deliveryVerdict(args: {
+  httpStatus: number;
+  body: string;
+  successContains?: string | null;
+  failureContains?: string | null;
+}): { ok: boolean; reason: string | null } {
+  const body = args.body ?? "";
+
+  const failure = args.failureContains?.trim();
+  if (failure && body.includes(failure)) {
+    return { ok: false, reason: `התשובה הכילה "${failure}"` };
+  }
+
+  const success = args.successContains?.trim();
+  if (success) {
+    return body.includes(success)
+      ? { ok: true, reason: null }
+      : { ok: false, reason: `התשובה לא הכילה "${success}"` };
+  }
+
+  return isSuccess(args.httpStatus)
+    ? { ok: true, reason: null }
+    : { ok: false, reason: `השרת החזיר ${args.httpStatus}` };
+}
