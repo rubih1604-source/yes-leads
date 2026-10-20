@@ -40,6 +40,8 @@ export type ChannelRow = {
   headersText: string;
   successContains: string;
   failureContains: string;
+  /** אילו שדות הצד השני מקבל. ריק = הכל. */
+  fields: string[];
   sendEnabled: boolean;
   autoSend: boolean;
   active: boolean;
@@ -75,6 +77,17 @@ function ChannelCard({ channel }: { channel: ChannelRow }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
+  /**
+   * השדות שהצד השני מקבל.
+   *
+   * במצב נפרד מהטיוטה ולא בתוכה: הטיוטה משווה ערכים ב-!==,
+   * ומערך חדש תמיד שונה מהקודם - מה שהיה משאיר את כפתור
+   * השמירה דלוק לנצח.
+   */
+  const [fieldSel, setFieldSel] = useState<Set<string>>(
+    new Set(channel.fields ?? [])
+  );
+
   const [pages, setPages] = useState<FbPage[] | null>(null);
   const [picked, setPicked] = useState<Set<string>>(
     new Set(channel.forms.map((f) => f.formId))
@@ -108,6 +121,7 @@ function ChannelCard({ channel }: { channel: ChannelRow }) {
         headers: v("headersText"),
         successContains: v("successContains"),
         failureContains: v("failureContains"),
+        fields: [...fieldSel],
         sendEnabled: v("sendEnabled"),
         autoSend: v("autoSend"),
       }),
@@ -120,7 +134,15 @@ function ChannelCard({ channel }: { channel: ChannelRow }) {
       return false;
     }
 
-    setDraft({});
+    /**
+     * בכוונה לא מאפסים כאן את הטיוטה.
+     *
+     * קודם איפסנו אותה, ואז v() חזר לקרוא את הערך מה-prop
+     * של השרת - שעוד לא התרענן. בחלון הזה השדה נראה ריק,
+     * "בדוק חיבור" כבה, והלחיצה עליו לא עשתה כלום ולא אמרה
+     * כלום. הטיוטה נשארת, ו-dirty מושווה מול מה שבשרת, כך
+     * שהכפתור נכבה מעצמו ברגע שהרענון מגיע.
+     */
     return true;
   }
 
@@ -138,6 +160,22 @@ function ChannelCard({ channel }: { channel: ChannelRow }) {
   }
 
   async function test() {
+    /**
+     * לחיצה חייבת תמיד להחזיר תשובה.
+     *
+     * קודם הכפתור היה כבוי כשלא הייתה כתובת, והלחיצה
+     * פשוט לא עשתה כלום - בלי הודעה, בלי סיבה. עדיף
+     * שהכפתור יהיה פעיל ויגיד מה חסר.
+     */
+    const url = String(v("webhookUrl") ?? "").trim();
+
+    if (!url) {
+      setMessage(
+        "אין כתובת בשדה הוובוק. הדבק את הכתובת שאלעד נתן לך, לחץ שמור, ואז בדוק חיבור."
+      );
+      return;
+    }
+
     setBusy(true);
 
     /**
@@ -230,7 +268,21 @@ function ChannelCard({ channel }: { channel: ChannelRow }) {
     if (res?.ok) router.refresh();
   }
 
-  const dirty = Object.keys(draft).length > 0;
+  /**
+   * "יש שינוי שלא נשמר" = הטיוטה שונה ממה שבשרת.
+   *
+   * לא "הטיוטה לא ריקה": אחרי שמירה הטיוטה נשארת בכוונה
+   * (ראה persist), ולכן ספירת מפתחות הייתה משאירה את כפתור
+   * השמירה דלוק לנצח.
+   */
+  const fieldsChanged =
+    fieldSel.size !== (channel.fields ?? []).length ||
+    (channel.fields ?? []).some((f) => !fieldSel.has(f));
+
+  const dirty =
+    (Object.keys(draft) as Array<keyof ChannelRow>).some(
+      (k) => draft[k] !== channel[k]
+    ) || fieldsChanged;
 
   return (
     <div
@@ -474,6 +526,74 @@ function ChannelCard({ channel }: { channel: ChannelRow }) {
                 שליחה פעילה
               </label>
 
+              {/* אילו שדות הצד השני מקבל */}
+              <div style={{ margin: "14px 0 4px" }}>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>
+                  אילו שדות הצד השני מקבל
+                </div>
+                <div
+                  style={{
+                    fontSize: 12.5,
+                    color: "#667085",
+                    margin: "4px 0 9px",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {fieldSel.size === 0
+                    ? "לא סומן כלום — ולכן נשלחים כל השדות. סמן כדי לשלוח רק חלק."
+                    : `נשלחים ${fieldSel.size} שדות.`}
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fill, minmax(145px, 1fr))",
+                    gap: 4,
+                  }}
+                >
+                  {DELIVERY_FIELDS.map((f) => (
+                    <label
+                      key={f.key}
+                      style={{
+                        display: "flex",
+                        gap: 7,
+                        alignItems: "center",
+                        fontSize: 13.5,
+                        padding: "3px 0",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={fieldSel.has(f.key)}
+                        onChange={(e) =>
+                          setFieldSel((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.add(f.key);
+                            else next.delete(f.key);
+                            return next;
+                          })
+                        }
+                      />
+                      {f.label}
+                    </label>
+                  ))}
+                </div>
+
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <button
+                    className="chip"
+                    onClick={() =>
+                      setFieldSel(new Set(DELIVERY_FIELDS.map((f) => f.key)))
+                    }
+                  >
+                    סמן הכל
+                  </button>
+                  <button className="chip" onClick={() => setFieldSel(new Set())}>
+                    נקה סימון
+                  </button>
+                </div>
+              </div>
+
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button
                   className="btn primary"
@@ -482,11 +602,7 @@ function ChannelCard({ channel }: { channel: ChannelRow }) {
                 >
                   {busy ? "רגע..." : "שמור"}
                 </button>
-                <button
-                  className="btn"
-                  onClick={test}
-                  disabled={busy || !v("webhookUrl")}
-                >
+                <button className="btn" onClick={test} disabled={busy}>
                   בדוק חיבור
                 </button>
               </div>

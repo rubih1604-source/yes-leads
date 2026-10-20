@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { getLeadSales } from "@/lib/lead-sales";
 import { resolveRange, type PeriodKey } from "@/lib/periods";
 import LeadSalesScreen from "@/components/LeadSalesScreen";
+import AddLeadForm from "@/components/AddLeadForm";
 
 export const dynamic = "force-dynamic";
 
@@ -33,10 +34,23 @@ export default async function LeadSalesPage({
   const data = await getLeadSales(range, query);
 
   // כמה לידים ותיקים עדיין בלי כניסה רשומה
-  const [leadCount, withEntries] = await Promise.all([
+  const [leadCount, withEntries, saleChannels] = await Promise.all([
     db.lead.count().catch(() => 0),
     db.leadEntry
       .findMany({ select: { leadId: true }, distinct: ["leadId"] })
+      .catch(() => []),
+    /**
+     * הערוצים שאפשר להזין אליהם ליד ידני.
+     *
+     * webhookUrl נשלף רק כדי להגיד במסך "לערוץ הזה אין
+     * כתובת" לפני ההזנה, במקום להזין ואז לגלות שזה לא נשלח.
+     */
+    db.channel
+      .findMany({
+        where: { active: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, isSale: true, webhookUrl: true },
+      })
       .catch(() => []),
   ]);
 
@@ -48,6 +62,17 @@ export default async function LeadSalesPage({
           <span className="count">{data.monthLabel}</span>
         </h1>
       </div>
+
+      {/* ליד ידני לערוץ של קונה - נשלח אליו מיד */}
+      <AddLeadForm
+        mode="sale"
+        channels={saleChannels.map((c) => ({
+          id: c.id,
+          name: c.name,
+          isSale: c.isSale,
+          hasUrl: Boolean(c.webhookUrl?.trim()),
+        }))}
+      />
 
       <LeadSalesScreen
         campaigns={data.campaigns}

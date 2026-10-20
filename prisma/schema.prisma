@@ -698,6 +698,10 @@ model Channel {
   headers         Json?
   successContains String?
   failureContains String?
+  /// אילו שדות הצד השני מקבל, לפי סימון במסך.
+  /// רשימה ריקה = שולח הכל, כדי שערוץ ותיק לא יפסיק
+  /// לשלוח שדות רק מפני שלא נגעו בו.
+  fields          String[] @default([])
   /// כיבוי זמני בלי למחוק הגדרות
   sendEnabled     Boolean @default(true)
   /// כל ליד שנכנס לערוץ נשלח אוטומטית

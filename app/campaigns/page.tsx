@@ -50,6 +50,7 @@ export default async function CampaignsPage() {
       ),
       successContains: channel.successContains ?? "",
       failureContains: channel.failureContains ?? "",
+      fields: channel.fields ?? [],
       sendEnabled: channel.sendEnabled,
       autoSend: channel.autoSend,
       active: channel.active,

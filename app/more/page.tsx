@@ -99,6 +99,12 @@ export default async function MorePage() {
           desc: "קטגוריות, ערוצים, שיוך טפסים מפייסבוק ולאן כל ערוץ נשלח",
         },
         {
+          href: "/routing",
+          glyph: "⇥",
+          label: "שידור וניתוב לידים",
+          desc: "בשינוי לאיזה סטטוס הליד משודר לאיזה ערוץ",
+        },
+        {
           href: "/maintenance",
           glyph: "⚙",
           label: "תחזוקה",

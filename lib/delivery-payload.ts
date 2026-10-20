@@ -73,6 +73,43 @@ export function buildPayload(
 }
 
 /**
+ * משאיר רק את השדות שסומנו בערוץ.
+ *
+ * רשימה ריקה פירושה **הכל** ולא "כלום": ערוץ שהוגדר לפני
+ * שהבחירה הזו קיימה, או ערוץ שלא נגעו בו, חייב להמשיך
+ * לשלוח כמו קודם. ברירת מחדל שמפסיקה לשלוח שדות היא דרך
+ * טובה לשבור קונה בלי לשים לב.
+ *
+ * הסדר נשמר לפי DELIVERY_FIELDS ולא לפי סדר הסימון, כדי
+ * שהצד השני יקבל תמיד את אותו מבנה.
+ */
+export function pickFields(
+  payload: Record<string, string>,
+  fields: string[] | null | undefined
+): Record<string, string> {
+  const wanted = (fields ?? []).map((f) => f.trim()).filter(Boolean);
+
+  if (wanted.length === 0) return { ...payload };
+
+  const allowed = new Set(wanted);
+  const out: Record<string, string> = {};
+
+  for (const { key } of DELIVERY_FIELDS) {
+    if (allowed.has(key) && key in payload) out[key] = payload[key];
+  }
+
+  /**
+   * שדה שסומן אבל לא מופיע ב-DELIVERY_FIELDS (למשל נוסף
+   * בעתיד) עדיין נשלח, כדי שסימון לא ייעלם בשקט.
+   */
+  for (const key of wanted) {
+    if (!(key in out) && key in payload) out[key] = payload[key];
+  }
+
+  return out;
+}
+
+/**
  * מחיל את מיפוי השדות של הקונה.
  *
  * { "phone": "telephone" } יגרום לכך ש-phone יישלח בשם

@@ -23,6 +23,7 @@ import {
   deliveryVerdict,
   buildPayload,
   applyFieldMap,
+  pickFields,
   shouldRetry,
   retryDelayMinutes,
   isSuccess,
@@ -178,7 +179,21 @@ export async function sendDelivery(deliveryId: string): Promise<boolean> {
   if (!target?.webhookUrl?.trim()) return false;
 
   const base = buildPayload(delivery.lead, delivery.createdAt);
-  const payload = applyFieldMap(base, delivery.channelRef ? null : delivery.buyer?.fieldMap);
+
+  /**
+   * סינון לפי השדות שסומנו בערוץ, לפני המיפוי.
+   *
+   * רק לערוץ: לקונה ותיק יש fieldMap משלו, ואין לו רשימת
+   * סימון - ולכן הוא ממשיך להתנהג בדיוק כמו קודם.
+   */
+  const picked = delivery.channelRef
+    ? pickFields(base, delivery.channelRef.fields)
+    : base;
+
+  const payload = applyFieldMap(
+    picked,
+    delivery.channelRef ? null : delivery.buyer?.fieldMap
+  );
 
   const url = target.webhookUrl.trim();
   const secret = target.webhookSecret?.trim();

@@ -46,6 +46,21 @@ export async function PATCH(
     data.webhookUrl = url || null;
   }
 
+  /**
+   * אילו שדות הצד השני מקבל.
+   *
+   * מקבלים רק מפתחות שהמערכת באמת יודעת לשלוח, כדי שסימון
+   * שגוי לא יישמר בשקט ויתגלה רק כשהקונה יתלונן.
+   */
+  if (Array.isArray(body.fields)) {
+    const { DELIVERY_FIELDS } = await import("@/lib/delivery-payload");
+    const known = new Set(DELIVERY_FIELDS.map((f) => f.key));
+
+    data.fields = (body.fields as unknown[])
+      .map((f) => String(f ?? "").trim())
+      .filter((f) => known.has(f));
+  }
+
   if (typeof body.webhookSecret === "string") {
     data.webhookSecret = body.webhookSecret.trim() || null;
   }
@@ -193,19 +208,28 @@ export async function POST(
     );
   }
 
-  const { buildPayload, renderTemplate, deliveryVerdict } = await import(
-    "@/lib/delivery-payload"
-  );
+  const { buildPayload, pickFields, renderTemplate, deliveryVerdict } =
+    await import("@/lib/delivery-payload");
 
-  const sample = buildPayload(
-    {
-      firstName: "בדיקה",
-      lastName: "מהמערכת",
-      phone: "+972500000000",
-      status: "חדש",
-      extra: { email: "test@example.com", fb_campaign: channel.name },
-    },
-    new Date()
+  /**
+   * ליד הבדיקה עובר **אותו סינון שדות** כמו ליד אמיתי.
+   *
+   * אחרת הבדיקה הייתה שולחת את כל השדות, היא הייתה עוברת,
+   * ואז ליד אמיתי היה מגיע לקונה עם שדות אחרים לגמרי -
+   * בדיקה שמאשרת משהו שלא יקרה היא גרועה מאין בדיקה.
+   */
+  const sample = pickFields(
+    buildPayload(
+      {
+        firstName: "בדיקה",
+        lastName: "מהמערכת",
+        phone: "+972500000000",
+        status: "חדש",
+        extra: { email: "test@example.com", fb_campaign: channel.name },
+      },
+      new Date()
+    ),
+    channel.fields
   );
 
   const template = channel.bodyTemplate?.trim();

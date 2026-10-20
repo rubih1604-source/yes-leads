@@ -10,6 +10,7 @@ import { MY_LEADS_WHERE } from "@/lib/channel";
 import { viewWhere, describeView, type ViewDef } from "@/lib/lead-views";
 import RevenueBar from "@/components/RevenueBar";
 import ViewPicker from "@/components/ViewPicker";
+import AddLeadForm from "@/components/AddLeadForm";
 
 export const dynamic = "force-dynamic";
 
@@ -189,6 +190,10 @@ export default async function HomePage({
     <div className="app">
       <AutoRefresh seconds={15} />
       <RevenueBar data={revenue} />
+
+      {/* ליד ידני לרשימה האישית - בלי בחירת ערוץ */}
+      <AddLeadForm mode="mine" channels={[]} />
+
       {(views.length > 0 || campaignTree.length > 0) && (
         <ViewPicker
           activeId={activeView?.id ?? null}
