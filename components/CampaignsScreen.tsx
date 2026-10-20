@@ -88,10 +88,12 @@ function ChannelCard({ channel }: { channel: ChannelRow }) {
   const set = <K extends keyof ChannelRow>(k: K, value: ChannelRow[K]) =>
     setDraft((p) => ({ ...p, [k]: value }));
 
-  async function save() {
-    setBusy(true);
-    setMessage("");
-
+  /**
+   * שומר את הטופס ומחזיר אם זה הצליח.
+   *
+   * מופרד מ-save כדי שגם "בדוק חיבור" יוכל לשמור קודם.
+   */
+  async function persist(): Promise<boolean> {
     const res = await fetch(`/api/channels/${channel.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -112,20 +114,50 @@ function ChannelCard({ channel }: { channel: ChannelRow }) {
     }).catch(() => null);
 
     const data = await res?.json().catch(() => ({}));
-    setBusy(false);
 
     if (!res?.ok) {
       setMessage(data?.error ?? "לא נשמר");
-      return;
+      return false;
     }
 
     setDraft({});
+    return true;
+  }
+
+  async function save() {
+    setBusy(true);
+    setMessage("");
+
+    const ok = await persist();
+    setBusy(false);
+
+    if (!ok) return;
+
     setMessage("נשמר");
     router.refresh();
   }
 
   async function test() {
     setBusy(true);
+
+    /**
+     * כאן היה באג: הכפתור נדלק לפי מה שמוקלד על המסך, אבל
+     * הבדיקה בשרת קוראת את הכתובת מהמסד. מי שהקליד כתובת
+     * ולחץ "בדוק חיבור" בלי לשמור קיבל "לערוץ לא מוגדרת
+     * כתובת" - כשהכתובת מולו על המסך.
+     *
+     * לכן שומרים קודם. אם השמירה נכשלה אין טעם לבדוק:
+     * השרת היה בודק כתובת אחרת מזו שרואים.
+     */
+    if (dirty) {
+      setMessage("שומר לפני הבדיקה...");
+
+      if (!(await persist())) {
+        setBusy(false);
+        return;
+      }
+    }
+
     setMessage("שולח ליד בדיקה...");
 
     const res = await fetch(`/api/channels/${channel.id}`, { method: "POST" }).catch(
@@ -135,6 +167,7 @@ function ChannelCard({ channel }: { channel: ChannelRow }) {
     const data = await res?.json().catch(() => ({}));
     setBusy(false);
     setMessage(data?.verdict ?? data?.error ?? "לא ידוע");
+    router.refresh();
   }
 
   async function loadForms() {
