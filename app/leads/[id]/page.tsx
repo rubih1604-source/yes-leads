@@ -56,6 +56,21 @@ export default async function LeadPage({
       messages: { orderBy: { createdAt: "desc" }, take: 60 },
       events: { orderBy: { createdAt: "desc" }, take: 40 },
       entries: { orderBy: { at: "desc" }, take: 20 },
+      /**
+       * ההעברות ללקוחות.
+       *
+       * בלי זה אין שום דרך לדעת אם הליד באמת הגיע לקונה,
+       * ומה בדיוק נשלח אליו - וזו הייתה בדיקה שאי אפשר
+       * לעשות מתוך המערכת.
+       */
+      deliveries: {
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        include: {
+          channelRef: { select: { name: true } },
+          buyer: { select: { name: true } },
+        },
+      },
     },
   });
 
@@ -327,6 +342,129 @@ export default async function LeadPage({
               </div>
             ))}
           </div>
+        </>
+      )}
+
+      {/*
+        העברות ללקוחות.
+
+        מציג לא רק "נשלח" אלא **מה בדיוק נשלח** - השדות
+        עצמם. 201 מהשרת של הקונה אומר שהבקשה התקבלה, לא
+        שהתוכן נכון; ליד עם שדות ריקים מחזיר 201 בדיוק
+        כמו ליד תקין. כאן רואים את ההבדל.
+      */}
+      {lead.deliveries.length > 0 && (
+        <>
+          <div className="section-title">העברות ללקוחות</div>
+
+          {lead.deliveries.map((d) => {
+            const who = d.channelRef?.name ?? d.buyer?.name ?? "לקוח שנמחק";
+
+            const state =
+              d.state === "sent"
+                ? { text: "נשלח בהצלחה", color: "#027a48" }
+                : d.state === "failed"
+                ? { text: "נכשל", color: "#b42318" }
+                : { text: "ממתין לשליחה", color: "#b54708" };
+
+            const sentFields =
+              d.payload && typeof d.payload === "object" && !Array.isArray(d.payload)
+                ? (d.payload as Record<string, unknown>)
+                : null;
+
+            return (
+              <div className="card" key={d.id} style={{ marginBottom: 10 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <strong style={{ fontSize: 14.5 }}>{who}</strong>
+                  <span style={{ color: state.color, fontSize: 13.5 }}>
+                    {state.text}
+                  </span>
+                  {d.httpStatus ? (
+                    <span style={{ fontSize: 12.5, color: "#667085" }}>
+                      · קוד {d.httpStatus}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div
+                  style={{ fontSize: 12.5, color: "#667085", marginTop: 4 }}
+                >
+                  {d.sentAt
+                    ? `נשלח ב-${d.sentAt.toLocaleString("he-IL", {
+                        timeZone: "Asia/Jerusalem",
+                      })}`
+                    : `נרשם ב-${d.createdAt.toLocaleString("he-IL", {
+                        timeZone: "Asia/Jerusalem",
+                      })}`}
+                  {d.attempts > 1 ? ` · ${d.attempts} ניסיונות` : ""}
+                </div>
+
+                {d.error && (
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: "#b42318",
+                      marginTop: 6,
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    {d.error}
+                  </div>
+                )}
+
+                {sentFields && (
+                  <details style={{ marginTop: 8 }}>
+                    <summary style={{ fontSize: 13, cursor: "pointer" }}>
+                      מה בדיוק נשלח ({Object.keys(sentFields).length} שדות)
+                    </summary>
+                    <div style={{ marginTop: 6 }}>
+                      {Object.entries(sentFields).map(([key, value]) => {
+                        const text = String(value ?? "");
+                        return (
+                          <div
+                            key={key}
+                            style={{
+                              display: "flex",
+                              gap: 8,
+                              fontSize: 12.5,
+                              padding: "3px 0",
+                              borderBottom: "1px solid #f2f4f7",
+                            }}
+                          >
+                            <span
+                              style={{
+                                color: "#667085",
+                                minWidth: 118,
+                                direction: "ltr",
+                                textAlign: "left",
+                              }}
+                            >
+                              {key}
+                            </span>
+                            <span
+                              style={{
+                                color: text ? "#101828" : "#b42318",
+                                fontWeight: text ? 400 : 600,
+                              }}
+                            >
+                              {text || "ריק !"}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </details>
+                )}
+              </div>
+            );
+          })}
         </>
       )}
 
