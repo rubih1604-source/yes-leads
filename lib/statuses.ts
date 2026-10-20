@@ -15,6 +15,17 @@ export type StatusDef = {
   terminal?: boolean;
   /** סטטוס של סגירת עסקה - נספר בדשבורד כהמרה */
   won?: boolean;
+  /** סטטוס שמעביר את הליד לקונה. ריק = לא מעביר */
+  transferBuyerId?: string | null;
+  /** המחיר שהקונה משלם על ליד שהועבר ככה */
+  transferPrice?: number;
+  /** הערוץ שאליו הסטטוס מעביר את הליד */
+  transferChannelId?: string | null;
+  /** כתובת שאליה נשלחת הודעה בשינוי לסטטוס הזה. שולח בלבד */
+  hookUrl?: string | null;
+  hookTemplate?: string | null;
+  hookSecret?: string | null;
+  hookActive?: boolean;
 };
 
 export const DEFAULT_STATUSES: StatusDef[] = [

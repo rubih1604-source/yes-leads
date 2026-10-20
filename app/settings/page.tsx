@@ -16,14 +16,27 @@ import DialerSettings from "@/components/DialerSettings";
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const [settings, statuses, whatsappLeads, subStatuses] = await Promise.all([
-    getSettings(),
-    getStatuses(true),
-    db.lead
-      .count({ where: { source: "הודעה נכנסת", origin: "leadmanager" } })
-      .catch(() => 0),
-    getSubStatuses(),
-  ]);
+  const [settings, statuses, whatsappLeads, subStatuses, buyers, channels] =
+    await Promise.all([
+      getSettings(),
+      getStatuses(true),
+      db.lead
+        .count({ where: { source: "הודעה נכנסת", origin: "leadmanager" } })
+        .catch(() => 0),
+      getSubStatuses(),
+      // לבחירת הקונה שאליו סטטוס מעביר ליד (הגדרות ותיקות)
+      db.leadBuyer
+        .findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } })
+        .catch(() => []),
+      // הערוצים - זו הדרך המועדפת להעביר ליד לפי סטטוס
+      db.channel
+        .findMany({
+          where: { active: true },
+          orderBy: { name: "asc" },
+          select: { id: true, name: true, campaign: { select: { name: true } } },
+        })
+        .catch(() => []),
+    ]);
 
   // כמה לידים נראים ככפילות ועדיין לא סומנו
   const dupCandidates = await db.lead
@@ -92,7 +105,14 @@ export default async function SettingsPage() {
       <RowFieldsEditor current={settings.leadRowFields} />
 
       <MaintenanceCard count={whatsappLeads} duplicates={duplicates} />
-      <StatusesEditor statuses={statuses} />
+      <StatusesEditor
+        statuses={statuses}
+        buyers={buyers}
+        channels={channels.map((c) => ({
+          id: c.id,
+          label: `${c.campaign.name} · ${c.name}`,
+        }))}
+      />
       <SubStatusEditor
         statuses={statuses}
         subStatuses={subStatuses as SubStatusRow[]}

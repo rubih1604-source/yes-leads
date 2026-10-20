@@ -7,11 +7,17 @@ import { getRevenue } from "@/lib/revenue";
 import { getSettings } from "@/lib/settings";
 import { isExistingCustomer } from "@/lib/existing-customer";
 import { MY_LEADS_WHERE } from "@/lib/channel";
+import { viewWhere, describeView, type ViewDef } from "@/lib/lead-views";
 import RevenueBar from "@/components/RevenueBar";
+import ViewPicker from "@/components/ViewPicker";
 
 export const dynamic = "force-dynamic";
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams?: { view?: string };
+}) {
   const [statuses, subStatuses, revenue, templates, settings] = await Promise.all([
     getStatuses(),
     getSubStatusMap(),
@@ -24,6 +30,42 @@ export default async function HomePage() {
     getSettings(),
   ]);
 
+  /**
+   * תצוגות שמורות.
+   *
+   * ברירת המחדל היא הרשימה הרגילה. תצוגה שנבחרה מצמצמת
+   * לקמפיינים ולערוצים שבה, וממשיכה לעבוד על לידים שייכנסו
+   * בעתיד - כי היא מתארת ערוצים ולא רשימת לידים.
+   */
+  const [views, channelRefs, campaignTree] = await Promise.all([
+    db.leadView
+      .findMany({ orderBy: [{ position: "asc" }, { name: "asc" }] })
+      .catch(() => []),
+    db.channel
+      .findMany({ select: { id: true, campaignId: true, isSale: true } })
+      .catch(() => []),
+    db.campaign
+      .findMany({
+        where: { active: true },
+        orderBy: [{ position: "asc" }, { name: "asc" }],
+        include: {
+          channels: {
+            where: { active: true },
+            orderBy: { name: "asc" },
+            select: { id: true, name: true, isSale: true },
+          },
+        },
+      })
+      .catch(() => []),
+  ]);
+
+  const activeView =
+    (searchParams?.view
+      ? views.find((v) => v.id === searchParams.view)
+      : null) ?? null;
+
+  const narrowed = viewWhere(activeView as ViewDef | null, channelRefs);
+
   const leads = await db.lead.findMany({
     // סדר קבוע: הליד האחרון שנכנס תמיד למעלה.
     // ההתכתבויות יושבות במסך נפרד ולא משנות את הסדר כאן.
@@ -33,7 +75,13 @@ export default async function HomePage() {
      * ההגדרה של "ליד שלי" יושבת במקום אחד - lib/channel.ts -
      * ומשמשת גם כאן וגם בייצוא. וואטסאפ אף פעם לא נכנס.
      */
-    where: MY_LEADS_WHERE,
+    /**
+     * תצוגה שנבחרה מצמצמת **בתוך** הרשימה שלך ולא במקומה,
+     * כדי שהפרדת הערוצים לא תישבר בגלל בחירת תצוגה.
+     */
+    where: narrowed
+      ? { AND: [MY_LEADS_WHERE, narrowed] }
+      : MY_LEADS_WHERE,
     /**
      * הליד האחרון שנכנס תמיד בראש.
      * createdAt כגיבוי, כדי שליד עם תאריך כניסה חריג
@@ -141,6 +189,26 @@ export default async function HomePage() {
     <div className="app">
       <AutoRefresh seconds={15} />
       <RevenueBar data={revenue} />
+      {(views.length > 0 || campaignTree.length > 0) && (
+        <ViewPicker
+          activeId={activeView?.id ?? null}
+          views={views.map((v) => ({
+            id: v.id,
+            name: v.name,
+            summary: describeView(
+              v as ViewDef,
+              campaignTree.map((c) => ({ id: c.id, name: c.name })),
+              campaignTree.flatMap((c) => c.channels)
+            ),
+          }))}
+          campaigns={campaignTree.map((c) => ({
+            id: c.id,
+            name: c.name,
+            channels: c.channels,
+          }))}
+        />
+      )}
+
       <LeadList
         leads={rows}
         statuses={statuses}

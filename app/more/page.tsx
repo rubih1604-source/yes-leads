@@ -93,6 +93,18 @@ export default async function MorePage() {
           desc: "מתי נכנסים לידים, מתי עונים, ומה מאפיין סגירה",
         },
         {
+          href: "/campaigns",
+          glyph: "⊟",
+          label: "קמפיינים וערוצים",
+          desc: "קטגוריות, ערוצים, שיוך טפסים מפייסבוק ולאן כל ערוץ נשלח",
+        },
+        {
+          href: "/maintenance",
+          glyph: "⚙",
+          label: "תחזוקה",
+          desc: "בדיקת החיבור לפייסבוק, ותיקונים חד-פעמיים על הנתונים",
+        },
+        {
           href: "/ad-performance",
           glyph: "₪",
           label: "ביצועי קמפיינים",

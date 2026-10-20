@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { StatusDef } from "@/lib/statuses";
+import { hookTokens } from "@/lib/hook-payload";
 
 const PALETTE = [
   "#2563eb",
@@ -19,14 +20,28 @@ const PALETTE = [
 
 export default function StatusesEditor({
   statuses,
+  buyers = [],
+  channels = [],
 }: {
   statuses: StatusDef[];
+  /** הקונים, להגדרות ותיקות מלפני הערוצים */
+  buyers?: Array<{ id: string; name: string }>;
+  /** הערוצים - זו הדרך המועדפת להעביר ליד */
+  channels?: Array<{ id: string; label: string }>;
 }) {
   const [name, setName] = useState("");
   const [color, setColor] = useState(PALETTE[0]);
   const [won, setWon] = useState(false);
   const [busy, setBusy] = useState(false);
   const [rates, setRates] = useState<Record<string, string>>({});
+  const [transferPrices, setTransferPrices] = useState<Record<string, string>>(
+    {}
+  );
+  const [openTransfer, setOpenTransfer] = useState<Record<string, boolean>>({});
+  const [openHook, setOpenHook] = useState<Record<string, boolean>>({});
+  const [hooks, setHooks] = useState<
+    Record<string, { url: string; template: string; secret: string; headers: string }>
+  >({});
   const [error, setError] = useState("");
   const router = useRouter();
 
@@ -60,6 +75,81 @@ export default function StatusesEditor({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ commission: Number(value) || 0 }),
     });
+    setBusy(false);
+    router.refresh();
+  }
+
+  /**
+   * סטטוס שמעביר ליד לקונה.
+   *
+   * זה ההיפך מעמלה: עמלה היא מה שאתה מקבל על סגירה, וזה
+   * מה שהקונה משלם לך על ליד שהעברת אליו.
+   */
+  async function saveTransfer(
+    id: string,
+    channelId: string | null,
+    price: string
+  ) {
+    setBusy(true);
+    setError("");
+
+    const res = await fetch(`/api/statuses/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transferChannelId: channelId,
+        transferPrice: Number(price) || 0,
+      }),
+    }).catch(() => null);
+
+    if (!res?.ok) {
+      const data = await res?.json().catch(() => ({}));
+      setError(data?.error || "ההגדרה לא נשמרה");
+    }
+
+    setBusy(false);
+    router.refresh();
+  }
+
+  /**
+   * וובוק יוצא: כתובת שאליה נשלחת הודעה בשינוי לסטטוס הזה.
+   * שולח בלבד - לא מוכר את הליד ולא מזיז אותו.
+   */
+  function hookOf(s: StatusDef) {
+    const saved = hooks[s.id!];
+    return (
+      saved ?? {
+        url: s.hookUrl ?? "",
+        template: s.hookTemplate ?? "",
+        secret: s.hookSecret ?? "",
+        headers: "",
+      }
+    );
+  }
+
+  async function saveHook(id: string) {
+    const h = hooks[id];
+    if (!h) return;
+
+    setBusy(true);
+    setError("");
+
+    const res = await fetch(`/api/statuses/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        hookUrl: h.url,
+        hookTemplate: h.template,
+        hookSecret: h.secret,
+        hookHeaders: h.headers,
+      }),
+    }).catch(() => null);
+
+    if (!res?.ok) {
+      const data = await res?.json().catch(() => ({}));
+      setError(data?.error || "הוובוק לא נשמר");
+    }
+
     setBusy(false);
     router.refresh();
   }
@@ -146,6 +236,17 @@ export default function StatusesEditor({
                   </button>
                 </span>
               )}
+              {s.transferBuyerId && (
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "#b54708",
+                    fontWeight: 700,
+                  }}
+                >
+                  מעביר לקונה
+                </span>
+              )}
               {!s.builtin && (
                 <button
                   className="btn"
@@ -162,6 +263,209 @@ export default function StatusesEditor({
                 </button>
               )}
             </div>
+
+            {/**
+              * העברה לקונה לפי סטטוס.
+              *
+              * ברגע שליד מקבל את הסטטוס הזה הוא נמכר: נרשמת
+              * כניסת מכירה, הליד יוצא מהרשימה האישית ונשלח
+              * לקונה. ההעברה נעשית פעם אחת לכל ליד.
+              */}
+            {/**
+              * וובוק יוצא. מוצג לכל סטטוס, גם בלי קונים מוגדרים,
+              * כי הוא לא קשור למכירה - הוא עדכון למערכת אחרת.
+              */}
+            {s.id && (
+              <div style={{ marginTop: 7 }}>
+                <button
+                  className="chip"
+                  onClick={() =>
+                    setOpenHook((p) => ({ ...p, [s.id!]: !p[s.id!] }))
+                  }
+                >
+                  וובוק יוצא
+                  {s.hookUrl ? " · מוגדר" : ""}
+                  {openHook[s.id] ? " ⌃" : " ⌄"}
+                </button>
+
+                {openHook[s.id] && (
+                  <div style={{ marginTop: 8 }}>
+                    <div
+                      style={{
+                        fontSize: 12.5,
+                        color: "#475467",
+                        marginBottom: 7,
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      כשליד יקבל את הסטטוס הזה תישלח הודעה לכתובת.
+                      <strong> שולח בלבד</strong> — לא מוכר את הליד ולא
+                      מוציא אותו מהרשימה שלך. כל ניסיון נרשם בציר הזמן
+                      של הליד, וכשל יוצר התראה.
+                    </div>
+
+                    <input
+                      className="field"
+                      style={{ width: "100%", direction: "ltr" }}
+                      placeholder="https://..."
+                      value={hookOf(s).url}
+                      onChange={(e) =>
+                        setHooks((p) => ({
+                          ...p,
+                          [s.id!]: { ...hookOf(s), url: e.target.value },
+                        }))
+                      }
+                    />
+
+                    <input
+                      className="field"
+                      style={{ width: "100%", direction: "ltr" }}
+                      placeholder="סוד לאימות (לא חובה)"
+                      value={hookOf(s).secret}
+                      onChange={(e) =>
+                        setHooks((p) => ({
+                          ...p,
+                          [s.id!]: { ...hookOf(s), secret: e.target.value },
+                        }))
+                      }
+                    />
+
+                    <textarea
+                      className="field"
+                      style={{
+                        width: "100%",
+                        minHeight: 54,
+                        direction: "ltr",
+                        fontFamily: "monospace",
+                        fontSize: 12,
+                      }}
+                      placeholder="כותרות, שורה לכל אחת: X-API-Key=..."
+                      value={hookOf(s).headers}
+                      onChange={(e) =>
+                        setHooks((p) => ({
+                          ...p,
+                          [s.id!]: { ...hookOf(s), headers: e.target.value },
+                        }))
+                      }
+                    />
+
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "#667085",
+                        margin: "4px 0 6px",
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      תבנית גוף הבקשה. ריק = נשלחים כל השדות. אסימונים:
+                      <br />
+                      <span
+                        dir="ltr"
+                        style={{ fontFamily: "monospace", fontSize: 11 }}
+                      >
+                        {hookTokens()
+                          .map((t) => `{${t}}`)
+                          .join(" ")}
+                      </span>
+                    </div>
+
+                    <textarea
+                      className="field"
+                      style={{
+                        width: "100%",
+                        minHeight: 90,
+                        direction: "ltr",
+                        fontFamily: "monospace",
+                        fontSize: 12,
+                      }}
+                      placeholder={
+                        '{\n  "name": "{full_name}",\n  "phone": "{phone}",\n  "status": "{status}"\n}'
+                      }
+                      value={hookOf(s).template}
+                      onChange={(e) =>
+                        setHooks((p) => ({
+                          ...p,
+                          [s.id!]: { ...hookOf(s), template: e.target.value },
+                        }))
+                      }
+                    />
+
+                    <button
+                      className="btn"
+                      onClick={() => saveHook(s.id!)}
+                      disabled={busy || !hooks[s.id]}
+                    >
+                      שמור וובוק
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {s.id && channels.length > 0 && (
+              <div style={{ marginTop: 7 }}>
+                <button
+                  className="chip"
+                  onClick={() =>
+                    setOpenTransfer((p) => ({ ...p, [s.id!]: !p[s.id!] }))
+                  }
+                >
+                  העברה לערוץ
+                  {s.transferChannelId
+                    ? ` · ${
+                        channels.find((c) => c.id === s.transferChannelId)
+                          ?.label ?? "מוגדר"
+                      }`
+                    : ""}
+                  {openTransfer[s.id] ? " ⌃" : " ⌄"}
+                </button>
+
+                {openTransfer[s.id] && (
+                  <div style={{ marginTop: 8 }}>
+                    <div
+                      style={{
+                        fontSize: 12.5,
+                        color: "#475467",
+                        marginBottom: 7,
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      ליד שיקבל את הסטטוס הזה יעבור לערוץ שתבחר:
+                      נרשמת לו כניסה בערוץ, והוא נשלח לכתובת של הערוץ.
+                      אם זה ערוץ מכירה — הוא גם יוצא מהרשימה האישית
+                      שלך. ההעברה נעשית פעם אחת לכל ליד.
+                      <br />
+                      המחיר מגיע מהערוץ עצמו.
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <select
+                        className="field"
+                        style={{ marginBottom: 0, flex: "1 1 150px" }}
+                        value={s.transferChannelId ?? ""}
+                        onChange={(e) =>
+                          saveTransfer(
+                            s.id!,
+                            e.target.value || null,
+                            transferPrices[s.id!] ??
+                              String(s.transferPrice ?? 0)
+                          )
+                        }
+                      >
+                        <option value="">— לא מעביר —</option>
+                        {channels.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.label}
+                          </option>
+                        ))}
+                      </select>
+
+
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ))}
       </div>

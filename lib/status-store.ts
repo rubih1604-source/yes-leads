@@ -53,6 +53,13 @@ export async function getStatuses(force = false): Promise<StatusDef[]> {
       won: r.won,
       builtin: r.builtin,
       commission: r.commission,
+      transferBuyerId: r.transferBuyerId,
+      transferChannelId: r.transferChannelId,
+      transferPrice: r.transferPrice,
+      hookUrl: r.hookUrl,
+      hookTemplate: r.hookTemplate,
+      hookSecret: r.hookSecret,
+      hookActive: r.hookActive,
     }));
 
     cache = { at: Date.now(), list };

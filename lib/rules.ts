@@ -136,6 +136,33 @@ export async function applyStatusChange(params: {
   });
 
   await cancelPendingJobs(lead.id, `הסטטוס שונה ל${params.toStatus}`);
+
+  /**
+   * סטטוס שמוגדר כמעביר לקונה מוכר את הליד כאן.
+   *
+   * רץ **לפני** תזמון האוטומציות, כדי שליד שעבר לקונה לא
+   * יקבל ממך הודעה שנקבעה שנייה לפני ההעברה.
+   */
+  const { transferOnStatus } = await import("./transfer");
+  const transfer = await transferOnStatus(lead.id, params.toStatus).catch(
+    () => null
+  );
+
+  /**
+   * וובוק יוצא, אם הוגדר לסטטוס הזה.
+   *
+   * שולח בלבד - לא מוכר ולא מזיז את הליד. רץ גם על ליד
+   * שהועבר לקונה, כי עדכון למערכת חיצונית נכון בשני
+   * המקרים.
+   */
+  const { fireStatusHook } = await import("./status-hook");
+  await fireStatusHook(lead.id, params.toStatus).catch(() => null);
+
+  if (transfer?.transferred) {
+    // ליד של הקונה לא נכנס לאוטומציות שלך ולא לרשימת החזרה
+    return updated;
+  }
+
   await scheduleForStatus(lead.id, params.toStatus, params.actor);
 
   // ליד בסטטוס שדורש חזרה נכנס לרשימה של פעמיים ביום

@@ -8,7 +8,7 @@
  */
 
 import { db } from "./db";
-import { sendTemplate } from "./texter";
+import { sendTemplate, shouldRetrySend } from "./texter";
 import { applyStatusChange } from "./rules";
 import { displayPhone } from "./phone";
 import { sendEmail } from "./email";
@@ -128,7 +128,14 @@ async function runOne(jobId: string, summary: RunSummary) {
         body: sendName ? [firstName] : undefined,
       });
 
-      if (!result.ok) {
+      /**
+       * ניסיון שני רק כששגיאת טקסטר מוכיחה שההודעה לא יצאה.
+       *
+       * פסק זמן (504) לא מוכיח את זה: ההודעה יכולה הייתה
+       * להישלח בפועל, ושליחה חוזרת הייתה מגיעה ללקוח
+       * פעמיים.
+       */
+      if (!result.ok && shouldRetrySend(result.status)) {
         const retry = await sendTemplate({
           templateName: job.templateName,
           to: lead.phone,

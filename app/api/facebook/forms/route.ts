@@ -6,6 +6,7 @@ import {
   listPages,
   listForms,
   pageToken,
+  explainGraphError,
   type FacebookForm,
 } from "@/lib/facebook-graph";
 
@@ -56,7 +57,7 @@ export async function GET() {
       ok: false,
       error:
         error instanceof Error
-          ? `פייסבוק החזירה: ${error.message}`
+          ? explainGraphError(error.message)
           : "לא ניתן לשלוף את הדפים",
       pages: [],
     });
@@ -76,7 +77,7 @@ export async function GET() {
       try {
         forms = await listForms(page);
       } catch (err) {
-        error = err instanceof Error ? err.message : "שגיאה";
+        error = err instanceof Error ? explainGraphError(err.message) : "שגיאה";
       }
 
       return {

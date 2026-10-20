@@ -247,6 +247,15 @@ export default function LeadList({
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMessage, setBulkMessage] = useState("");
   const [bulkConfirm, setBulkConfirm] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  /**
+   * לידים שנמחקו, כדי להסיר אותם מהמסך בלי לטעון מחדש.
+   *
+   * הקומפוננטה הזו נמנעת מניווט בכוונה - ניווט מאפס את
+   * הסינון ואת החיפוש. לכן המחיקה מוסרת מהתצוגה מקומית,
+   * והשרת יחזיר רשימה מעודכנת בטעינה הבאה.
+   */
+  const [removed, setRemoved] = useState<Set<string>>(new Set());
   const [sendNow, setSendNow] = useState(true);
   const [saleCampaign, setSaleCampaign] = useState("");
   const [saleConfirm, setSaleConfirm] = useState(false);
@@ -361,6 +370,42 @@ export default function LeadList({
     });
   }
 
+  /**
+   * מחיקת הלידים שסומנו.
+   *
+   * נשלחים **המזהים שסומנו** ולא תנאי סינון: סינון שמשתנה
+   * בין הלחיצה לביצוע היה מוחק לידים אחרים.
+   */
+  async function bulkDelete() {
+    setBulkBusy(true);
+    setBulkMessage("");
+
+    const res = await fetch("/api/leads/bulk-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: [...selected] }),
+    }).catch(() => null);
+
+    const data = await res?.json().catch(() => ({}));
+    setBulkBusy(false);
+    setDeleteConfirm(false);
+
+    if (!res?.ok) {
+      setBulkMessage(data?.error ?? "המחיקה נכשלה");
+      return;
+    }
+
+    setBulkMessage(`נמחקו ${data["נמחקו"]} לידים`);
+
+    setRemoved((prev) => {
+      const next = new Set(prev);
+      for (const id of selected) next.add(id);
+      return next;
+    });
+
+    setSelected(new Set());
+  }
+
   async function bulkSend() {
     setBulkBusy(true);
     setBulkMessage("");
@@ -429,6 +474,9 @@ export default function LeadList({
     const { start, end } = periodRange(period, rangeFrom, rangeTo);
 
     return leads.filter((lead) => {
+      // ליד שנמחק יורד מהמסך מיד, בלי לטעון מחדש
+      if (removed.has(lead.id)) return false;
+
       const at = new Date(lead.intakeAt).getTime();
 
       // תקופה סגורה כמו "אתמול" צריכה גם גבול עליון
@@ -442,7 +490,7 @@ export default function LeadList({
       const name = `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim();
       return name.includes(q) || phoneMatches(lead.phone, q);
     });
-  }, [leads, query, filter, campaign, period, rangeFrom, rangeTo]);
+  }, [leads, removed, query, filter, campaign, period, rangeFrom, rangeTo]);
 
   /** הקמפיינים שיש בפועל, לפי כמות לידים */
   const campaigns = useMemo(() => {
@@ -802,6 +850,51 @@ export default function LeadList({
             </>
           )}
 
+          {/**
+            * מחיקה.
+            *
+            * הפעולה היחידה שאי אפשר לבטל, ולכן היא דורשת אישור
+            * מפורש ואומרת בדיוק מה נמחק איתה.
+            */}
+          {deleteConfirm ? (
+            <div style={{ marginTop: 10 }}>
+              <div
+                style={{
+                  fontSize: 13.5,
+                  color: "#b42318",
+                  marginBottom: 8,
+                  lineHeight: 1.6,
+                }}
+              >
+                למחוק {selected.size} לידים? נמחקים איתם גם ההודעות,
+                הכניסות, המשימות וכל ההיסטוריה שלהם.
+                <strong> אי אפשר לבטל.</strong>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  className="btn"
+                  style={{ background: "#b42318", color: "#fff", border: "none" }}
+                  onClick={bulkDelete}
+                  disabled={bulkBusy}
+                >
+                  {bulkBusy ? "מוחק..." : `כן, מחק ${selected.size}`}
+                </button>
+                <button className="btn" onClick={() => setDeleteConfirm(false)}>
+                  בטל
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              className="btn"
+              style={{ marginTop: 10, color: "#b42318" }}
+              onClick={() => setDeleteConfirm(true)}
+              disabled={bulkBusy}
+            >
+              מחק {selected.size} לידים
+            </button>
+          )}
+
           {bulkMessage && (
             <div style={{ marginTop: 8, fontSize: 13.5 }}>{bulkMessage}</div>
           )}
@@ -922,7 +1015,14 @@ export default function LeadList({
                   style={{ background: statusColor(lead.status, statuses) }}
                 />
 
-                {templates.length > 0 && (
+                {/**
+                  * תיבת הסימון מוצגת תמיד.
+                  *
+                  * קודם היא הופיעה רק כשיש תבניות, כי היא נבנתה
+                  * לדיוור - ולכן לא היה אפשר לסמן לידים כדי
+                  * למחוק אותם.
+                  */}
+                {(
                   <button
                     className="lead-check"
                     data-on={selected.has(lead.id)}

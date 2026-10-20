@@ -4,6 +4,7 @@ import {
   listPages,
   formQuestions,
   pageToken,
+  explainGraphError,
 } from "@/lib/facebook-graph";
 
 export const dynamic = "force-dynamic";
@@ -67,7 +68,7 @@ export async function GET(
       ok: false,
       error:
         error instanceof Error
-          ? `פייסבוק החזירה: ${error.message}`
+          ? explainGraphError(error.message)
           : "לא ניתן לשלוף את שאלות הטופס",
       questions: [],
     });

@@ -40,10 +40,10 @@ export async function GET(request: Request) {
       שורות: a.rows,
       שגיאה: a.error,
     })),
-    הוצאה_בטווח: Math.round(
-      result.sample.reduce((s, r) => s + r.spend, 0)
-    ),
-    דוגמה: result.sample,
+    שורות: result.totals.rows,
+    הוצאה_בטווח: Math.round(result.totals.spend),
+    לידים_לפי_פייסבוק: result.totals.fbLeads,
+    דוגמה_20_שורות_ראשונות: result.sample,
   });
 }
 

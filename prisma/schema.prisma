@@ -236,6 +236,36 @@ model Status {
   won       Boolean  @default(false)
   builtin   Boolean  @default(false)
   commission Float   @default(0)
+
+  /// סטטוס שמעביר את הליד לקונה.
+  /// ברגע שליד מקבל את הסטטוס הזה הוא נמכר: עובר לערוץ
+  /// המכירה, יוצא מהרשימה האישית, ונשלח לקונה.
+  /// ריק = הסטטוס לא מעביר כלום.
+  transferBuyerId String?
+  transferBuyer   LeadBuyer? @relation(fields: [transferBuyerId], references: [id], onDelete: SetNull)
+
+  /// המחיר שהקונה משלם על ליד שהועבר ככה
+  transferPrice   Float    @default(0)
+
+  /// סטטוס שמעביר את הליד לערוץ.
+  /// זו הדרך המועדפת: הערוץ מחזיק את הוובוק, המחיר וההגדרות,
+  /// ולכן אין מה להגדיר פעמיים.
+  transferChannelId String?
+  transferChannel   Channel? @relation(fields: [transferChannelId], references: [id], onDelete: SetNull)
+
+  /// ---------- וובוק יוצא ----------
+  /// כתובת שאליה נשלחת הודעה כשליד מקבל את הסטטוס הזה.
+  /// שולח בלבד - לא מוכר את הליד ולא מזיז אותו מהרשימה שלך.
+  /// ריק = לא נשלח כלום.
+  hookUrl      String?
+  /// גוף הבקשה כתבנית עם אסימונים. ריק = נשלח המטען הרגיל.
+  hookTemplate String?
+  /// כותרות מותאמות: { "X-API-Key": "..." }
+  hookHeaders  Json?
+  /// נוסף כ-Bearer, אם הצד השני דורש אימות
+  hookSecret   String?
+  /// כיבוי זמני בלי למחוק את ההגדרות
+  hookActive   Boolean  @default(true)
   createdAt DateTime @default(now())
 
   @@index([position])
@@ -354,6 +384,7 @@ model LeadBuyer {
   campaigns  SalesCampaign[]
   deliveries LeadDelivery[]
   forms      LeadForm[]
+  statuses   Status[]
 }
 
 /// ============================================================
@@ -366,8 +397,15 @@ model LeadBuyer {
 ///  כישלון לא נמחק - הוא נשאר עם הסיבה, ואפשר לשלוח שוב.
 model LeadDelivery {
   id        String   @id @default(cuid())
-  buyerId   String
-  buyer     LeadBuyer @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+
+  /// הערוץ שבגללו נשלח - הדרך מעכשיו.
+  channelId String?
+  channelRef Channel? @relation(fields: [channelId], references: [id], onDelete: SetNull)
+
+  /// הקונה, בשליחות ותיקות שנשלחו לפני שהיו ערוצים.
+  /// נשאר אופציונלי כדי שההיסטוריה לא תאבד.
+  buyerId   String?
+  buyer     LeadBuyer? @relation(fields: [buyerId], references: [id], onDelete: Cascade)
   leadId    String
   lead      Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
   /// הכניסה שבגללה נשלח, כדי שלא נשלח פעמיים על אותה הגעה
@@ -384,6 +422,9 @@ model LeadDelivery {
   sentAt    DateTime?
   nextTryAt DateTime?
 
+  /// שתי הגנות נפרדות מפני שליחה כפולה על אותה הגעה:
+  /// אחת לערוץ ואחת לקונה הוותיק.
+  @@unique([channelId, entryId])
   @@unique([buyerId, entryId])
   @@index([state, nextTryAt])
   @@index([leadId])
@@ -398,6 +439,10 @@ model LeadEntry {
   /// מאיזו דלת הליד נכנס: leadmanager או facebook.
   /// זה מה שמאפשר לדעת אם החיבור הישיר באמת מביא לידים.
   via       String?
+
+  /// הערוץ שההגעה הזו שייכת אליו
+  channelId String?
+  channelRef Channel? @relation(fields: [channelId], references: [id], onDelete: SetNull)
   campaign  String?
   source    String?
   isSale    Boolean  @default(false)
@@ -548,7 +593,12 @@ model LeadForm {
   pageName String
 
   /// mine = הלידים שלך · sale = נמכרים לקונה
+  /// נשאר לתאימות; הערוץ הוא מה שקובע מעכשיו
   channel  String @default("mine")
+
+  /// הערוץ שהטופס הזה מזין. זה השיוך שנעשה מתוך הערוץ עצמו
+  channelId String?
+  channelRef Channel? @relation(fields: [channelId], references: [id], onDelete: SetNull)
 
   buyerId  String?
   buyer    LeadBuyer? @relation(fields: [buyerId], references: [id], onDelete: SetNull)
@@ -595,4 +645,99 @@ model AdSpend {
   @@unique([date, campaignId])
   @@index([date])
   @@index([campaignId])
+}
+
+/// ============================================================
+///  קמפיינים וערוצים - שכבת הניתוב היחידה
+/// ============================================================
+///
+///  קמפיין הוא קטגוריה: "מכירת לידים", "לידים רובי",
+///  "איזי פיזי". בתוכו ערוצים.
+///
+///  ערוץ הוא היחידה שמחזיקה הכל במקום אחד: אילו טפסים
+///  מפייסבוק מזינים אותו, לאן הלידים שלו נשלחים, האם הוא
+///  ערוץ מכירה, מה המחיר, והאם השליחה אוטומטית.
+///
+///  למה זה מאוחד ככה: עד עכשיו הקונה, הקמפיין, הטופס
+///  והשליחה היו ארבעה דברים נפרדים שהיה צריך לחבר ביניהם
+///  בכל פעם - וכל חיבור שנשכח היה ליד שהלך לערוץ הלא נכון.
+model Campaign {
+  id       String  @id @default(cuid())
+  name     String  @unique
+  position Int     @default(100)
+  active   Boolean @default(true)
+  createdAt DateTime @default(now())
+
+  channels Channel[]
+
+  @@index([position])
+}
+
+model Channel {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  name       String
+
+  /// האם לידים בערוץ הזה יוצאים מהרשימה האישית שלך.
+  /// ערוץ מכירה = כן. ערוץ שלך = לא.
+  isSale       Boolean @default(false)
+  pricePerLead Float   @default(0)
+
+  /// ---------- לאן נשלח ----------
+  webhookUrl      String?
+  webhookSecret   String?
+  webhookFormat   String  @default("json")
+  /// גוף השידור כתבנית עם אסימונים
+  bodyTemplate    String?
+  headers         Json?
+  successContains String?
+  failureContains String?
+  /// כיבוי זמני בלי למחוק הגדרות
+  sendEnabled     Boolean @default(true)
+  /// כל ליד שנכנס לערוץ נשלח אוטומטית
+  autoSend        Boolean @default(true)
+
+  position  Int      @default(100)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  forms      LeadForm[]
+  entries    LeadEntry[]
+  deliveries LeadDelivery[]
+  statuses   Status[]
+
+  @@unique([campaignId, name])
+  @@index([isSale])
+}
+
+/// ============================================================
+///  תצוגות שמורות לרשימת הלידים
+/// ============================================================
+///
+///  ברירת המחדל מציגה את הרשימה הרגילה. תצוגה שמורה מצמצמת
+///  אותה לקמפיינים ולערוצים שבחרת, ונשמרת בשם - כדי שתוכל
+///  לבחור אותה שוב בלי להגדיר מחדש.
+///
+///  התצוגה היא **הגדרה ולא צילום**: ליד שייכנס מחר לערוץ
+///  שנמצא בתצוגה יופיע בה מעצמו.
+model LeadView {
+  id          String   @id @default(cuid())
+  name        String   @unique
+
+  /// קמפיינים שנבחרו - כל הערוצים שבהם נכללים
+  campaignIds String[] @default([])
+  /// ערוצים בודדים שנבחרו
+  channelIds  String[] @default([])
+
+  /// האם להציג גם לידים של ערוצי מכירה.
+  /// ברירת המחדל לא, כדי לא לערב את הנתונים של הקונים
+  /// ברשימה האישית בטעות.
+  includeSale Boolean  @default(false)
+
+  position  Int      @default(100)
+  createdAt DateTime @default(now())
+
+  @@index([position])
 }

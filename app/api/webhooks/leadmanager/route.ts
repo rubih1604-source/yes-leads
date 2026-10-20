@@ -13,6 +13,7 @@ import { queueDelivery } from "@/lib/delivery";
 import { doorOf, addDoor } from "@/lib/via";
 import { identifiersOf } from "@/lib/campaign-match";
 import { assignmentForForm } from "@/lib/lead-forms";
+import { channelForLead } from "@/lib/channels";
 import {
   channelForIncoming,
   isSameSubmission,
@@ -176,17 +177,42 @@ async function handle(request: Request) {
      * טופס שלא הוגדר לא משנה כלום: נופלים לשם הקמפיין,
      * בדיוק כמו קודם.
      */
-    const byForm = await assignmentForForm(ids.formId).catch(() => null);
+    /**
+     * ============================================================
+     *  סדר ההכרעה
+     * ============================================================
+     *
+     *  1. **ערוץ** - הטופס משויך לערוץ, והערוץ מחזיק הכל:
+     *     לאן נשלח, האם מכירה, ומה המחיר. זו הדרך מעכשיו.
+     *  2. טופס בודד, להגדרות ותיקות מלפני הערוצים.
+     *  3. שם הקמפיין, לליד שמגיע בלי מזהה טופס.
+     *
+     *  אין התאמה -> הליד שלך. ברירת המחדל הזו בכוונה:
+     *  ליד שלא שויך נשאר אצלך ולא נמכר בטעות.
+     */
+    const inChannel = await channelForLead(ids).catch(() => null);
 
-    const channel = byForm
+    const byForm = inChannel
+      ? null
+      : await assignmentForForm(ids.formId).catch(() => null);
+
+    const channel = inChannel
       ? {
-          channel: byForm.channel,
-          isSale: byForm.channel === "sale",
-          price: byForm.price,
-          campaignName: byForm.formName,
-          matchedOn: `טופס: ${byForm.formName}`,
+          channel: inChannel.isSale ? ("sale" as const) : ("mine" as const),
+          isSale: inChannel.isSale,
+          price: inChannel.price,
+          campaignName: inChannel.name,
+          matchedOn: `ערוץ: ${inChannel.campaignName} · ${inChannel.name}`,
         }
-      : await channelForIncoming(ids);
+      : byForm
+        ? {
+            channel: byForm.channel,
+            isSale: byForm.channel === "sale",
+            price: byForm.price,
+            campaignName: byForm.formName,
+            matchedOn: `טופס: ${byForm.formName}`,
+          }
+        : await channelForIncoming(ids);
 
     /**
      * מאיזו דלת הליד נכנס.
@@ -256,6 +282,7 @@ async function handle(request: Request) {
             campaign: incomingCampaign,
             source: mapped.source,
             via,
+            channelId: inChannel?.id ?? null,
             isSale: channel.isSale,
             price: channel.price,
             at: new Date(),
@@ -273,6 +300,7 @@ async function handle(request: Request) {
           leadId: lead.id,
           entryId: firstEntry.id,
           campaign: incomingCampaign,
+          channelId: inChannel?.id ?? null,
           buyerId: byForm?.buyerId ?? null,
         }).catch(() => false);
       }
@@ -473,6 +501,7 @@ async function handle(request: Request) {
               campaign: incomingCampaign,
               source: mapped.source,
               via,
+              channelId: inChannel?.id ?? null,
               isSale: channel.isSale,
               price: channel.price,
               at: new Date(),
@@ -486,6 +515,7 @@ async function handle(request: Request) {
             leadId: existing.id,
             entryId: entry.id,
             campaign: incomingCampaign,
+            channelId: inChannel?.id ?? null,
             buyerId: byForm?.buyerId ?? null,
           }).catch(() => false);
         }

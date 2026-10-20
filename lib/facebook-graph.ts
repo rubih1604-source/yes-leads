@@ -197,3 +197,45 @@ export function leadsFromActions(row: InsightRow): number {
 
   return 0;
 }
+
+/**
+ * ============================================================
+ *  תרגום שגיאות של פייסבוק למה שצריך לעשות
+ * ============================================================
+ *
+ *  פייסבוק מחזירה שגיאות בנוסח של מפתחים: "(#200) Requires
+ *  pages_manage_ads permission". זה נכון, וזה גם חסר תועלת
+ *  למי שצריך לתקן את זה בפועל.
+ *
+ *  כאן כל שגיאה מוכרת מתורגמת למשפט אחד שאומר **מה חסר
+ *  ואיפה מוסיפים אותו**.
+ */
+export function explainGraphError(message: string): string {
+  const raw = message.trim();
+
+  if (/pages_manage_ads/i.test(raw)) {
+    return "חסרה ההרשאה pages_manage_ads לטוקן. בלעדיה אי אפשר לשלוף את רשימת הטפסים של הדף - הלידים עצמם כן מגיעים. צור טוקן חדש למשתמש המערכת עם ההרשאה הזו, והחלף אותו ב-FB_PAGE_TOKEN ברנדר.";
+  }
+
+  if (/leads_retrieval/i.test(raw)) {
+    return "חסרה ההרשאה leads_retrieval לטוקן. בלעדיה אי אפשר לשלוף את פרטי הליד מפייסבוק.";
+  }
+
+  if (/ads_read|ads_management/i.test(raw)) {
+    return "חסרה ההרשאה ads_read, או שחשבון המודעות לא הוקצה למשתמש המערכת. בלעדיה אין נתוני הוצאה ואין שם קמפיין על הליד.";
+  }
+
+  if (/pages_read_engagement|pages_show_list/i.test(raw)) {
+    return "חסרה הרשאת קריאה לדפים. בדוק שהדפים מוקצים למשתמש המערכת ושהטוקן נוצר עם pages_show_list.";
+  }
+
+  if (/expired|session has been invalidated|Error validating access token/i.test(raw)) {
+    return "הטוקן פג או בוטל. צור טוקן חדש למשתמש המערכת והחלף אותו ב-FB_PAGE_TOKEN ברנדר.";
+  }
+
+  if (/rate limit|too many calls/i.test(raw)) {
+    return "פייסבוק חוסמת זמנית בגלל יותר מדי בקשות. נסה שוב בעוד כמה דקות.";
+  }
+
+  return raw;
+}

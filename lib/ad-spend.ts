@@ -14,6 +14,7 @@ import {
   campaignInsights,
   leadsFromActions,
   pageToken,
+  explainGraphError,
 } from "./facebook-graph";
 import { israelParts } from "./working-hours";
 
@@ -23,6 +24,14 @@ export type SpendSync = {
   since: string;
   until: string;
   saved: number;
+  /**
+   * סכומים על **כל** השורות.
+   *
+   * קודם המסך סיכם את שדה הדוגמה, שמוגבל ל-20 שורות - ולכן
+   * ההוצאה שהוצגה הייתה חלקית וקטנה מהאמת. מספר שמתיימר
+   * להיות "ההוצאה בטווח" וחסר ממנו חלק הוא גרוע מאין מספר.
+   */
+  totals: { spend: number; fbLeads: number; rows: number };
   accounts: Array<{
     id: string;
     name: string | null;
@@ -71,6 +80,7 @@ export async function syncAdSpend(
     since,
     until,
     saved: 0,
+    totals: { spend: 0, fbLeads: 0, rows: 0 },
     accounts: [],
     sample: [],
   };
@@ -92,7 +102,7 @@ export async function syncAdSpend(
       ...empty,
       error:
         error instanceof Error
-          ? `פייסבוק החזירה: ${error.message}. ברוב המקרים זה אומר שחשבון המודעות לא הוקצה למשתמש המערכת, או שחסרה ההרשאה ads_read.`
+          ? explainGraphError(error.message)
           : "לא ניתן לשלוף את חשבונות המודעות",
     };
   }
@@ -131,6 +141,10 @@ export async function syncAdSpend(
       });
 
       for (const row of clean) {
+        result.totals.spend += row.spend;
+        result.totals.fbLeads += row.fbLeads;
+        result.totals.rows++;
+
         if (result.sample.length < 20) {
           result.sample.push({
             date: row.date,
@@ -184,10 +198,12 @@ export async function syncAdSpend(
         id: account.id,
         name: account.name ?? null,
         rows: 0,
-        error: error instanceof Error ? error.message : "שגיאה",
+        error: error instanceof Error ? explainGraphError(error.message) : "שגיאה",
       });
     }
   }
+
+  result.totals.spend = Math.round(result.totals.spend * 100) / 100;
 
   return result;
 }

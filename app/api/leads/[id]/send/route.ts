@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { sendTemplate } from "@/lib/texter";
+import { sendTemplate, shouldRetrySend } from "@/lib/texter";
 import { isLoggedIn } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -60,7 +60,12 @@ export async function POST(
 
   let attempts = sendName ? "עם שם" : "בלי משתנים";
 
-  if (!result.ok) {
+  /**
+   * ניסיון שני רק כששגיאת טקסטר מוכיחה שההודעה לא יצאה.
+   * פסק זמן לא מוכיח את זה, ושליחה חוזרת הייתה מגיעה
+   * ללקוח פעמיים.
+   */
+  if (!result.ok && shouldRetrySend(result.status)) {
     const retry = await sendTemplate({
       templateName,
       to: lead.phone,

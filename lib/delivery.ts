@@ -47,7 +47,37 @@ export async function queueDelivery(args: {
    * נשלח לאף אחד. כאן הקונה מגיע ישירות מהטופס.
    */
   buyerId?: string | null;
+  /**
+   * הערוץ שבגללו נשלח. הערוץ מחזיק את הכתובת וההגדרות,
+   * ולכן כשהוא קיים אין צורך בקונה בכלל.
+   */
+  channelId?: string | null;
 }): Promise<boolean> {
+  /**
+   * ערוץ קודם: הוא היחידה שמחזיקה את הוובוק מעכשיו.
+   */
+  if (args.channelId) {
+    const channel = await db.channel
+      .findUnique({ where: { id: args.channelId } })
+      .catch(() => null);
+
+    if (!channel?.webhookUrl?.trim() || !channel.sendEnabled) return false;
+
+    await db.leadDelivery
+      .create({
+        data: {
+          channelId: channel.id,
+          leadId: args.leadId,
+          entryId: args.entryId,
+          state: "pending",
+          nextTryAt: new Date(),
+        },
+      })
+      .catch(() => null); // כפילות = כבר בתור
+
+    return true;
+  }
+
   let buyerId = args.buyerId ?? null;
 
   if (!buyerId) {
@@ -101,6 +131,7 @@ export async function sendDelivery(deliveryId: string): Promise<boolean> {
     .findUnique({
       where: { id: deliveryId },
       include: {
+        channelRef: true,
         buyer: true,
         lead: {
           select: {
@@ -115,15 +146,25 @@ export async function sendDelivery(deliveryId: string): Promise<boolean> {
     })
     .catch(() => null);
 
-  if (!delivery || !delivery.buyer.webhookUrl) return false;
+  if (!delivery) return false;
   if (delivery.state === "sent") return true;
 
-  const base = buildPayload(delivery.lead, delivery.createdAt);
-  const payload = applyFieldMap(base, delivery.buyer.fieldMap);
+  /**
+   * ההגדרות מגיעות מהערוץ, ואם זו שליחה ותיקה - מהקונה.
+   *
+   * מאוחד למקור אחד כאן, כדי שכל השאר בקובץ לא יצטרך
+   * לדעת מאיזה מהשניים הוא קורא.
+   */
+  const target = delivery.channelRef ?? delivery.buyer;
 
-  const url = delivery.buyer.webhookUrl.trim();
-  const secret = delivery.buyer.webhookSecret?.trim();
-  const asForm = delivery.buyer.webhookFormat === "form";
+  if (!target?.webhookUrl?.trim()) return false;
+
+  const base = buildPayload(delivery.lead, delivery.createdAt);
+  const payload = applyFieldMap(base, delivery.channelRef ? null : delivery.buyer?.fieldMap);
+
+  const url = target.webhookUrl.trim();
+  const secret = target.webhookSecret?.trim();
+  const asForm = target.webhookFormat === "form";
 
   let httpStatus: number | null = null;
   let responseText = "";
@@ -147,10 +188,10 @@ export async function sendDelivery(deliveryId: string): Promise<boolean> {
      * שהוא דורש. בלי זה הבקשה נדחית באימות והליד לא מגיע.
      */
     const custom =
-      delivery.buyer.headers &&
-      typeof delivery.buyer.headers === "object" &&
-      !Array.isArray(delivery.buyer.headers)
-        ? (delivery.buyer.headers as Record<string, unknown>)
+      target.headers &&
+      typeof target.headers === "object" &&
+      !Array.isArray(target.headers)
+        ? (target.headers as Record<string, unknown>)
         : {};
 
     for (const [name, value] of Object.entries(custom)) {
@@ -166,7 +207,7 @@ export async function sendDelivery(deliveryId: string): Promise<boolean> {
      * כולל שדות קבועים שלא באים מהליד. בלי תבנית נשלח
      * המטען הרגיל, כמו עד היום.
      */
-    const template = delivery.buyer.bodyTemplate?.trim();
+    const template = target.bodyTemplate?.trim();
 
     const body = template
       ? renderTemplate(template, payload)
@@ -216,8 +257,8 @@ export async function sendDelivery(deliveryId: string): Promise<boolean> {
       : deliveryVerdict({
           httpStatus,
           body: responseText,
-          successContains: delivery.buyer.successContains,
-          failureContains: delivery.buyer.failureContains,
+          successContains: target.successContains,
+          failureContains: target.failureContains,
         });
 
   const ok = verdict.ok;
