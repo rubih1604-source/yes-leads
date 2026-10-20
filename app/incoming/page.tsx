@@ -94,7 +94,7 @@ export default async function IncomingPage({
         <h1>
           יומן קליטה
           <span className="count">
-            {q ? `${logs.length} תוצאות` : "גרסה 124"}
+            {q ? `${logs.length} תוצאות` : "גרסה 125"}
           </span>
         </h1>
         <form>

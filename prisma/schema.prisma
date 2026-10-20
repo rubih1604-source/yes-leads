@@ -424,7 +424,12 @@ model LeadDelivery {
 
   /// שתי הגנות נפרדות מפני שליחה כפולה על אותה הגעה:
   /// אחת לערוץ ואחת לקונה הוותיק.
-  @@unique([channelId, entryId])
+  /// למה אינדקס רגיל ולא ייחודי:
+  ///
+  /// אינדקס ייחודי חדש גורם ל-prisma db push לעצור ולדרוש
+  /// --accept-data-loss, והבנייה ברנדר נכשלת. ההגנה מפני
+  /// שליחה כפולה לאותו ערוץ נאכפת ב-queueDelivery במקום.
+  @@index([channelId, entryId])
   @@unique([buyerId, entryId])
   @@index([state, nextTryAt])
   @@index([leadId])

@@ -63,6 +63,24 @@ export async function queueDelivery(args: {
 
     if (!channel?.webhookUrl?.trim() || !channel.sendEnabled) return false;
 
+    /**
+     * בדיקת כפילות מפורשת.
+     *
+     * קודם האינדקס הייחודי במסד היה זה שמנע שליחה כפולה
+     * לאותו ערוץ, והקוד הסתמך על כך שהיצירה תיכשל. אינדקס
+     * ייחודי חדש מפיל את הבנייה ברנדר, ולכן ההגנה עברה
+     * לכאן - ומכאן שאסור להסיר את הבדיקה הזו: בלעדיה אותו
+     * ליד יכול להישלח לקונה פעמיים.
+     */
+    const queued = await db.leadDelivery
+      .findFirst({
+        where: { channelId: channel.id, entryId: args.entryId },
+        select: { id: true },
+      })
+      .catch(() => null);
+
+    if (queued) return true; // כבר בתור
+
     await db.leadDelivery
       .create({
         data: {
@@ -73,7 +91,7 @@ export async function queueDelivery(args: {
           nextTryAt: new Date(),
         },
       })
-      .catch(() => null); // כפילות = כבר בתור
+      .catch(() => null);
 
     return true;
   }
