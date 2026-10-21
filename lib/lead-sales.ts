@@ -48,6 +48,19 @@ export type SaleEntryRow = {
   phone: string;
   /** נדרש כדי שאפשר יהיה להציג דוא"ל בשורה, כמו בדוח */
   email: string | null;
+  /**
+   * פרטי הליד מפייסבוק, לבחירה בהגדרות התצוגה.
+   *
+   * נקראים מהליד עצמו ולא מהכניסה: הכניסה נושאת את השיוך
+   * שנחתם עליה בזמן הקליטה, והוא יכול להיות ריק כשהשם עוד
+   * לא היה זמין - בזמן שפרטי הליד כן מכילים אותו.
+   */
+  fbCampaign: string | null;
+  fbAd: string | null;
+  fbAdset: string | null;
+  fbForm: string | null;
+  fbPage: string | null;
+  supplier: string | null;
   campaign: string | null;
   price: number;
   at: string;
@@ -72,6 +85,17 @@ export type LeadSalesSummary = {
   /** מה חיפשת */
   query: string;
 };
+
+/** קורא שדה טקסט מתוך פרטי הליד, בלי להתפוצץ על צורה לא צפויה */
+function extraStr(extra: unknown, key: string): string | null {
+  if (!extra || typeof extra !== "object" || Array.isArray(extra)) return null;
+
+  const value = (extra as Record<string, unknown>)[key];
+  if (typeof value !== "string") return null;
+
+  const clean = value.trim();
+  return clean || null;
+}
 
 function campaignOf(extra: unknown): string | null {
   if (!extra || typeof extra !== "object" || Array.isArray(extra)) return null;
@@ -290,13 +314,17 @@ export async function getLeadSales(
           `${entry.lead.firstName ?? ""} ${entry.lead.lastName ?? ""}`.trim() ||
           entry.lead.phone,
         phone: entry.lead.phone,
-        email:
-          entry.lead.extra &&
-          typeof entry.lead.extra === "object" &&
-          !Array.isArray(entry.lead.extra)
-            ? ((entry.lead.extra as Record<string, unknown>).email as string) ??
-              null
-            : null,
+        email: extraStr(entry.lead.extra, "email"),
+        fbCampaign: extraStr(entry.lead.extra, "fb_campaign"),
+        fbAd: extraStr(entry.lead.extra, "fb_ad"),
+        fbAdset:
+          extraStr(entry.lead.extra, "fb_adset") ??
+          extraStr(entry.lead.extra, "fb_adgroup"),
+        fbForm:
+          extraStr(entry.lead.extra, "fb_form_name") ??
+          extraStr(entry.lead.extra, "fb_form"),
+        fbPage: extraStr(entry.lead.extra, "fb_page"),
+        supplier: extraStr(entry.lead.extra, "supplier_question"),
         /**
          * שם הקמפיין אם יש, אחרת שם הערוץ. שורה בלי שום
          * תווית לא אומרת לך לאיזה לקוח הליד שייך.

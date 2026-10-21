@@ -21,7 +21,24 @@ export type SaleColumnKey =
   | "buyer"
   | "price"
   | "billable"
-  | "existing";
+  | "existing"
+  /**
+   * השדות הבאים נקראים מפרטי הליד עצמם ולא מהכניסה.
+   *
+   * "campaign" הוא השיוך של הכניסה - שם הקמפיין שנחתם עליה,
+   * ובהיעדרו שם הערוץ. זה לא תמיד אותו דבר כמו שם הקמפיין
+   * שפייסבוק שלחה: ליד שנקלט לפני שהשם היה זמין נשאר בלי
+   * חותמת, בזמן שפרטי הליד כן מכילים את השם.
+   *
+   * לכן יש כאן גם "fb_campaign" - שם הקמפיין כפי שהוא
+   * מופיע בכרטיס הליד. הוא מוצג מהנתונים, לא מהחותמת.
+   */
+  | "fb_campaign"
+  | "fb_ad"
+  | "fb_adset"
+  | "fb_form"
+  | "fb_page"
+  | "supplier";
 
 export const SALE_COLUMNS: Array<{
   key: SaleColumnKey;
@@ -33,7 +50,13 @@ export const SALE_COLUMNS: Array<{
   { key: "name", label: "שם" },
   { key: "phone", label: "טלפון" },
   { key: "email", label: 'דוא"ל' },
-  { key: "campaign", label: "קמפיין" },
+  { key: "campaign", label: "שיוך הכניסה", note: "קמפיין או ערוץ" },
+  { key: "fb_campaign", label: "שם קמפיין" },
+  { key: "fb_ad", label: "מודעה" },
+  { key: "fb_adset", label: "קבוצת מודעות" },
+  { key: "fb_form", label: "טופס" },
+  { key: "fb_page", label: "עמוד פייסבוק" },
+  { key: "supplier", label: "ספק נוכחי" },
   { key: "buyer", label: "קונה" },
   { key: "price", label: "מחיר לליד" },
   { key: "billable", label: "לחיוב", note: "כן / לא" },
@@ -73,6 +96,7 @@ export const DEFAULT_SALE_ROW_FIELDS: SaleColumnKey[] = [
   "name",
   "phone",
   "price",
+  "fb_campaign",
   "campaign",
   "date",
 ];

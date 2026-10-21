@@ -175,6 +175,23 @@ export async function GET(request: Request) {
       phone: entry.lead ? displayPhone(entry.lead.phone) : "",
       email: extraOf(entry.lead?.extra).email ?? "",
       campaign: entry.campaign ?? "",
+      /**
+       * אותם שדות שאפשר לבחור בתצוגת השורה, כדי שהקובץ
+       * יכיל בדיוק את מה שרואים על המסך. בלי זה, עמודה
+       * שנבחרה הייתה יורדת ריקה - וזה גרוע מלא להציע אותה.
+       */
+      fb_campaign: extraOf(entry.lead?.extra).fb_campaign ?? "",
+      fb_ad: extraOf(entry.lead?.extra).fb_ad ?? "",
+      fb_adset:
+        extraOf(entry.lead?.extra).fb_adset ??
+        extraOf(entry.lead?.extra).fb_adgroup ??
+        "",
+      fb_form:
+        extraOf(entry.lead?.extra).fb_form_name ??
+        extraOf(entry.lead?.extra).fb_form ??
+        "",
+      fb_page: extraOf(entry.lead?.extra).fb_page ?? "",
+      supplier: extraOf(entry.lead?.extra).supplier_question ?? "",
       buyer,
       price: String(price),
       billable: billable ? "כן" : "לא",

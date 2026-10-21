@@ -812,6 +812,9 @@ export default function LeadSalesScreen({
                             {e.billable ? "לחיוב" : "לא לחיוב"}
                           </span>
                         ) : null,
+                        show("supplier") && e.supplier ? (
+                          <span key="supplier">{e.supplier}</span>
+                        ) : null,
                       ]
                         .filter(Boolean)
                         .map((node, i) => (
@@ -824,9 +827,39 @@ export default function LeadSalesScreen({
                           </span>
                         ))}
                     </div>
-                    {show("campaign") && e.campaign && (
-                      <div className="supplier-tag">{e.campaign}</div>
-                    )}
+                    {/*
+                      תוויות השיוך. כל אחת נבחרת בנפרד בהגדרות
+                      התצוגה, כי "שם קמפיין" ו"שיוך הכניסה" הם
+                      שני דברים שונים: הראשון מגיע מפרטי הליד,
+                      השני מהחותמת שנחתמה עליו בזמן הקליטה.
+                    */}
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 5,
+                        flexWrap: "wrap",
+                        marginTop: 2,
+                      }}
+                    >
+                      {show("fb_campaign") && e.fbCampaign && (
+                        <span className="supplier-tag">{e.fbCampaign}</span>
+                      )}
+                      {show("fb_ad") && e.fbAd && (
+                        <span className="supplier-tag">{e.fbAd}</span>
+                      )}
+                      {show("fb_adset") && e.fbAdset && (
+                        <span className="supplier-tag">{e.fbAdset}</span>
+                      )}
+                      {show("fb_form") && e.fbForm && (
+                        <span className="supplier-tag">{e.fbForm}</span>
+                      )}
+                      {show("fb_page") && e.fbPage && (
+                        <span className="supplier-tag">{e.fbPage}</span>
+                      )}
+                      {show("campaign") && e.campaign && (
+                        <span className="supplier-tag">{e.campaign}</span>
+                      )}
+                    </div>
                   </Link>
 
                   <div className="row-actions">
