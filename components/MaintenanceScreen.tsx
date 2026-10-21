@@ -26,6 +26,8 @@ type Action = {
   desc: string;
   /** פעולה שמשנה הרבה - דורשת אישור מודגש */
   heavy?: boolean;
+  /** פעולה שרק קוראת - אין לה כפתור הרצה בכלל */
+  readOnly?: boolean;
 };
 
 const ACTIONS: Action[] = [
@@ -33,6 +35,12 @@ const ACTIONS: Action[] = [
     path: "build-channels",
     title: "בנה ערוצים ממה שכבר מוגדר",
     desc: "אוסף את הקונים, המחירים והטפסים הקיימים לערוצים, כולל הוובוק והתבנית של כל קונה. לא מוחק שום הגדרה ותיקה.",
+  },
+  {
+    path: "sale-audit",
+    readOnly: true,
+    title: "למה המספר במכירת לידים הוא מה שהוא",
+    desc: "מפרק את הסכום לגורמים: כמה כניסות יש, איך הן משויכות, כמה נחתמו ב-0 ₪, ומה חסר. קוראת בלבד — אין לה כפתור הרצה.",
   },
   {
     path: "channel-prices",
@@ -137,10 +145,14 @@ function ActionCard({ action }: { action: Action }) {
           onClick={() => run("GET")}
           disabled={Boolean(busy)}
         >
-          {busy === "GET" ? "בודק..." : "הצג מה ישתנה"}
+          {busy === "GET"
+            ? "בודק..."
+            : action.readOnly
+            ? "הצג"
+            : "הצג מה ישתנה"}
         </button>
 
-        {confirming ? (
+        {action.readOnly ? null : confirming ? (
           <>
             <button
               className="btn primary"

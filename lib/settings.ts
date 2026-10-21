@@ -1,5 +1,9 @@
 import { db } from "./db";
 import { readRowFields, type RowFieldKey } from "./row-fields";
+import {
+  readSaleRowFields,
+  type SaleColumnKey,
+} from "./sale-report-columns";
 import { DEFAULT_DIALER } from "./dialer";
 
 export type AppSettings = {
@@ -27,6 +31,8 @@ export type AppSettings = {
   /** סטטוסים שאומרים: התחבר ליס, לא דרכי */
   lostStatuses: string[];
   leadRowFields: RowFieldKey[];
+  /** אילו שדות מוצגים בשורת ליד ברשימת המכירה */
+  saleRowFields: SaleColumnKey[];
   onlyAfterTemplate: boolean;
   offDutyUntil: Date | null;
   afterHoursGrace: number;
@@ -59,6 +65,7 @@ const DEFAULTS: AppSettings = {
   closeStatuses: [],
   lostStatuses: [],
   leadRowFields: readRowFields(null),
+  saleRowFields: readSaleRowFields(null),
   onlyAfterTemplate: false,
   offDutyUntil: null,
   afterHoursGrace: 60,
@@ -114,6 +121,7 @@ export async function getSettings(): Promise<AppSettings> {
           )
         : [],
       leadRowFields: readRowFields(row.leadRowFields),
+      saleRowFields: readSaleRowFields(row.saleRowFields),
       onlyAfterTemplate: row.onlyAfterTemplate,
       offDutyUntil: row.offDutyUntil,
       afterHoursGrace: row.afterHoursGrace,

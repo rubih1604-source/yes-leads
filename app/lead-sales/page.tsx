@@ -3,6 +3,8 @@ import { getLeadSales } from "@/lib/lead-sales";
 import { resolveRange, type PeriodKey } from "@/lib/periods";
 import LeadSalesScreen from "@/components/LeadSalesScreen";
 import AddLeadForm from "@/components/AddLeadForm";
+import Link from "next/link";
+import { getSettings } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +34,7 @@ export default async function LeadSalesPage({
 
   // החיפוש עוקף את התקופה - ראה את ההסבר ב-lib/lead-sales
   const data = await getLeadSales(range, query);
+  const settings = await getSettings();
 
   // כמה לידים ותיקים עדיין בלי כניסה רשומה
   const [leadCount, withEntries, saleChannels] = await Promise.all([
@@ -61,6 +64,9 @@ export default async function LeadSalesPage({
           מכירת לידים
           <span className="count">{data.monthLabel}</span>
         </h1>
+        <Link href="/lead-sales/settings" className="chip">
+          הגדרות תצוגה
+        </Link>
       </div>
 
       {/* ליד ידני לערוץ של קונה - נשלח אליו מיד */}
@@ -82,6 +88,8 @@ export default async function LeadSalesPage({
         revenueMonth={data.revenueMonth}
         unregistered={data.unregistered}
         monthLabel={data.monthLabel}
+        rowFields={settings.saleRowFields}
+        unclassifiedMonth={data.unclassifiedMonth}
         missingEntries={Math.max(0, leadCount - withEntries.length)}
         period={period}
         from={searchParams?.from ?? ""}

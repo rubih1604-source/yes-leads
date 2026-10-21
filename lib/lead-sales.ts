@@ -46,6 +46,8 @@ export type SaleEntryRow = {
   leadId: string;
   name: string;
   phone: string;
+  /** נדרש כדי שאפשר יהיה להציג דוא"ל בשורה, כמו בדוח */
+  email: string | null;
   campaign: string | null;
   price: number;
   at: string;
@@ -59,6 +61,10 @@ export type LeadSalesSummary = {
   entries: SaleEntryRow[];
   totalMonth: number;
   revenueMonth: number;
+  /** כל כניסות המכירה אי פעם, בלי קשר לטווח */
+  leadsAllTime: number;
+  /** כניסות בטווח שלא מופיעות באף שורת פירוט */
+  unclassifiedMonth: number;
   unregistered: Array<{ name: string; count: number }>;
   monthLabel: string;
   /** האם הרשימה מציגה תוצאות חיפוש ולא את התקופה שנבחרה */
@@ -178,6 +184,30 @@ export async function getLeadSales(
 
   const entries: SaleEntryRow[] = [];
 
+  /**
+   * ============================================================
+   *  הסך הכולל נספר מהכניסות עצמן
+   * ============================================================
+   *
+   *  **למה זה לא סכום של שורות הקמפיינים.**
+   *
+   *  קודם הסך הכולל היה סכימה של שורות הקמפיינים הרשומים.
+   *  המשמעות: כל כניסת מכירה שלא השתייכה לשורה כלשהי - ליד
+   *  שהותאם לפי טופס בלי קמפיין רשום, ליד בלי שם, ליד מערוץ
+   *  שנמחק - פשוט לא נספרה. היא הופיעה ברשימה מתחת, אבל לא
+   *  במונה מעליה.
+   *
+   *  זה הכשל שהחזיר את עצמו: כל פעם שנוסף מסלול כניסה חדש,
+   *  המונה נתקע שוב, כי הוא תמיד תיאר את מה שהצלחנו לסווג
+   *  ולא את מה שבאמת נכנס.
+   *
+   *  מכאן הסך הכולל נספר ישירות מכל כניסת מכירה בטווח. פירוק
+   *  לפי קמפיין וערוץ נשאר למטה בתור פירוט, אבל הוא כבר לא
+   *  זה שקובע את הסכום - ולכן אי אפשר יותר "לאבד" ליד.
+   */
+  let allMonth = 0;
+  let allRevenueMonth = 0;
+  let allTotal = 0;
   for (const entry of saleEntries) {
     /**
      * המפתח: ערוץ אם יש, אחרת שם הקמפיין.
@@ -213,8 +243,18 @@ export async function getLeadSales(
     const billable = entry.billable !== false;
 
     row.total++;
+    allTotal++;
+
     if (entry.at >= from && entry.at < to) {
       row.month++;
+
+      /**
+       * הספירה הכוללת, בלי תלות בסיווג. אם הכניסה בטווח -
+       * היא נספרת, נקודה.
+       */
+      allMonth++;
+      if (billable) allRevenueMonth += Number(entry.price ?? 0);
+
       if (billable) {
         row.billableMonth++;
         row.revenueMonth += Number(entry.price ?? 0);
@@ -250,6 +290,13 @@ export async function getLeadSales(
           `${entry.lead.firstName ?? ""} ${entry.lead.lastName ?? ""}`.trim() ||
           entry.lead.phone,
         phone: entry.lead.phone,
+        email:
+          entry.lead.extra &&
+          typeof entry.lead.extra === "object" &&
+          !Array.isArray(entry.lead.extra)
+            ? ((entry.lead.extra as Record<string, unknown>).email as string) ??
+              null
+            : null,
         /**
          * שם הקמפיין אם יש, אחרת שם הערוץ. שורה בלי שום
          * תווית לא אומרת לך לאיזה לקוח הליד שייך.
@@ -361,8 +408,24 @@ export async function getLeadSales(
     campaigns,
     buyers: buyerStats,
     entries,
-    totalMonth: campaigns.reduce((s, c) => s + c.leadsMonth, 0),
-    revenueMonth: campaigns.reduce((s, c) => s + c.revenueMonth, 0),
+    /**
+     * נספר מהכניסות עצמן ולא מסכימת השורות - ראה ההסבר
+     * המלא למעלה. זה מה שמונע מליד להיות בלתי נראה.
+     */
+    totalMonth: allMonth,
+    revenueMonth: allRevenueMonth,
+    leadsAllTime: allTotal,
+    /**
+     * כמה כניסות בטווח לא נכנסו לשום שורת פירוט.
+     *
+     * מספר גדול מאפס אומר שהפירוט למטה לא מסביר את הסכום
+     * למעלה - וזה בדיוק מה שהיה קורה בשקט עד היום. המסך
+     * מציג את זה במקום להסתיר.
+     */
+    unclassifiedMonth: Math.max(
+      0,
+      allMonth - campaigns.reduce((s, c) => s + c.leadsMonth, 0)
+    ),
     unregistered,
     monthLabel: range.label,
     searching,

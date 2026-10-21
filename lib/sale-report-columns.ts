@@ -67,3 +67,32 @@ export function readSaleColumns(raw: string | null | undefined): SaleColumnKey[]
   const chosen = new Set<string>(asked);
   return SALE_COLUMNS.filter((c) => chosen.has(c.key)).map((c) => c.key);
 }
+
+/** מה שמוצג בשורת ליד ברשימת המכירה כשלא בחרת כלום */
+export const DEFAULT_SALE_ROW_FIELDS: SaleColumnKey[] = [
+  "name",
+  "phone",
+  "price",
+  "campaign",
+  "date",
+];
+
+/**
+ * אותה קריאה, אבל ממה שנשמר בהגדרות (מערך ולא מחרוזת).
+ *
+ * בחירה ריקה חוזרת לברירת המחדל במכוון: שורה בלי אף שדה
+ * היא רשימה של מלבנים ריקים, וזו לא בחירה שמישהו התכוון
+ * אליה.
+ */
+export function readSaleRowFields(raw: unknown): SaleColumnKey[] {
+  const list = Array.isArray(raw) ? raw : [];
+
+  const asked = list
+    .map((x) => String(x ?? "").trim())
+    .filter((x) => ALL_KEYS.has(x)) as SaleColumnKey[];
+
+  if (asked.length === 0) return [...DEFAULT_SALE_ROW_FIELDS];
+
+  const chosen = new Set<string>(asked);
+  return SALE_COLUMNS.filter((c) => chosen.has(c.key)).map((c) => c.key);
+}

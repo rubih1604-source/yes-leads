@@ -222,6 +222,9 @@ model Settings {
   // זה מה שמסך התחרות מודד.
   lostStatuses         Json?
   leadRowFields        Json?
+  /// אילו שדות מוצגים בשורת ליד ברשימת המכירה.
+  /// ריק = ברירת המחדל. עמודה חדשה ובטוחה.
+  saleRowFields        Json?
   replyCallback        String   @default("מעולה, רשמתי. אחזור אליך בזמן שביקשת :)")
 
   updatedAt            DateTime @updatedAt

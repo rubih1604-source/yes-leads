@@ -35,6 +35,11 @@ export async function PATCH(request: Request) {
       data.afterHoursGrace = Math.round(n);
   }
 
+  if (body.saleRowFields !== undefined) {
+    const { readSaleRowFields } = await import("@/lib/sale-report-columns");
+    data.saleRowFields = readSaleRowFields(body.saleRowFields);
+  }
+
   if (body.leadRowFields !== undefined) {
     data.leadRowFields = readRowFields(body.leadRowFields);
   }

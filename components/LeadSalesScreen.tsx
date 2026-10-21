@@ -41,6 +41,8 @@ export default function LeadSalesScreen({
   to,
   query = "",
   searching = false,
+  rowFields,
+  unclassifiedMonth = 0,
 }: {
   campaigns: CampaignStat[];
   buyers: BuyerStat[];
@@ -57,6 +59,13 @@ export default function LeadSalesScreen({
   query?: string;
   /** האם הרשימה מציגה תוצאות חיפוש מכל הזמנים */
   searching?: boolean;
+  /** אילו שדות מוצגים בשורה - נבחר בהגדרות מכירת לידים */
+  rowFields: SaleColumnKey[];
+  /**
+   * כמה כניסות בטווח לא מופיעות באף שורת פירוט.
+   * גדול מאפס = הפירוט למטה לא מסביר את הסכום למעלה.
+   */
+  unclassifiedMonth?: number;
 }) {
   const [customFrom, setCustomFrom] = useState(
     from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
@@ -123,10 +132,57 @@ export default function LeadSalesScreen({
   const [keysOpen, setKeysOpen] = useState<Record<string, boolean>>({});
   const [rates, setRates] = useState<Record<string, string>>({});
 
-  const visible = useMemo(
-    () => (filter ? entries.filter((e) => e.campaign === filter) : entries),
-    [entries, filter]
-  );
+  /**
+   * סימון ומחיקה.
+   *
+   * removed מחזיק מה שכבר נמחק בשרת, כדי שהשורה תיעלם מיד
+   * בלי לרענן - ריענון היה מאפס את הסינון ואת מה שסימנת.
+   */
+  /** האם השדה הזה נבחר להצגה בשורה */
+  const show = (key: SaleColumnKey) => rowFields.includes(key);
+
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [removed, setRemoved] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteNote, setDeleteNote] = useState("");
+
+  const visible = useMemo(() => {
+    const base = filter
+      ? entries.filter((e) => e.campaign === filter)
+      : entries;
+
+    // שורה שנמחקה נעלמת מיד, בלי לרענן ובלי לאבד את הסינון
+    return base.filter((e) => !removed.has(e.leadId));
+  }, [entries, filter, removed]);
+
+  /** מוחק את הלידים שסומנו */
+  async function deletePicked() {
+    const ids = [...picked];
+    if (ids.length === 0) return;
+
+    setDeleting(true);
+    setDeleteNote("");
+
+    const res = await fetch("/api/leads/bulk-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    }).catch(() => null);
+
+    const data = await res?.json().catch(() => ({}));
+    setDeleting(false);
+    setConfirmDelete(false);
+
+    if (!res?.ok) {
+      setDeleteNote(data?.error ?? "המחיקה נכשלה");
+      return;
+    }
+
+    setRemoved((prev) => new Set([...prev, ...ids]));
+    setPicked(new Set());
+    setDeleteNote(`נמחקו ${data?.["נמחקו"] ?? ids.length} לידים.`);
+  }
 
   const filteredRevenue = useMemo(
     () => visible.reduce((s, e) => s + (e.billable ? e.price : 0), 0),
@@ -569,6 +625,103 @@ export default function LeadSalesScreen({
             </div>
           ) : (
             <div className="list">
+              {/*
+                סרגל פעולות מרובות. מופיע רק כשיש סימון, כדי
+                לא לתפוס מקום כשלא צריך אותו.
+              */}
+              {picked.size > 0 && (
+                <div
+                  className="card"
+                  style={{
+                    marginBottom: 10,
+                    display: "flex",
+                    gap: 8,
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <strong style={{ fontSize: 14 }}>
+                    {picked.size} מסומנים
+                  </strong>
+
+                  <button
+                    className="chip"
+                    onClick={() => setPicked(new Set())}
+                  >
+                    נקה סימון
+                  </button>
+
+                  <button
+                    className="chip"
+                    onClick={() =>
+                      setPicked(new Set(visible.map((x) => x.leadId)))
+                    }
+                  >
+                    סמן הכל ({visible.length})
+                  </button>
+
+                  {confirmDelete ? (
+                    <>
+                      <button
+                        className="btn primary"
+                        style={{
+                          background: "#b42318",
+                          borderColor: "#b42318",
+                          marginInlineStart: "auto",
+                        }}
+                        onClick={deletePicked}
+                        disabled={deleting}
+                      >
+                        {deleting ? "מוחק..." : `כן, מחק ${picked.size}`}
+                      </button>
+                      <button
+                        className="chip"
+                        onClick={() => setConfirmDelete(false)}
+                      >
+                        בטל
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      className="chip"
+                      style={{ color: "#b42318", marginInlineStart: "auto" }}
+                      onClick={() => setConfirmDelete(true)}
+                      disabled={deleting}
+                    >
+                      מחק מסומנים
+                    </button>
+                  )}
+
+                  {confirmDelete && (
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: "#b42318",
+                        width: "100%",
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      מחיקת ליד מוחקת גם את ההיסטוריה, ההודעות והכניסות
+                      שלו. אי אפשר לבטל.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {deleteNote && (
+                <div
+                  style={{
+                    fontSize: 13,
+                    marginBottom: 9,
+                    color: deleteNote.startsWith("נמחקו")
+                      ? "#027a48"
+                      : "#b42318",
+                  }}
+                >
+                  {deleteNote}
+                </div>
+              )}
+
               {visible.map((e) => (
                 <div
                   className="lead"
@@ -579,10 +732,31 @@ export default function LeadSalesScreen({
                     className="bar"
                     style={{ background: e.billable ? "#12805c" : "#98a2b3" }}
                   />
+
+                  {/* סימון לפעולות מרובות */}
+                  <input
+                    type="checkbox"
+                    checked={picked.has(e.leadId)}
+                    onChange={(ev) =>
+                      setPicked((prev) => {
+                        const next = new Set(prev);
+                        if (ev.target.checked) next.add(e.leadId);
+                        else next.delete(e.leadId);
+                        return next;
+                      })
+                    }
+                    style={{
+                      alignSelf: "center",
+                      marginInlineStart: 8,
+                      flexShrink: 0,
+                    }}
+                    aria-label={`בחר ${e.name}`}
+                  />
+
                   <Link href={`/leads/${e.leadId}`} className="body">
                     <div className="name">
-                      {e.name}
-                      {e.existingCustomer && (
+                      {show("name") ? e.name : displayPhone(e.phone)}
+                      {e.existingCustomer && show("existing") && (
                         <span className="existing-tag">לקוח קיים</span>
                       )}
                       {!e.billable && (
@@ -598,27 +772,59 @@ export default function LeadSalesScreen({
                         </span>
                       )}
                     </div>
+                    {/*
+                      מה שמוצג כאן נקבע בהגדרות מכירת לידים.
+                      השדות מופרדים בנקודה, ורק מה שבאמת מוצג
+                      מייצר מפריד - אחרת נשארות נקודות מיותמות
+                      בשורה.
+                    */}
                     <div className="meta">
-                      <span
-                        className="status-text"
-                        style={{
-                          color: e.billable ? "#12805c" : "#98a2b3",
-                          textDecoration: e.billable ? "none" : "line-through",
-                        }}
-                      >
-                        {money(e.price)}
-                      </span>
-                      <span>·</span>
-                      <span>{when(e.at)}</span>
-                      <span>·</span>
-                      {/*
-                        הטלפון בשורה עצמה, כדי לזהות ליד בלי
-                        להיכנס לכרטיס. dir=ltr כדי שמספר לא
-                        יתהפך בתוך שורה בעברית.
-                      */}
-                      <span dir="ltr">{displayPhone(e.phone)}</span>
+                      {[
+                        show("price") ? (
+                          <span
+                            key="price"
+                            className="status-text"
+                            style={{
+                              color: e.billable ? "#12805c" : "#98a2b3",
+                              textDecoration: e.billable
+                                ? "none"
+                                : "line-through",
+                            }}
+                          >
+                            {money(e.price)}
+                          </span>
+                        ) : null,
+                        show("date") ? (
+                          <span key="date">{when(e.at)}</span>
+                        ) : null,
+                        show("phone") ? (
+                          <span key="phone" dir="ltr">
+                            {displayPhone(e.phone)}
+                          </span>
+                        ) : null,
+                        show("email") && e.email ? (
+                          <span key="email" dir="ltr">
+                            {e.email}
+                          </span>
+                        ) : null,
+                        show("billable") ? (
+                          <span key="billable">
+                            {e.billable ? "לחיוב" : "לא לחיוב"}
+                          </span>
+                        ) : null,
+                      ]
+                        .filter(Boolean)
+                        .map((node, i) => (
+                          <span
+                            key={i}
+                            style={{ display: "inline-flex", gap: 6 }}
+                          >
+                            {i > 0 && <span>·</span>}
+                            {node}
+                          </span>
+                        ))}
                     </div>
-                    {e.campaign && (
+                    {show("campaign") && e.campaign && (
                       <div className="supplier-tag">{e.campaign}</div>
                     )}
                   </Link>
