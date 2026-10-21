@@ -92,6 +92,23 @@ export async function DELETE(
     const name = extra.fb_campaign || extra.campaign || "";
     if (!name || normalizeName(name) !== key) continue;
 
+    /**
+     * ליד ששייך לערוץ מכירה לא חוזר אליך.
+     *
+     * אותה משפחת באג כמו ב"חשב הכל מחדש": ההחלטה כאן נעשתה
+     * לפי שם הקמפיין בלבד, ולכן מחיקת קמפיין הייתה שולפת
+     * חזרה לרשימה האישית גם לידים שהוקצו לערוץ של קונה -
+     * והם שייכים אך ורק לו.
+     */
+    const inSaleChannel = await db.leadEntry
+      .findFirst({
+        where: { leadId: lead.id, isSale: true, channelId: { not: null } },
+        select: { id: true },
+      })
+      .catch(() => null);
+
+    if (inSaleChannel) continue;
+
     await db.lead
       .update({ where: { id: lead.id }, data: { origin: "leadmanager" } })
       .catch(() => null);

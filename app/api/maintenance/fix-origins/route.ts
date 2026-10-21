@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isLoggedIn } from "@/lib/auth";
 import { normalizeName } from "@/lib/sales-campaigns";
+import { mayReclassifyByCampaignName } from "@/lib/sale-ownership";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,19 @@ async function plan() {
 
   const saleKeys = new Set(campaigns.map((c) => normalizeName(c.name)));
 
+  /**
+   * ערוצי המכירה. ליד ששייך לאחד מהם מוגן מהפעולה הזו.
+   *
+   * בלי זה, פעולה שמחליטה לפי שם קמפיין הייתה מחזירה לרשימה
+   * האישית לידים ששייכים לקונה - בדיוק הנזק שקרה ב"חשב הכל
+   * מחדש".
+   */
+  const saleChannelRows: Array<{ id: string }> = await db.channel
+    .findMany({ where: { isSale: true }, select: { id: true } })
+    .catch(() => []);
+
+  const saleChannelIds = new Set<string>(saleChannelRows.map((c) => c.id));
+
   const leads = await db.lead.findMany({
     select: {
       id: true,
@@ -35,14 +49,15 @@ async function plan() {
       firstName: true,
       lastName: true,
       phone: true,
+      /** כל הכניסות, כדי לדעת אם הליד שייך לערוץ */
       entries: {
-        where: { campaign: { not: null } },
         orderBy: { at: "desc" },
-        take: 1,
-        select: { campaign: true },
+        select: { campaign: true, isSale: true, channelId: true },
       },
     },
   });
+
+  let protectedCount = 0;
 
   const changes: Array<{
     id: string;
@@ -53,7 +68,16 @@ async function plan() {
   }> = [];
 
   for (const lead of leads) {
-    const campaign = lead.entries[0]?.campaign;
+    /**
+     * ליד ששייך לערוץ מכירה לא נגע בו כאן בכלל.
+     * הערוץ הוא ההחלטה, לא שם הקמפיין.
+     */
+    if (!mayReclassifyByCampaignName(lead.entries, saleChannelIds)) {
+      protectedCount++;
+      continue;
+    }
+
+    const campaign = lead.entries.find((e) => e.campaign)?.campaign;
     if (!campaign) continue;
 
     const shouldBe = saleKeys.has(normalizeName(campaign))
@@ -73,7 +97,7 @@ async function plan() {
     });
   }
 
-  return changes;
+  return { changes, protectedCount };
 }
 
 /** תצוגה מקדימה - מי יזוז ולאן */
@@ -82,9 +106,10 @@ export async function GET() {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const changes = await plan();
+  const { changes, protectedCount } = await plan();
 
   return NextResponse.json({
+    "מוגנים כי הם בערוץ": protectedCount,
     ok: true,
     total: changes.length,
     backToYou: changes.filter((c) => c.to === "leadmanager").length,
@@ -99,7 +124,7 @@ export async function POST() {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const changes = await plan();
+  const { changes, protectedCount } = await plan();
   let moved = 0;
 
   for (const change of changes) {
@@ -122,6 +147,7 @@ export async function POST() {
 
   return NextResponse.json({
     ok: true,
+    "מוגנים כי הם בערוץ": protectedCount,
     moved,
     backToYou: changes.filter((c) => c.to === "leadmanager").length,
     toSale: changes.filter((c) => c.to === "sale").length,

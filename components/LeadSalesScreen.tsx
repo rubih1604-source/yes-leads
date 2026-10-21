@@ -141,6 +141,12 @@ export default function LeadSalesScreen({
   /** האם השדה הזה נבחר להצגה בשורה */
   const show = (key: SaleColumnKey) => rowFields.includes(key);
 
+  /** מה "חשב הכל מחדש" עומד לעשות, לפני שמאשרים */
+  const [recalcPlan, setRecalcPlan] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
+
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [removed, setRemoved] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
@@ -512,26 +518,84 @@ export default function LeadSalesScreen({
       {campaigns.length > 0 && (
         <div className="card">
           <div style={{ fontWeight: 600, marginBottom: 4 }}>חישוב מחדש</div>
-          <div style={{ fontSize: 13, color: "#475467", marginBottom: 12 }}>
+          <div style={{ fontSize: 13, color: "#475467", marginBottom: 12, lineHeight: 1.7 }}>
             עובר על כל הדאטה ומיישר אותו למצב הנוכחי — כולל מה שיובא
-            מקובץ. שינית מחיר לליד? זה יעדכן גם אחורה.
-            הסימונים הידניים של &quot;לא לחיוב&quot; לא ייפגעו.
+            מקובץ. הסימונים הידניים של &quot;לא לחיוב&quot; לא ייפגעו,
+            ולידים ששייכים לערוץ לא יוצאים מהמכירה.
+            <br />
+            <strong>תמיד הצג קודם מה ישתנה.</strong>
           </div>
-          <button
-            className="btn"
-            onClick={async () => {
-              const { ok, data } = await call(
-                "/api/maintenance/recalc-sales"
-              );
-              if (ok)
-                setMessage(
-                  `נסרקו ${data.scanned} כניסות · ${data.marked} סומנו כמכירה · ${data.repriced} עודכן מחיר · ${data.unmarked} הוסרו`
-                );
-            }}
-            disabled={busy}
-          >
-            {busy ? "מחשב..." : "חשב הכל מחדש"}
-          </button>
+
+          {/*
+            הפעולה הזו יכולה להוציא לידים מהמכירה, ולכן היא לא
+            רצה בלחיצה אחת. קודם רואים מה היא עומדת לעשות.
+          */}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              className="btn"
+              onClick={async () => {
+                const res = await fetch(
+                  "/api/maintenance/recalc-sales"
+                ).catch(() => null);
+                const data = await res?.json().catch(() => ({}));
+
+                if (!res?.ok) {
+                  setMessage(data?.error ?? "הבדיקה נכשלה");
+                  return;
+                }
+
+                setRecalcPlan(data);
+                setMessage("");
+              }}
+              disabled={busy}
+            >
+              הצג מה ישתנה
+            </button>
+
+            {recalcPlan && (
+              <button
+                className="btn primary"
+                style={
+                  Number(recalcPlan["יבוטלו מהמכירה"]) > 0
+                    ? { background: "#b42318", borderColor: "#b42318" }
+                    : undefined
+                }
+                onClick={async () => {
+                  const { ok, data } = await call(
+                    "/api/maintenance/recalc-sales"
+                  );
+                  if (ok) {
+                    setRecalcPlan(null);
+                    setMessage(
+                      `בוצע · ${data["סומנו"]} סומנו · ${data["הושלם מחיר"]} הושלם מחיר · ${data["בוטלו"]} בוטלו · ${data["מוגנות כי הן בערוץ"]} מוגנות בערוץ`
+                    );
+                  }
+                }}
+                disabled={busy}
+              >
+                {busy ? "מחשב..." : "אישור, חשב מחדש"}
+              </button>
+            )}
+          </div>
+
+          {recalcPlan && (
+            <pre
+              style={{
+                marginTop: 11,
+                background: "#f9fafb",
+                border: "1px solid #eef2f7",
+                borderRadius: 8,
+                padding: 10,
+                fontSize: 11.5,
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                maxHeight: 280,
+                overflow: "auto",
+              }}
+            >
+              {JSON.stringify(recalcPlan, null, 2)}
+            </pre>
+          )}
         </div>
       )}
 

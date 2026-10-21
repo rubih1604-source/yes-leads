@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isLoggedIn } from "@/lib/auth";
 import { normalizeName } from "@/lib/sales-campaigns";
+import { ownerFromEntries, originFor } from "@/lib/sale-ownership";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +61,16 @@ async function build(): Promise<{
     campaigns.map((c) => [normalizeName(c.name), Number(c.pricePerLead ?? 0)])
   );
 
+  /**
+   * ערוצי המכירה. ליד ששייך לאחד מהם לא נשלף חזרה לרשימה
+   * האישית, בלי קשר לשמות הקמפיינים שעל הכניסות שלו.
+   */
+  const saleChannelRows: Array<{ id: string }> = await db.channel
+    .findMany({ where: { isSale: true }, select: { id: true } })
+    .catch(() => []);
+
+  const saleChannelIds = new Set<string>(saleChannelRows.map((c) => c.id));
+
   const leads = await db.lead.findMany({
     select: {
       id: true,
@@ -68,7 +79,14 @@ async function build(): Promise<{
       lastName: true,
       origin: true,
       entries: {
-        select: { id: true, campaign: true, isSale: true, at: true },
+        select: {
+          id: true,
+          campaign: true,
+          isSale: true,
+          at: true,
+          /** נדרש כדי לדעת אם הליד מוגן בזכות הערוץ */
+          channelId: true,
+        },
         orderBy: { at: "asc" },
       },
     },
@@ -154,15 +172,23 @@ async function build(): Promise<{
     }
 
     /**
-     * בעלות: ליד שיש לו ולו כניסה אחת בערוץ שלך נשאר שלך.
-     * רק ליד שכל כניסותיו הן מכירה שייך למכירה בלבד.
+     * ============================================================
+     *  בעלות - הכלל תוקן כאן
+     * ============================================================
+     *
+     *  הקוד הזה קידד את הכלל ההפוך: "ליד שיש לו ולו כניסה
+     *  אחת בערוץ שלך נשאר שלך". לפי הכלל הזה, ליד של אלעד
+     *  שנכנס פעם אחת גם מקמפיין שלך היה **נשלף בחזרה אליך** -
+     *  וזו בדיוק התקלה שחזרה שוב ושוב.
+     *
+     *  הכלל הנכון, במילים שלך: "מה שנכנס שהוא קשור לאלעד
+     *  בהגדרה שייך אך ורק אליו". כניסה אחת של מכירה מספיקה.
+     *
+     *  ההכרעה עברה ל-lib/sale-ownership, שהוא המקום היחיד
+     *  שקובע בעלות - כולל ההגנה על ליד ששייך לערוץ.
      */
-    const mineAfter = lead.entries.filter((e) => {
-      if (!e.campaign) return !e.isSale;
-      return priceByKey.get(normalizeName(e.campaign)) === undefined;
-    }).length;
-
-    const shouldBe = mineAfter === 0 ? "sale" : "leadmanager";
+    const owner = ownerFromEntries(lead.entries, saleChannelIds);
+    const shouldBe = originFor(lead.origin, owner);
 
     if (lead.origin !== shouldBe && lead.origin !== "whatsapp") {
       apply.push(() =>

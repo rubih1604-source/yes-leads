@@ -21,15 +21,12 @@ import { isExistingCustomer } from "./existing-customer";
 import { israelParts } from "./working-hours";
 import type { Range } from "./periods";
 
-export const DAY_NAMES = [
-  "ראשון",
-  "שני",
-  "שלישי",
-  "רביעי",
-  "חמישי",
-  "שישי",
-  "שבת",
-];
+/**
+ * נשאר מיוצא מכאן לתאימות, אבל ההגדרה עברה לקובץ טהור כדי
+ * שקומפוננטת דפדפן לא תגרור את Prisma דרך הקובץ הזה.
+ */
+export { DAY_NAMES } from "./day-names";
+import { DAY_NAMES } from "./day-names";
 
 export type HeatCell = { day: number; hour: number; count: number };
 

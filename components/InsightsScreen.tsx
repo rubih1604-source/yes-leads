@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { InsightsData, Heatmap, Winner } from "@/lib/insights";
-import { DAY_NAMES } from "@/lib/insights";
+import { DAY_NAMES } from "@/lib/day-names";
 import { PERIOD_LABELS, type PeriodKey } from "@/lib/periods";
 
 /** שעות העבודה הרלוונטיות - מצמצם רעש של לילה */
