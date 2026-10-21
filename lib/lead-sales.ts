@@ -103,9 +103,29 @@ export async function getLeadSales(
   const q = query.trim();
   const searching = q.length > 0;
 
-  const [registered, buyers, saleEntries, normalLeads] = await Promise.all([
+  const [registered, buyers, saleChannels, saleEntries, normalLeads] =
+    await Promise.all([
     db.salesCampaign.findMany({ orderBy: { createdAt: "desc" } }),
     db.leadBuyer.findMany({ orderBy: { name: "asc" } }),
+    /**
+     * ערוצי המכירה הם יחידת הספירה החדשה, לצד הקמפיינים
+     * הוותיקים. בלעדיהם לידים שנכנסים דרך ערוץ לא נספרים.
+     */
+    db.channel
+      .findMany({
+        where: { isSale: true },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, pricePerLead: true, active: true },
+      })
+      .catch(
+        () =>
+          [] as Array<{
+            id: string;
+            name: string;
+            pricePerLead: number;
+            active: boolean;
+          }>
+      ),
     db.leadEntry.findMany({
       where: { isSale: true },
       orderBy: { at: "desc" },
@@ -122,6 +142,15 @@ export async function getLeadSales(
             extra: true,
           },
         },
+        /**
+         * שם הערוץ, כתווית גיבוי.
+         *
+         * ליד שנכנס מהחיבור הישיר לפייסבוק מגיע בלי שם
+         * קמפיין (פייסבוק שולחת מזהים, והשם מגיע רק אם
+         * חשבון המודעות משויך). בלי הגיבוי הזה השורה
+         * נראית בלי שום שיוך, כאילו היא לא שייכת לאף אחד.
+         */
+        channelRef: { select: { name: true } },
       },
     }),
     db.lead.findMany({
@@ -142,19 +171,39 @@ export async function getLeadSales(
       total: number;
       existingMonth: number;
       excludedMonth: number;
+      /** סכום המחירים שנחתמו על הכניסות עצמן */
+      revenueMonth: number;
     }
   >();
 
   const entries: SaleEntryRow[] = [];
 
   for (const entry of saleEntries) {
-    const key = entry.campaign ? normalizeName(entry.campaign) : "";
+    /**
+     * המפתח: ערוץ אם יש, אחרת שם הקמפיין.
+     *
+     * כאן היה באג שהשתיק את כל הספירה. ליד שנכנס דרך ערוץ
+     * מגיע בלי שם קמפיין, קיבל מפתח ריק, ולא נספר באף שורה
+     * - והמונה למעלה נתקע בזמן שהלידים כן הופיעו ברשימה
+     * מתחתיו. ספירה שלא זזה כשנכנסים לידים היא הדרך הכי
+     * מהירה לאבד אמון במספרים.
+     *
+     * כניסה ותיקה נשארת על מפתח הקמפיין שלה (channelId ריק
+     * אצלה), ולכן אף ליד לא נספר פעמיים ואף מספר היסטורי
+     * לא משתנה.
+     */
+    const key = entry.channelId
+      ? `ch:${entry.channelId}`
+      : entry.campaign
+      ? normalizeName(entry.campaign)
+      : "";
     const row = byCampaign.get(key) ?? {
       month: 0,
       billableMonth: 0,
       total: 0,
       existingMonth: 0,
       excludedMonth: 0,
+      revenueMonth: 0,
     };
 
     const existing = isExistingCustomer(
@@ -166,8 +215,10 @@ export async function getLeadSales(
     row.total++;
     if (entry.at >= from && entry.at < to) {
       row.month++;
-      if (billable) row.billableMonth++;
-      else row.excludedMonth++;
+      if (billable) {
+        row.billableMonth++;
+        row.revenueMonth += Number(entry.price ?? 0);
+      } else row.excludedMonth++;
       if (existing) row.existingMonth++;
     }
     byCampaign.set(key, row);
@@ -199,7 +250,11 @@ export async function getLeadSales(
           `${entry.lead.firstName ?? ""} ${entry.lead.lastName ?? ""}`.trim() ||
           entry.lead.phone,
         phone: entry.lead.phone,
-        campaign: entry.campaign,
+        /**
+         * שם הקמפיין אם יש, אחרת שם הערוץ. שורה בלי שום
+         * תווית לא אומרת לך לאיזה לקוח הליד שייך.
+         */
+        campaign: entry.campaign ?? entry.channelRef?.name ?? null,
         price: Number(entry.price ?? 0),
         at: entry.at.toISOString(),
         existingCustomer: existing,
@@ -215,6 +270,7 @@ export async function getLeadSales(
       total: 0,
       existingMonth: 0,
       excludedMonth: 0,
+      revenueMonth: 0,
     };
     const price = Number(c.pricePerLead ?? 0);
     const buyer = c.buyerId ? buyerById.get(c.buyerId) : null;
@@ -238,6 +294,40 @@ export async function getLeadSales(
       excludedMonth: row.excludedMonth,
     };
   });
+
+  /**
+   * שורות הערוצים, לצד שורות הקמפיינים.
+   *
+   * ההכנסה כאן מחושבת מהמחיר ש**נחתם על הכניסה עצמה** ולא
+   * מהמחיר שבערוץ היום. ככה שינוי מחיר בערוץ לא משכתב
+   * למפרע חיובים שכבר נסגרו, וליד שנחתם ב-0 נראה כ-0 עד
+   * שמשלימים אותו בתחזוקה - במקום להסתיר את הפער.
+   */
+  for (const channel of saleChannels) {
+    const row = byCampaign.get(`ch:${channel.id}`);
+
+    // ערוץ בלי כניסות כלל לא מוסיף שורה ריקה למסך
+    if (!row || row.total === 0) continue;
+
+    campaigns.push({
+      id: channel.id,
+      name: channel.name,
+      buyerId: null,
+      buyerName: null,
+      pricePerLead: Number(channel.pricePerLead ?? 0),
+      matchKeys: [],
+      active: channel.active,
+      leadsMonth: row.month,
+      leadsTotal: row.total,
+      existingMonth: row.existingMonth,
+      existingPercent:
+        row.month > 0
+          ? Math.round((row.existingMonth / row.month) * 1000) / 10
+          : 0,
+      revenueMonth: Math.round(row.revenueMonth),
+      excludedMonth: row.excludedMonth,
+    });
+  }
 
   // ---- צבירה לפי לקוח ----
   const buyerStats: BuyerStat[] = buyers.map((b) => {

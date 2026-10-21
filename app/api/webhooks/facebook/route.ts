@@ -108,6 +108,29 @@ const FULL_FIELDS = [
  */
 const SAFE_FIELDS = ["field_data", "created_time", "form_id"];
 
+/**
+ * שכבת ביניים - המזהים בלי השמות.
+ *
+ * **זו הנקודה שעלתה בפועל:** שמות הקמפיין, הסט והמודעה
+ * דורשים הרשאה על **חשבון המודעות**. כשהחשבון לא משויך,
+ * הבקשה המלאה נכשלת - והנפילה הישירה לרשימה המצומצמת
+ * זרקה גם את **המזהים**, שכן זמינים בלי אותה הרשאה.
+ *
+ * התוצאה הייתה ליד בלי שום שיוך: בלי שם, בלי מזהה קמפיין,
+ * ובלי דרך להתאים אותו לשום דבר בדיעבד. כאן נשמרים לפחות
+ * המזהים, ושם הטופס מגיע מהטבלה המקומית.
+ */
+const ID_FIELDS = [
+  "field_data",
+  "created_time",
+  "form_id",
+  "ad_id",
+  "adset_id",
+  "campaign_id",
+  "platform",
+  "is_organic",
+];
+
 async function graphLead(
   leadId: string,
   token: string,
@@ -138,7 +161,18 @@ async function fetchLead(leadId: string): Promise<GraphLead | null> {
    * כדי שהליד ייכנס גם אם חלק מהמידע השיווקי לא זמין.
    */
   if (!res.ok && res.status === 400) {
-    res = await graphLead(leadId, token, SAFE_FIELDS);
+    /**
+     * קודם מנסים את שכבת הביניים - המזהים בלי השמות.
+     *
+     * רק אם גם היא נכשלת יורדים לרשימה המצומצמת. סדר הנפילה
+     * הזה הוא מה שמבדיל בין ליד עם שיוך חלקי לליד בלי שום
+     * שיוך.
+     */
+    res = await graphLead(leadId, token, ID_FIELDS);
+
+    if (!res.ok && res.status === 400) {
+      res = await graphLead(leadId, token, SAFE_FIELDS);
+    }
   }
 
   if (!res.ok) {

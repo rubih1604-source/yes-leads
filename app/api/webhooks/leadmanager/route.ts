@@ -12,6 +12,7 @@ import { scheduleForStatus } from "@/lib/rules";
 import { queueDelivery } from "@/lib/delivery";
 import { doorOf, addDoor } from "@/lib/via";
 import { identifiersOf } from "@/lib/campaign-match";
+import { campaignLabel } from "@/lib/campaign-label";
 import { assignmentForForm } from "@/lib/lead-forms";
 import { channelForLead } from "@/lib/channels";
 import {
@@ -152,7 +153,33 @@ async function handle(request: Request) {
      * ונחתם על הכניסה. כל השאר במערכת קורא את החותמת הזו
      * ולא מנחש מחדש.
      */
-    const incomingCampaign = extra.fb_campaign || extra.campaign || null;
+    /**
+     * שם הטופס כגיבוי לשם הקמפיין.
+     *
+     * ליד מהחיבור הישיר לפייסבוק מגיע בלי שם קמפיין כשחשבון
+     * המודעות לא משויך - שם הקמפיין דורש הרשאה על חשבון
+     * המודעות, בעוד שהטופס דורש רק הרשאה על הדף. בלי הגיבוי
+     * הזה הליד נכנס בלי שום שיוך, לא נספר בשום שורה, ולא
+     * מופיע בשום רשימת קמפיינים.
+     *
+     * השם נלקח מהטבלה שלך - הטפסים ששייכת בהתממשקות - ולכן
+     * זו שאילתה אחת מקומית ולא קריאה לפייסבוק על כל ליד.
+     */
+    const formName = extra.fb_form
+      ? await db.leadForm
+          .findUnique({
+            where: { formId: String(extra.fb_form) },
+            select: { formName: true },
+          })
+          .then((f) => f?.formName ?? null)
+          .catch(() => null)
+      : null;
+
+    const incomingCampaign = campaignLabel({
+      fbCampaign: extra.fb_campaign,
+      campaign: extra.campaign,
+      formName,
+    });
 
     /**
      * ההכרעה נעשית לפי **כל** המזהים שהגיעו, לא רק לפי השם.
