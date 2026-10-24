@@ -33,6 +33,8 @@ export type AppSettings = {
   leadRowFields: RowFieldKey[];
   /** אילו שדות מוצגים בשורת ליד ברשימת המכירה */
   saleRowFields: SaleColumnKey[];
+  /** סטטוסים שלא נכנסים לדאטה */
+  dataExcludeStatuses: string[];
   onlyAfterTemplate: boolean;
   offDutyUntil: Date | null;
   afterHoursGrace: number;
@@ -66,6 +68,7 @@ const DEFAULTS: AppSettings = {
   lostStatuses: [],
   leadRowFields: readRowFields(null),
   saleRowFields: readSaleRowFields(null),
+  dataExcludeStatuses: ["נסגר", "לקוח קיים"],
   onlyAfterTemplate: false,
   offDutyUntil: null,
   afterHoursGrace: 60,
@@ -122,6 +125,11 @@ export async function getSettings(): Promise<AppSettings> {
         : [],
       leadRowFields: readRowFields(row.leadRowFields),
       saleRowFields: readSaleRowFields(row.saleRowFields),
+      dataExcludeStatuses: Array.isArray(row.dataExcludeStatuses)
+        ? (row.dataExcludeStatuses as unknown[])
+            .map((x) => String(x ?? "").trim())
+            .filter(Boolean)
+        : ["נסגר", "לקוח קיים"],
       onlyAfterTemplate: row.onlyAfterTemplate,
       offDutyUntil: row.offDutyUntil,
       afterHoursGrace: row.afterHoursGrace,

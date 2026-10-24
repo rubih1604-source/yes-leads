@@ -17,6 +17,7 @@ const TABS = [
   { href: "/today", label: "היום", glyph: "◎" },
   { href: "/", label: "לידים", glyph: "▤" },
   { href: "/lead-sales", label: "מכירה", glyph: "₪" },
+  { href: "/data", label: "דאטה", glyph: "⛃" },
   { href: "/chats", label: "שיחות", glyph: "✉" },
   { href: "/more", label: "עוד", glyph: "⋯" },
 ];

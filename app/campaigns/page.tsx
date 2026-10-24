@@ -3,6 +3,7 @@ import BackLink from "@/components/BackLink";
 import CampaignsScreen, {
   type CampaignRow,
 } from "@/components/CampaignsScreen";
+import { readAdPrices } from "@/lib/ad-pricing";
 import { headersToText } from "@/lib/delivery-payload";
 
 export const dynamic = "force-dynamic";
@@ -51,6 +52,7 @@ export default async function CampaignsPage() {
       successContains: channel.successContains ?? "",
       failureContains: channel.failureContains ?? "",
       fields: channel.fields ?? [],
+      adPrices: readAdPrices(channel.adPrices),
       sendEnabled: channel.sendEnabled,
       autoSend: channel.autoSend,
       active: channel.active,

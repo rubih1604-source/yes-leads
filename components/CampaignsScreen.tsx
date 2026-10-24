@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { DELIVERY_FIELDS } from "@/lib/delivery-payload";
+import { checkAdPrices, type AdPriceRule } from "@/lib/ad-pricing";
 
 /**
  * ============================================================
@@ -42,6 +43,8 @@ export type ChannelRow = {
   failureContains: string;
   /** אילו שדות הצד השני מקבל. ריק = הכל. */
   fields: string[];
+  /** חריגי מחיר לפי מודעה. ריק = כולם במחיר הערוץ. */
+  adPrices: AdPriceRule[];
   sendEnabled: boolean;
   autoSend: boolean;
   active: boolean;
@@ -88,6 +91,16 @@ function ChannelCard({ channel }: { channel: ChannelRow }) {
     new Set(channel.fields ?? [])
   );
 
+  /**
+   * חריגי מחיר לפי מודעה.
+   *
+   * במצב נפרד כמו fieldSel, מאותה סיבה: מערך חדש תמיד שונה
+   * מהקודם ב-!==, וזה היה משאיר את כפתור השמירה דלוק לנצח.
+   */
+  const [adRules, setAdRules] = useState<AdPriceRule[]>(
+    channel.adPrices ?? []
+  );
+
   const [pages, setPages] = useState<FbPage[] | null>(null);
   const [picked, setPicked] = useState<Set<string>>(
     new Set(channel.forms.map((f) => f.formId))
@@ -122,6 +135,7 @@ function ChannelCard({ channel }: { channel: ChannelRow }) {
         successContains: v("successContains"),
         failureContains: v("failureContains"),
         fields: [...fieldSel],
+        adPrices: adRules,
         sendEnabled: v("sendEnabled"),
         autoSend: v("autoSend"),
       }),
@@ -275,6 +289,9 @@ function ChannelCard({ channel }: { channel: ChannelRow }) {
    * (ראה persist), ולכן ספירת מפתחות הייתה משאירה את כפתור
    * השמירה דלוק לנצח.
    */
+  const adRulesChanged =
+    JSON.stringify(adRules) !== JSON.stringify(channel.adPrices ?? []);
+
   const fieldsChanged =
     fieldSel.size !== (channel.fields ?? []).length ||
     (channel.fields ?? []).some((f) => !fieldSel.has(f));
@@ -282,7 +299,7 @@ function ChannelCard({ channel }: { channel: ChannelRow }) {
   const dirty =
     (Object.keys(draft) as Array<keyof ChannelRow>).some(
       (k) => draft[k] !== channel[k]
-    ) || fieldsChanged;
+    ) || fieldsChanged || adRulesChanged;
 
   return (
     <div
@@ -525,6 +542,98 @@ function ChannelCard({ channel }: { channel: ChannelRow }) {
                 />
                 שליחה פעילה
               </label>
+
+              {/* מחיר לפי מודעה */}
+              <div style={{ margin: "14px 0 4px" }}>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>
+                  מחיר לפי מודעה
+                </div>
+                <div
+                  style={{
+                    fontSize: 12.5,
+                    color: "#667085",
+                    margin: "4px 0 9px",
+                    lineHeight: 1.7,
+                  }}
+                >
+                  {adRules.length === 0
+                    ? `אין חריגים — כל ליד בערוץ נחתם ב-${v("pricePerLead")} ₪.`
+                    : `${adRules.length} חריגים. ליד שלא מתאים לאף אחד נחתם ב-${v("pricePerLead")} ₪.`}
+                  <br />
+                  אפשר להקליד <strong>שם מודעה</strong> או{" "}
+                  <strong>מזהה מודעה</strong>. מזהה עדיף — שם משתנה
+                  כשמשנים אותו בפייסבוק, מזהה לא.
+                </div>
+
+                {adRules.map((rule, i) => (
+                  <div
+                    key={i}
+                    style={{ display: "flex", gap: 6, marginBottom: 6 }}
+                  >
+                    <input
+                      className="field"
+                      style={{ flex: 1 }}
+                      placeholder="שם או מזהה מודעה"
+                      value={rule.match}
+                      onChange={(e) =>
+                        setAdRules((prev) =>
+                          prev.map((r, j) =>
+                            j === i ? { ...r, match: e.target.value } : r
+                          )
+                        )
+                      }
+                    />
+                    <input
+                      className="field"
+                      style={{ width: 92 }}
+                      placeholder="₪"
+                      inputMode="decimal"
+                      value={String(rule.price)}
+                      onChange={(e) =>
+                        setAdRules((prev) =>
+                          prev.map((r, j) =>
+                            j === i
+                              ? { ...r, price: Number(e.target.value) || 0 }
+                              : r
+                          )
+                        )
+                      }
+                    />
+                    <button
+                      className="chip"
+                      style={{ color: "#b42318" }}
+                      onClick={() =>
+                        setAdRules((prev) => prev.filter((_, j) => j !== i))
+                      }
+                    >
+                      הסר
+                    </button>
+                  </div>
+                ))}
+
+                <button
+                  className="chip"
+                  onClick={() =>
+                    setAdRules((prev) => [...prev, { match: "", price: 0 }])
+                  }
+                >
+                  + הוסף מודעה
+                </button>
+
+                {checkAdPrices(adRules).map((problem, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      fontSize: 12.5,
+                      color: "#b54708",
+                      marginTop: 6,
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    {problem}
+                  </div>
+                ))}
+              </div>
 
               {/* אילו שדות הצד השני מקבל */}
               <div style={{ margin: "14px 0 4px" }}>

@@ -28,6 +28,12 @@ export type ChannelConfig = {
   campaignName: string;
   isSale: boolean;
   price: number;
+  /**
+   * חריגי מחיר לפי מודעה. ריק = כל הלידים בערוץ באותו מחיר.
+   * קיים כדי ששתי מודעות באותו קמפיין יוכלו להיות מתומחרות
+   * שונה בלי לפצל את הקמפיין בפייסבוק.
+   */
+  adPrices: unknown;
   autoSend: boolean;
   sendEnabled: boolean;
   hasUrl: boolean;
@@ -76,6 +82,7 @@ async function load() {
         campaignName: channel.campaign.name,
         isSale: channel.isSale,
         price: Number(channel.pricePerLead ?? 0),
+        adPrices: channel.adPrices ?? null,
         autoSend: channel.autoSend,
         sendEnabled: channel.sendEnabled,
         hasUrl: Boolean(channel.webhookUrl?.trim()),
@@ -173,6 +180,7 @@ export async function channelById(
       campaignName: channel.campaign.name,
       isSale: channel.isSale,
       price: Number(channel.pricePerLead ?? 0),
+      adPrices: channel.adPrices ?? null,
       autoSend: channel.autoSend,
       sendEnabled: channel.sendEnabled,
       hasUrl: Boolean(channel.webhookUrl?.trim()),

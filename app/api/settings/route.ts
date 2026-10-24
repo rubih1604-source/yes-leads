@@ -35,6 +35,12 @@ export async function PATCH(request: Request) {
       data.afterHoursGrace = Math.round(n);
   }
 
+  if (Array.isArray(body.dataExcludeStatuses)) {
+    data.dataExcludeStatuses = (body.dataExcludeStatuses as unknown[])
+      .map((x) => String(x ?? "").trim())
+      .filter(Boolean);
+  }
+
   if (body.saleRowFields !== undefined) {
     const { readSaleRowFields } = await import("@/lib/sale-report-columns");
     data.saleRowFields = readSaleRowFields(body.saleRowFields);

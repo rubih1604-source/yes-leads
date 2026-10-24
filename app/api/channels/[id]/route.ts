@@ -52,6 +52,17 @@ export async function PATCH(
    * מקבלים רק מפתחות שהמערכת באמת יודעת לשלוח, כדי שסימון
    * שגוי לא יישמר בשקט ויתגלה רק כשהקונה יתלונן.
    */
+  /**
+   * חריגי מחיר לפי מודעה.
+   *
+   * נקראים דרך readAdPrices כדי שכלל שבור לא יישמר ויפיל
+   * אחר כך את הקליטה - ליד שנכנס חשוב יותר מכלל תמחור.
+   */
+  if (body.adPrices !== undefined) {
+    const { readAdPrices } = await import("@/lib/ad-pricing");
+    data.adPrices = readAdPrices(body.adPrices);
+  }
+
   if (Array.isArray(body.fields)) {
     const { DELIVERY_FIELDS } = await import("@/lib/delivery-payload");
     const known = new Set(DELIVERY_FIELDS.map((f) => f.key));

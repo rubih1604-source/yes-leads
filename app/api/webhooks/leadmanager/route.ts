@@ -13,6 +13,7 @@ import { queueDelivery } from "@/lib/delivery";
 import { doorOf, addDoor } from "@/lib/via";
 import { identifiersOf } from "@/lib/campaign-match";
 import { campaignLabel } from "@/lib/campaign-label";
+import { priceForAd, readAdPrices } from "@/lib/ad-pricing";
 import { assignmentForForm } from "@/lib/lead-forms";
 import { channelForLead } from "@/lib/channels";
 import {
@@ -250,6 +251,25 @@ async function handle(request: Request) {
      */
     const via = doorOf(raw);
 
+    /**
+     * המחיר שייחתם על הכניסה.
+     *
+     * מחיר הערוץ הוא ברירת המחדל, ומעליו חריגים לפי מודעה.
+     * זה מה שמאפשר שתי מודעות באותו קמפיין בפייסבוק - המבנה
+     * שלא גורם להן להתחרות זו בזו - עם תמחור שונה לכל אחת.
+     *
+     * המחיר נחתם כאן פעם אחת ונשאר על הכניסה לתמיד. שינוי
+     * מחיר בערוץ מחר לא משכתב חיוב שכבר נסגר.
+     */
+    const entryPrice = inChannel
+      ? priceForAd({
+          adName: extra.fb_ad ?? null,
+          adId: extra.fb_ad_id ?? null,
+          rules: readAdPrices(inChannel.adPrices),
+          fallback: channel.price,
+        }).price
+      : channel.price;
+
     if (!existing) {
       const lead = await db.lead.create({
         data: {
@@ -311,7 +331,7 @@ async function handle(request: Request) {
             via,
             channelId: inChannel?.id ?? null,
             isSale: channel.isSale,
-            price: channel.price,
+            price: entryPrice,
             at: new Date(),
           },
         })
@@ -530,7 +550,7 @@ async function handle(request: Request) {
               via,
               channelId: inChannel?.id ?? null,
               isSale: channel.isSale,
-              price: channel.price,
+              price: entryPrice,
               at: new Date(),
             },
           })
