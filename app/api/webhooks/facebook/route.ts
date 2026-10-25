@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { db } from "@/lib/db";
+import { withCanonicalFields } from "@/lib/field-aliases";
 import { POST as intakeLead } from "../leadmanager/route";
 import { supplierKeyForForm } from "@/lib/lead-forms";
 
@@ -197,10 +198,6 @@ function toIntakePayload(lead: GraphLead): Record<string, string> {
     if (!value) continue;
 
     out[field.name] = value;
-
-    if (!out.supplier_question && /ספק|supplier|provider|חברה/i.test(field.name)) {
-      out.supplier_question = value;
-    }
   }
 
   if (lead.campaign_name) out.fb_campaign = lead.campaign_name;
@@ -223,7 +220,14 @@ function toIntakePayload(lead: GraphLead): Record<string, string> {
   // סימון המקור, כדי שביומן הקליטה יהיה ברור מאיפה הגיע
   out._source = "facebook";
 
-  return out;
+  /**
+   * מוסיף את השמות המוכרים לשדות שהגיעו בעברית.
+   *
+   * טופס שנבנה בעברית מחזיר "שם_מלא" ו"דוא\"ל", והמערכת
+   * חיפשה full_name ו-email בלבד - ולכן ליד כזה נכנס בלי
+   * שם ובלי מייל, ונמכר לקונה ריק. השדות המקוריים נשארים.
+   */
+  return withCanonicalFields(out);
 }
 
 type LeadgenChange = {

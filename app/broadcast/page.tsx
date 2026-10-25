@@ -31,6 +31,7 @@ export default async function BroadcastPage() {
           failed: l.sends[0].failed,
           total: l.sends[0].total,
           state: l.sends[0].state,
+          id: l.sends[0].id,
         }
       : null,
   }));

@@ -14,6 +14,7 @@ export type ListRow = {
     failed: number;
     total: number;
     state: string;
+    id: string;
   } | null;
 };
 
@@ -93,14 +94,21 @@ export default function BroadcastScreen({
   }
 
   /** שולח מנה אחר מנה עד שנגמר, ומעדכן התקדמות */
-  async function runSend(listId: string) {
+  async function runSend(listId: string, resumeId?: string) {
     const chosen = template[listId];
-    if (!chosen) return;
+    if (!chosen && !resumeId) return;
 
     setBusy(true);
     setConfirming(null);
 
-    let sendId: string | undefined;
+    /**
+     * המשך דיוור שנעצר.
+     *
+     * כשמעבירים sendId קיים, השרת ממשיך בדיוק ממי שעוד לא
+     * קיבל - ולא מתחיל מההתחלה. בלי זה, דיוור שנעצר באמצע
+     * היה נתקע לנצח על אותם 15 ראשונים.
+     */
+    let sendId: string | undefined = resumeId;
     let guard = 0;
 
     while (guard++ < 500) {
@@ -126,7 +134,11 @@ export default function BroadcastScreen({
         ...p,
         [listId]: `נשלחו ${data.sent} מתוך ${data.total}${
           data.failed ? ` · ${data.failed} נכשלו` : ""
-        }${data.finished ? " · הסתיים" : "..."}`,
+        }${
+          data.finished
+            ? " · הסתיים"
+            : ` · נשארו ${data.remaining ?? "?"}...`
+        }`,
       }));
 
       if (data.finished) break;
@@ -223,6 +235,36 @@ export default function BroadcastScreen({
                 {list.lastSend.sent} מתוך {list.lastSend.total}
                 {list.lastSend.failed > 0 &&
                   ` · ${list.lastSend.failed} נכשלו`}
+
+                {/*
+                  דיוור שנעצר באמצע. ההמשך ממשיך בדיוק ממי
+                  שעוד לא קיבל - אף אחד לא מקבל פעמיים.
+                */}
+                {list.lastSend.sent + list.lastSend.failed <
+                  list.lastSend.total && (
+                  <div style={{ marginTop: 8 }}>
+                    <div
+                      style={{
+                        color: "#b54708",
+                        marginBottom: 6,
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      הדיוור הזה נעצר באמצע.{" "}
+                      {list.lastSend.total -
+                        list.lastSend.sent -
+                        list.lastSend.failed}{" "}
+                      אנשים עוד לא קיבלו.
+                    </div>
+                    <button
+                      className="btn"
+                      onClick={() => runSend(list.id, list.lastSend!.id)}
+                      disabled={busy}
+                    >
+                      המשך את הדיוור
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 

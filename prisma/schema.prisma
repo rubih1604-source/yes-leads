@@ -493,6 +493,26 @@ model BroadcastContact {
   @@index([listId])
 }
 
+/// רישום לכל נמען בנפרד בדיוור.
+///
+/// בלי זה אי אפשר היה לדעת מי כבר קיבל: המערכת ספרה רק
+/// "כמה נשלחו", והמשך דיוור היה מתחיל מההתחלה ושולח שוב
+/// לאותם אנשים. הטבלה הזו היא גם יומן וגם ההגנה מכפילות.
+model BroadcastDelivery {
+  id        String   @id @default(cuid())
+  sendId    String
+  send      BroadcastSend @relation(fields: [sendId], references: [id], onDelete: Cascade)
+  contactId String
+  phone     String
+  ok        Boolean  @default(false)
+  error     String?
+  at        DateTime @default(now())
+
+  /// שתי שליחות לאותו נמען באותו דיוור הן באג, לא תרחיש
+  @@unique([sendId, contactId])
+  @@index([sendId])
+}
+
 model BroadcastSend {
   id           String   @id @default(cuid())
   listId       String
@@ -504,6 +524,7 @@ model BroadcastSend {
   state        String   @default("running")
   createdAt    DateTime @default(now())
   finishedAt   DateTime?
+  deliveries   BroadcastDelivery[]
 
   @@index([listId])
 }

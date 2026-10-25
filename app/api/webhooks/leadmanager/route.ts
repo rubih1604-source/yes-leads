@@ -15,6 +15,7 @@ import { identifiersOf } from "@/lib/campaign-match";
 import { campaignLabel } from "@/lib/campaign-label";
 import { priceForAd, readAdPrices } from "@/lib/ad-pricing";
 import { notifyNewLead } from "@/lib/notify-lead";
+import { withCanonicalFields } from "@/lib/field-aliases";
 import { assignmentForForm } from "@/lib/lead-forms";
 import { channelForLead } from "@/lib/channels";
 import {
@@ -133,7 +134,14 @@ async function handle(request: Request) {
         ? mapped.status
         : null;
 
-    const extra = extractExtraFields(raw);
+    /**
+     * מוסיף שמות שדות מוכרים גם כאן, לא רק בדלת של פייסבוק.
+     *
+     * טופס בעברית מחזיר "שם_מלא" ו"דוא\"ל". בלי הזיהוי הזה
+     * הליד נכנס בלי שם ובלי מייל - וזה מה שקרה בפועל לליד
+     * של שרה פרידמן. הנרמול כאן מכסה את שתי הדלתות.
+     */
+    const extra = withCanonicalFields(extractExtraFields(raw));
 
     /**
      * חוק אוטומטי: אם בשאלת הספק הלקוח סימן yes או סטינג -
