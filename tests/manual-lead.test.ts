@@ -175,4 +175,24 @@ test("אין שדה בלי תווית בעברית", () => {
   for (const f of DELIVERY_FIELDS) ok(f.label.trim().length > 0);
 });
 
+/* ---------- שם מודעה בליד ידני ---------- */
+
+test("שם מודעה נשמר באותו מפתח שהוובוק מייצר", () => {
+  const r = planManualLead({ phone: "0521234567", ad: "מבצע סטינג 149" });
+  ok(r.ok);
+  if (r.ok) eq(r.extra.fb_ad, "מבצע סטינג 149");
+});
+
+test("בלי שם מודעה - השדה לא נוצר", () => {
+  const r = planManualLead({ phone: "0521234567" });
+  ok(r.ok);
+  if (r.ok) eq("fb_ad" in r.extra, false);
+});
+
+test("רווחים בלבד בשם מודעה נחשבים לריק", () => {
+  const r = planManualLead({ phone: "0521234567", ad: "   " });
+  ok(r.ok);
+  if (r.ok) eq("fb_ad" in r.extra, false);
+});
+
 console.log(`✓ manual-lead: ${passed} בדיקות עברו`);

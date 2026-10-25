@@ -228,6 +228,8 @@ model Settings {
   /// אילו סטטוסים לא נכנסים למסך הדאטה.
   /// ריק = ברירת המחדל (נסגר, לקוח קיים).
   dataExcludeStatuses  Json?
+  /// על אילו לידים נשלח מייל: all | mine | sale | off
+  leadEmailMode        String?
   replyCallback        String   @default("מעולה, רשמתי. אחזור אליך בזמן שביקשת :)")
 
   updatedAt            DateTime @updatedAt

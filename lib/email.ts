@@ -14,12 +14,28 @@
 export async function sendEmail(params: {
   subject: string;
   body: string;
+  /** גרסת HTML. כשהיא קיימת, הטקסט משמש כגיבוי בתיבות שלא מציגות HTML */
+  html?: string;
+  /**
+   * השם שמופיע כשולח.
+   *
+   * ברירת המחדל היא השם שלך ולא שם טכני: מייל שמגיע
+   * מ-"onboarding" נראה כמו ספאם ונקבר בתיבה.
+   */
+  fromName?: string;
 }): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY?.trim();
   const to = process.env.ALERT_EMAIL?.trim();
   if (!apiKey || !to) return false;
 
-  const from = process.env.EMAIL_FROM?.trim() || "onboarding@resend.dev";
+  const address = process.env.EMAIL_FROM?.trim() || "onboarding@resend.dev";
+
+  /**
+   * אם EMAIL_FROM כבר כולל שם בסוגריים משולשים - משאירים
+   * אותו כמו שהוא. אחרת עוטפים אותו בשם.
+   */
+  const name = (params.fromName ?? "ראובן חגג").trim();
+  const from = address.includes("<") ? address : `${name} <${address}>`;
 
   try {
     const response = await fetch("https://api.resend.com/emails", {
@@ -33,6 +49,7 @@ export async function sendEmail(params: {
         to: [to],
         subject: params.subject,
         text: params.body,
+        ...(params.html ? { html: params.html } : {}),
       }),
       cache: "no-store",
     });

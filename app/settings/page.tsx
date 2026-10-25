@@ -10,6 +10,7 @@ import BotSettings from "@/components/BotSettings";
 import { db } from "@/lib/db";
 import { getStatuses } from "@/lib/status-store";
 import PushSetup from "@/components/PushSetup";
+import LeadEmailSetting from "@/components/LeadEmailSetting";
 import NotifyChannels from "@/components/NotifyChannels";
 import DialerSettings from "@/components/DialerSettings";
 
@@ -71,6 +72,7 @@ export default async function SettingsPage() {
         push={settings.notifyPush}
         banner={settings.notifyBanner}
       />
+      <LeadEmailSetting mode={settings.leadEmailMode} />
       <PushSetup />
 
       <DialerSettings

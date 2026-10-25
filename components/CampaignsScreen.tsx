@@ -97,6 +97,9 @@ function ChannelCard({ channel }: { channel: ChannelRow }) {
    * במצב נפרד כמו fieldSel, מאותה סיבה: מערך חדש תמיד שונה
    * מהקודם ב-!==, וזה היה משאיר את כפתור השמירה דלוק לנצח.
    */
+  /** גוף הבקשה האחרון שנשלח בבדיקת חיבור */
+  const [sent, setSent] = useState("");
+
   const [adRules, setAdRules] = useState<AdPriceRule[]>(
     channel.adPrices ?? []
   );
@@ -218,7 +221,16 @@ function ChannelCard({ channel }: { channel: ChannelRow }) {
 
     const data = await res?.json().catch(() => ({}));
     setBusy(false);
+
+    /**
+     * מציג גם **מה נשלח בפועל**, לא רק אם זה הצליח.
+     *
+     * 201 מוכיח שהבקשה התקבלה, לא שהתוכן נכון: ליד עם שדות
+     * ריקים מחזיר 201 בדיוק כמו ליד תקין. בלי לראות את הגוף
+     * אי אפשר לדעת ששדה הגיע מלא.
+     */
     setMessage(data?.verdict ?? data?.error ?? "לא ידוע");
+    setSent(typeof data?.["נשלח"] === "string" ? data["נשלח"] : "");
     router.refresh();
   }
 
@@ -815,6 +827,44 @@ function ChannelCard({ channel }: { channel: ChannelRow }) {
             >
               {message}
             </div>
+          )}
+
+          {/*
+            מה שנשלח בפועל בבדיקת החיבור.
+
+            זו הדרך לוודא ששדה הגיע מלא בלי להטריד את הקונה:
+            הצד השני יחזיר 201 גם על ליד עם שדות ריקים.
+          */}
+          {sent && (
+            <>
+              <div
+                style={{
+                  fontSize: 12.5,
+                  color: "#667085",
+                  marginTop: 11,
+                  marginBottom: 4,
+                }}
+              >
+                זה מה שנשלח בפועל:
+              </div>
+              <pre
+                style={{
+                  background: "#f9fafb",
+                  border: "1px solid #eef2f7",
+                  borderRadius: 8,
+                  padding: 10,
+                  fontSize: 11.5,
+                  direction: "ltr",
+                  textAlign: "left",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  maxHeight: 260,
+                  overflow: "auto",
+                }}
+              >
+                {sent}
+              </pre>
+            </>
           )}
         </div>
       )}

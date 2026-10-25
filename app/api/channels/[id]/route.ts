@@ -236,7 +236,21 @@ export async function POST(
         lastName: "מהמערכת",
         phone: "+972500000000",
         status: "חדש",
-        extra: { email: "test@example.com", fb_campaign: channel.name },
+        /**
+         * ליד הבדיקה נושא גם **שם מודעה**.
+         *
+         * בלי זה השדה ad_name היה יוצא ריק בבדיקה, והבדיקה
+         * הייתה עוברת בלי להוכיח שהשדה בכלל מגיע לצד השני -
+         * בדיוק הפינה שאי אפשר לבדוק בלי להטריד את הקונה.
+         */
+        extra: {
+          email: "test@example.com",
+          fb_campaign: channel.name,
+          fb_ad: "מודעת בדיקה מהמערכת",
+          fb_adset: "קבוצת בדיקה",
+          fb_form: "טופס בדיקה",
+          supplier_question: "בדיקה",
+        },
       },
       new Date()
     ),
@@ -312,7 +326,8 @@ export async function POST(
       : `נכשל · ${verdict.reason}`,
     httpStatus,
     response: responseText,
-    נשלח: bodyText.slice(0, 500),
+    /** מה שנשלח בפועל, כדי שתוכל לוודא בעצמך ששדה לא יצא ריק */
+    נשלח: bodyText.slice(0, 1200),
     כותרות: Object.keys(headers),
   });
 }

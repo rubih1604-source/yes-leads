@@ -35,6 +35,8 @@ export type AppSettings = {
   saleRowFields: SaleColumnKey[];
   /** סטטוסים שלא נכנסים לדאטה */
   dataExcludeStatuses: string[];
+  /** על אילו לידים נשלח מייל התראה */
+  leadEmailMode: LeadEmailMode;
   onlyAfterTemplate: boolean;
   offDutyUntil: Date | null;
   afterHoursGrace: number;
@@ -69,6 +71,7 @@ const DEFAULTS: AppSettings = {
   leadRowFields: readRowFields(null),
   saleRowFields: readSaleRowFields(null),
   dataExcludeStatuses: ["נסגר", "לקוח קיים"],
+  leadEmailMode: "all",
   onlyAfterTemplate: false,
   offDutyUntil: null,
   afterHoursGrace: 60,
@@ -130,6 +133,11 @@ export async function getSettings(): Promise<AppSettings> {
             .map((x) => String(x ?? "").trim())
             .filter(Boolean)
         : ["נסגר", "לקוח קיים"],
+      leadEmailMode: (["all", "mine", "sale", "off"] as const).includes(
+        row.leadEmailMode as LeadEmailMode
+      )
+        ? (row.leadEmailMode as LeadEmailMode)
+        : "all",
       onlyAfterTemplate: row.onlyAfterTemplate,
       offDutyUntil: row.offDutyUntil,
       afterHoursGrace: row.afterHoursGrace,

@@ -21,6 +21,8 @@ export type ManualInput = {
   email?: string | null;
   address?: string | null;
   campaign?: string | null;
+  /** שם המודעה - מאפשר לבדוק תמחור לפי מודעה מקצה לקצה */
+  ad?: string | null;
   supplier?: string | null;
   /** הערוץ שאליו הליד נכנס. ריק = הליד נשאר שלך. */
   channelId?: string | null;
@@ -85,6 +87,9 @@ export function planManualLead(input: ManualInput): ManualPlan {
 
   const campaign = clean(input.campaign);
   if (campaign) extra.fb_campaign = campaign;
+
+  const ad = clean(input.ad);
+  if (ad) extra.fb_ad = ad;
 
   const supplier = clean(input.supplier);
   if (supplier) extra.supplier_question = supplier;

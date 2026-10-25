@@ -35,6 +35,13 @@ export async function PATCH(request: Request) {
       data.afterHoursGrace = Math.round(n);
   }
 
+  if (
+    typeof body.leadEmailMode === "string" &&
+    ["all", "mine", "sale", "off"].includes(body.leadEmailMode)
+  ) {
+    data.leadEmailMode = body.leadEmailMode;
+  }
+
   if (Array.isArray(body.dataExcludeStatuses)) {
     data.dataExcludeStatuses = (body.dataExcludeStatuses as unknown[])
       .map((x) => String(x ?? "").trim())

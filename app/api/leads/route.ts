@@ -8,6 +8,8 @@ import {
   MANUAL_SOURCE,
 } from "@/lib/manual-lead";
 import { queueDelivery } from "@/lib/delivery";
+import { priceForAd, readAdPrices } from "@/lib/ad-pricing";
+import { notifyNewLead } from "@/lib/notify-lead";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +36,7 @@ export async function POST(req: NextRequest) {
     email: body.email,
     address: body.address,
     campaign: body.campaign,
+    ad: body.ad,
     supplier: body.supplier,
     channelId: body.channelId,
   });
@@ -127,7 +130,18 @@ export async function POST(req: NextRequest) {
         via: MANUAL_SOURCE,
         channelId: channel?.id ?? null,
         isSale,
-        price: isSale ? channel?.pricePerLead ?? 0 : 0,
+        /**
+         * אותו תמחור בדיוק כמו ליד אמיתי: חריג לפי מודעה אם
+         * יש, אחרת מחיר הערוץ. בדיקה שעוברת מסלול תמחור אחר
+         * לא מוכיחה שהתמחור עובד.
+         */
+        price: isSale
+          ? priceForAd({
+              adName: plan.extra.fb_ad ?? null,
+              rules: readAdPrices(channel?.adPrices),
+              fallback: Number(channel?.pricePerLead ?? 0),
+            }).price
+          : 0,
         at: new Date(),
       },
     })
@@ -159,6 +173,19 @@ export async function POST(req: NextRequest) {
       channelId: channel?.id ?? null,
     }).catch(() => false);
   }
+
+  /** אותה התראה בדיוק כמו ליד אמיתי */
+  void notifyNewLead({
+    leadId,
+    firstName: plan.firstName,
+    lastName: plan.lastName,
+    phone: plan.phone,
+    status: "חדש",
+    extra: plan.extra,
+    channelName: channel?.name ?? null,
+    isSale,
+    at: new Date(),
+  });
 
   return NextResponse.json({
     ok: true,

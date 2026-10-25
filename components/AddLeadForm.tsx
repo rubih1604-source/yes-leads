@@ -38,6 +38,7 @@ export default function AddLeadForm({
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [campaign, setCampaign] = useState("");
+  const [ad, setAd] = useState("");
   const [channelId, setChannelId] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -69,6 +70,7 @@ export default function AddLeadForm({
         lastName,
         email,
         campaign,
+        ad,
         channelId: channelId || null,
       }),
     }).catch(() => null);
@@ -88,6 +90,7 @@ export default function AddLeadForm({
     setLastName("");
     setEmail("");
     setCampaign("");
+    setAd("");
     router.refresh();
   }
 
@@ -208,10 +211,22 @@ export default function AddLeadForm({
 
       <input
         className="field"
-        style={{ width: "100%", marginBottom: 9 }}
+        style={{ width: "100%", marginBottom: 8 }}
         placeholder="שם קמפיין (לא חובה)"
         value={campaign}
         onChange={(e) => setCampaign(e.target.value)}
+      />
+
+      {/*
+        שם המודעה. מאפשר לבדוק מקצה לקצה גם את התמחור לפי
+        מודעה וגם שהשדה מגיע לקונה - בלי לחכות לליד אמיתי.
+      */}
+      <input
+        className="field"
+        style={{ width: "100%", marginBottom: 9 }}
+        placeholder="שם מודעה (לא חובה) — לבדיקת מחיר לפי מודעה"
+        value={ad}
+        onChange={(e) => setAd(e.target.value)}
       />
 
       <button className="btn primary" onClick={submit} disabled={busy}>

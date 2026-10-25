@@ -14,6 +14,7 @@ import { doorOf, addDoor } from "@/lib/via";
 import { identifiersOf } from "@/lib/campaign-match";
 import { campaignLabel } from "@/lib/campaign-label";
 import { priceForAd, readAdPrices } from "@/lib/ad-pricing";
+import { notifyNewLead } from "@/lib/notify-lead";
 import { assignmentForForm } from "@/lib/lead-forms";
 import { channelForLead } from "@/lib/channels";
 import {
@@ -342,6 +343,25 @@ async function handle(request: Request) {
        * רק נרשם לתור כאן - השליחה עצמה במנוע, כדי שהקליטה
        * לא תחכה לשרת של הקונה.
        */
+      /**
+       * מייל על הליד החדש.
+       *
+       * אחרי השמירה ובלי await חוסם - ראה ההסבר ב-notify-lead.
+       * קודם ההתראה הגיעה מליד מנגר; טופס שלא עובר דרכו היה
+       * נכנס בשקט.
+       */
+      void notifyNewLead({
+        leadId: lead.id,
+        firstName: mapped.firstName,
+        lastName: mapped.lastName,
+        phone,
+        status: lead.status,
+        extra,
+        channelName: inChannel?.name ?? null,
+        isSale: channel.isSale,
+        at: new Date(),
+      });
+
       if (channel.isSale && firstEntry) {
         await queueDelivery({
           leadId: lead.id,
