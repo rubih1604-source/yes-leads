@@ -1,73 +1,123 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isLoggedIn } from "@/lib/auth";
+import { phoneDigits } from "@/lib/phone";
 
 export const dynamic = "force-dynamic";
 
 /**
  * ============================================================
- *  השלמת רישום לדיוור ישן
+ *  מי כבר קיבל את התבנית הזו
  * ============================================================
  *
- *  עד הגרסה הזו הדיוור ספר רק "כמה נשלחו" ולא רשם **מי**.
- *  דיוור שנעצר באמצע השאיר מספר בלי שמות, ולכן המשך שלו
- *  היה מתחיל מההתחלה ושולח שוב לאותם אנשים.
+ *  שתי בעיות נפרדות, ושתיהן מסתיימות באותה תוצאה: אדם מקבל
+ *  את אותה הודעה פעמיים.
  *
- *  הפעולה הזו משלימה את הרישום החסר: היא לוקחת את N אנשי
- *  הקשר הראשונים ברשימה - בדיוק באותו סדר שבו הקוד הישן
- *  שלף אותם - ומסמנת אותם כ"כבר קיבלו".
+ *  **1. הדיוור שנעצר.** עד גרסה 141 הדיוור ספר "כמה נשלחו"
+ *     ולא רשם **מי**. אין לזה רישום, ולכן אי אפשר לדעת
+ *     בוודאות מי היו - רק להעריך לפי סדר הרשימה.
  *
- *  **הסתייגות שחשוב שתכיר.** הקוד הישן חתך לפי מיקום
- *  ברשימה, והסדר שבו המסד מחזיר שורות בלי מיון מפורש אינו
- *  מובטח. בפועל זה כמעט תמיד סדר ההוספה, ולכן הסיכוי גבוה
- *  שאלה בדיוק אותם אנשים - אבל זו הסתברות, לא ודאות.
+ *  **2. שליחה קודמת לאותה תבנית.** שליחה מרשימת הלידים
+ *     **כן** נרשמה, כהודעה יוצאת בכרטיס של כל ליד. זו
+ *     הבעיה הגדולה יותר: רשימת דיוור ישנה יכולה לחפוף
+ *     ברובה לאנשים שכבר קיבלו את המבצע הבוקר.
  *
- *  לכן GET מראה את הרשימה **בשמות ובטלפונים**, כדי שתוכל
- *  להשוות מול יומן השליחות של טקסטר לפני שאתה מאשר. אין
- *  דרך אחרת לדעת בוודאות מי קיבל, כי הרישום פשוט לא נעשה.
+ *  לכן הפעולה בודקת את שניהם, ומפרידה ביניהם בתצוגה: מה
+ *  שידוע בוודאות מרישום אמיתי, ומה שהוא הערכה.
  */
+
+const WINDOW_DAYS = 14;
 
 type Plan = {
   sendId: string;
   listName: string;
   templateName: string;
-  alreadyCounted: number;
   total: number;
-  contacts: Array<{ id: string; phone: string; name: string }>;
+  /** נמענים עם רישום הודעה אמיתי - ודאות */
+  known: Array<{ id: string; phone: string; at: string }>;
+  /** הערכה לפי סדר הרשימה, מהדיוור שלא נרשם */
+  guessed: Array<{ id: string; phone: string }>;
 };
 
 async function build(): Promise<Plan[]> {
   const sends = await db.broadcastSend
     .findMany({
       orderBy: { createdAt: "desc" },
-      take: 20,
+      take: 10,
       include: {
         list: { include: { contacts: true } },
-        deliveries: { select: { id: true }, take: 1 },
+        deliveries: { select: { contactId: true } },
       },
     })
     .catch(() => []);
 
   const plans: Plan[] = [];
+  const since = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
   for (const send of sends) {
     const counted = send.sent + send.failed;
+    if (counted === 0 && send.deliveries.length === 0) continue;
 
-    // אין מה להשלים: או שלא נשלח כלום, או שכבר יש רישום
-    if (counted === 0) continue;
-    if (send.deliveries.length > 0) continue;
+    const alreadyLogged = new Set(send.deliveries.map((d) => d.contactId));
+
+    /**
+     * כל מי שקיבל את התבנית הזו לאחרונה, לפי רישום אמיתי
+     * בכרטיס הליד. זה המקור האמין - לא ניחוש.
+     */
+    const messages = await db.message
+      .findMany({
+        where: {
+          templateName: send.templateName,
+          direction: "out",
+          status: "sent",
+          createdAt: { gte: since },
+        },
+        select: { createdAt: true, lead: { select: { phone: true } } },
+      })
+      .catch(() => []);
+
+    const gotAt = new Map<string, Date>();
+    for (const m of messages) {
+      const key = phoneDigits(m.lead?.phone ?? "");
+      if (!key) continue;
+      const prev = gotAt.get(key);
+      if (!prev || m.createdAt > prev) gotAt.set(key, m.createdAt);
+    }
+
+    const known: Plan["known"] = [];
+    for (const contact of send.list.contacts) {
+      if (alreadyLogged.has(contact.id)) continue;
+      const at = gotAt.get(phoneDigits(contact.phone));
+      if (!at) continue;
+      known.push({
+        id: contact.id,
+        phone: contact.phone,
+        at: at.toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" }),
+      });
+    }
+
+    /**
+     * ההערכה: N הראשונים ברשימה, כמו שהקוד הישן חתך.
+     * מוצגת בנפרד ובמפורש, כי היא לא ודאית.
+     */
+    const knownIds = new Set(known.map((k) => k.id));
+    const guessed =
+      send.deliveries.length === 0
+        ? send.list.contacts
+            .slice(0, counted)
+            .filter((c) => !knownIds.has(c.id))
+            .map((c) => ({ id: c.id, phone: c.phone }))
+        : [];
+
+    if (known.length === 0 && guessed.length === 0) continue;
 
     plans.push({
       sendId: send.id,
       listName: send.list.name,
       templateName: send.templateName,
-      alreadyCounted: counted,
       total: send.list.contacts.length,
-      contacts: send.list.contacts.slice(0, counted).map((c) => ({
-        id: c.id,
-        phone: c.phone,
-        name: c.firstName ?? "",
-      })),
+      known,
+      guessed,
     });
   }
 
@@ -83,20 +133,20 @@ export async function GET() {
 
   return NextResponse.json({
     פעולה: "תצוגה מקדימה — לא שונה כלום",
-    "דיוורים שחסר להם רישום": plans.length,
+    "נבדק טווח": `${WINDOW_DAYS} ימים אחורה`,
     פירוט: plans.map((p) => ({
       רשימה: p.listName,
       תבנית: p.templateName,
-      "נספרו כנשלחו": p.alreadyCounted,
       "סך הרשימה": p.total,
-      "יסומנו כמי שכבר קיבלו": p.contacts.map(
-        (c) => `${c.phone}${c.name ? ` · ${c.name}` : ""}`
-      ),
+      "כבר קיבלו — לפי רישום אמיתי": p.known.length,
+      "דוגמאות": p.known.slice(0, 20).map((k) => `${k.phone} · ${k.at}`),
+      "הערכה מהדיוור שלא נרשם": p.guessed.length,
+      "דוגמאות להערכה": p.guessed.slice(0, 20).map((g) => g.phone),
     })),
     הסבר:
       plans.length === 0
-        ? "אין מה להשלים. כל הדיוורים כבר מנוהלים ברישום לכל נמען."
-        : "השווה את הרשימה הזו ליומן השליחות בטקסטר. אם אלה אותם אנשים — הרץ, והם לא יקבלו שוב. אם לא — אל תריץ, וכל הרשימה תקבל מההתחלה.",
+        ? "אין חפיפה. אפשר לשלוח לכל הרשימה בלי שאף אחד יקבל פעמיים."
+        : '"לפי רישום אמיתי" הוא ודאי — אלה אנשים שהמערכת שלחה להם את אותה תבנית ורשמה את זה. "הערכה" היא ניחוש לפי סדר הרשימה מהדיוור שנעצר, ואי אפשר לאמת אותו. הרצה תסמן את שניהם כמי שכבר קיבלו.',
   });
 }
 
@@ -110,19 +160,23 @@ export async function POST() {
   let marked = 0;
 
   for (const plan of plans) {
-    for (const contact of plan.contacts) {
-      /**
-       * נרשם כהצלחה, כי כך הם נספרו בדיוור המקורי.
-       * המטרה היחידה היא שלא יקבלו שוב.
-       */
+    const rows = [
+      ...plan.known.map((k) => ({ ...k, why: "קיבל את התבנית הזו לאחרונה" })),
+      ...plan.guessed.map((g) => ({
+        ...g,
+        why: "הערכה לפי סדר הרשימה מהדיוור שנעצר",
+      })),
+    ];
+
+    for (const row of rows) {
       await db.broadcastDelivery
         .create({
           data: {
             sendId: plan.sendId,
-            contactId: contact.id,
-            phone: contact.phone,
+            contactId: row.id,
+            phone: row.phone,
             ok: true,
-            error: "הושלם בדיעבד — הדיוור המקורי לא רשם לכל נמען",
+            error: row.why,
           },
         })
         .catch(() => null);
@@ -135,6 +189,6 @@ export async function POST() {
     פעולה: "בוצע",
     "סומנו כמי שכבר קיבלו": marked,
     הסבר:
-      "עכשיו אפשר ללחוץ 'המשך את הדיוור' במסך דיוור, והוא ימשיך רק למי שעוד לא קיבל.",
+      'עכשיו "המשך את הדיוור" ידלג עליהם וישלח רק למי שבאמת לא קיבל.',
   });
 }
