@@ -5,6 +5,8 @@ import {
   htmlFor,
   fullNameOf,
   shouldEmail,
+  threadIdFor,
+  previewFor,
   type LeadEmailInput,
 } from "../lib/lead-email";
 
@@ -52,20 +54,73 @@ test("בלי שם - הטלפון משמש כשם", () => {
   eq(fullNameOf(lead({ firstName: null, lastName: null })), "+972587688864");
 });
 
-test("הנושא כולל שם וטלפון, כדי להחליט בלי לפתוח", () => {
-  const s = subjectFor(lead());
-  ok(s.includes("איתמר כהן"));
-  ok(s.includes("+972587688864"));
+/* ---------- חוט אחד ליום ---------- */
+
+test("הנושא אחיד לכל לידי היום, כדי שג'ימייל יקבץ אותם", () => {
+  const a = subjectFor(lead({ at: new Date("2026-10-24T06:00:00Z") }));
+  const b = subjectFor(
+    lead({
+      at: new Date("2026-10-24T17:00:00Z"),
+      firstName: "אדם",
+      lastName: "אחר",
+      phone: "+972500000000",
+    })
+  );
+  eq(a, b);
 });
 
-test("ליד של קונה מסומן בנושא עם שם הערוץ", () => {
-  const s = subjectFor(lead({ isSale: true, channelName: "לידים אלעד" }));
-  ok(s.includes("ליד למכירה"));
-  ok(s.includes("לידים אלעד"));
+test("יום אחר - נושא אחר, כדי שלא יתערבב עם אתמול", () => {
+  const a = subjectFor(lead({ at: new Date("2026-10-24T10:00:00Z") }));
+  const b = subjectFor(lead({ at: new Date("2026-10-25T10:00:00Z") }));
+  assert.notEqual(a, b);
 });
 
-test("ליד שלך מסומן כליד חדש", () => {
-  ok(subjectFor(lead()).startsWith("ליד חדש"));
+test("מזהה החוט זהה לכל לידי אותו יום", () => {
+  eq(
+    threadIdFor(new Date("2026-10-24T06:00:00Z")),
+    threadIdFor(new Date("2026-10-24T20:00:00Z"))
+  );
+});
+
+test("מזהה החוט שונה בין ימים", () => {
+  assert.notEqual(
+    threadIdFor(new Date("2026-10-24T10:00:00Z")),
+    threadIdFor(new Date("2026-10-25T10:00:00Z"))
+  );
+});
+
+test("היום נקבע בשעון ישראל ולא בשעון השרת", () => {
+  // 22:30 UTC ב-24 = 01:30 בישראל ב-25, ולכן חוט של ה-25
+  const late = threadIdFor(new Date("2026-10-24T22:30:00Z"));
+  const next = threadIdFor(new Date("2026-10-25T08:00:00Z"));
+  eq(late, next);
+});
+
+test("מזהה החוט בפורמט תקין למייל", () => {
+  const id = threadIdFor(new Date("2026-10-24T10:00:00Z"));
+  ok(id.startsWith("<"));
+  ok(id.endsWith(">"));
+  ok(id.includes("@"));
+});
+
+/* ---------- שורת התצוגה המקדימה ---------- */
+
+test("התצוגה המקדימה מחזירה את השם והטלפון", () => {
+  const p = previewFor(lead());
+  ok(p.includes("איתמר כהן"));
+  ok(p.includes("+972587688864"));
+});
+
+test("ליד של קונה מסומן בתצוגה המקדימה", () => {
+  const p = previewFor(lead({ isSale: true, channelName: "לידים אלעד" }));
+  ok(p.includes("מכירה"));
+  ok(p.includes("לידים אלעד"));
+});
+
+test("התצוגה המקדימה נמצאת בגוף ה-HTML", () => {
+  const h = htmlFor(lead());
+  ok(h.includes("איתמר כהן"));
+  ok(h.includes("display:none"));
 });
 
 /* ---------- גרסת הטקסט ---------- */

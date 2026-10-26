@@ -4,6 +4,7 @@ import {
   textFor,
   htmlFor,
   shouldEmail,
+  threadIdFor,
   type LeadEmailInput,
 } from "./lead-email";
 
@@ -32,10 +33,21 @@ export async function notifyNewLead(
       appUrl: process.env.APP_URL?.trim() || null,
     };
 
+    /**
+     * כל מיילי היום נושאים את אותו מזהה חוט, וג'ימייל
+     * מקבץ אותם לשיחה אחת. בלי זה 15 לידים ביום הם 15
+     * פריטים נפרדים בתיבה.
+     */
+    const thread = threadIdFor(full.at);
+
     return await sendEmail({
       subject: subjectFor(full),
       body: textFor(full),
       html: htmlFor(full),
+      headers: {
+        References: thread,
+        "In-Reply-To": thread,
+      },
     });
   } catch {
     return false;

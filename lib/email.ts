@@ -23,6 +23,14 @@ export async function sendEmail(params: {
    * מ-"onboarding" נראה כמו ספאם ונקבר בתיבה.
    */
   fromName?: string;
+  /**
+   * כותרות נוספות.
+   *
+   * משמשות לקיבוץ לשיחה אחת: References ו-In-Reply-To עם
+   * אותו מזהה גורמים לג'ימייל להציג את כל מיילי היום
+   * כפריט אחד בתיבה.
+   */
+  headers?: Record<string, string>;
 }): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY?.trim();
   const to = process.env.ALERT_EMAIL?.trim();
@@ -50,6 +58,9 @@ export async function sendEmail(params: {
         subject: params.subject,
         text: params.body,
         ...(params.html ? { html: params.html } : {}),
+        ...(params.headers && Object.keys(params.headers).length
+          ? { headers: params.headers }
+          : {}),
       }),
       cache: "no-store",
     });

@@ -65,17 +65,58 @@ export function fullNameOf(input: LeadEmailInput): string {
 }
 
 /**
+ * התאריך בשעון ישראל, כמחרוזת יציבה.
+ *
+ * שעון השרת הוא UTC, ולכן ליד שנכנס ב-01:30 בלילה היה
+ * נספר ליום הקודם ונופל לחוט הלא נכון.
+ */
+function israelDateKey(at: Date): string {
+  return at.toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
+}
+
+/**
+ * מזהה החוט היומי.
+ *
+ * כל המיילים של אותו יום נושאים את אותו מזהה, וג'ימייל
+ * מקבץ אותם לשיחה אחת. ככה 15 לידים ביום הם פריט אחד
+ * בתיבה ולא 15 - וזה מה שביקשת.
+ */
+export function threadIdFor(at: Date, domain = "yes-leads"): string {
+  return `<leads-${israelDateKey(at)}@${domain}>`;
+}
+
+/**
  * שורת הנושא.
  *
- * השם והטלפון בנושא בכוונה: ככה אפשר להחליט אם לפתוח בלי
- * לפתוח, וזה מה שהופך התראה לשימושית בנייד.
+ * **אחידה ליום בכוונה.** ג'ימייל מקבץ לשיחה אחת לפי שילוב
+ * של כותרות החוט והנושא; נושא שונה בכל הודעה גורם לפיצול
+ * בחלק מהמכשירים. השם והטלפון עברו לשורת התצוגה המקדימה,
+ * כך שעדיין רואים מי זה בלי לפתוח.
  */
 export function subjectFor(input: LeadEmailInput): string {
-  const who = fullNameOf(input);
-  const where = input.channelName ? ` · ${input.channelName}` : "";
-  const tag = input.isSale ? "ליד למכירה" : "ליד חדש";
+  const date = input.at.toLocaleDateString("he-IL", {
+    timeZone: "Asia/Jerusalem",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
 
-  return `${tag}: ${who} · ${input.phone}${where}`;
+  return `לידים — ${date}`;
+}
+
+/**
+ * השורה שג'ימייל מציג כתצוגה מקדימה ליד הנושא.
+ *
+ * זה מה שמחזיר את מה שאיבדנו בנושא האחיד: בתיבה רואים
+ * "שרה פרידמן · 058-768-8864" בלי לפתוח.
+ */
+export function previewFor(input: LeadEmailInput): string {
+  const who = fullNameOf(input);
+  const tag = input.isSale
+    ? `מכירה${input.channelName ? ` · ${input.channelName}` : ""}`
+    : "";
+
+  return [who, input.phone, tag].filter(Boolean).join(" · ");
 }
 
 /** גרסת טקסט, לתיבות שלא מציגות HTML */
@@ -152,7 +193,19 @@ export function htmlFor(input: LeadEmailInput): string {
       }</span>`
     : "";
 
+  /**
+   * שורת תצוגה מקדימה מוסתרת.
+   *
+   * לא נראית בגוף המייל, אבל זה מה שג'ימייל מציג ליד הנושא
+   * ברשימת התיבה. בלעדיה, נושא אחיד היה אומר שכל הלידים
+   * נראים זהים מבחוץ.
+   */
+  const preheader = `<div style="display:none;max-height:0;overflow:hidden;opacity:0">${esc(
+    previewFor(input)
+  )}</div>`;
+
   return `<div dir="rtl" style="font-family:Arial,Helvetica,sans-serif;background:#f4f6f8;padding:22px">
+  ${preheader}
   <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e4e7ec">
 
     <div style="background:#1b4d8f;padding:16px 20px">
