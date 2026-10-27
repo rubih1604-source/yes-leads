@@ -13,6 +13,8 @@
  *  שאפשר למכור.
  */
 
+import { dialPhone } from "./phone";
+
 export type DeliveryLead = {
   firstName: string | null;
   lastName: string | null;
@@ -60,7 +62,15 @@ export function buildPayload(
     full_name: full,
     first_name: lead.firstName ?? "",
     last_name: lead.lastName ?? "",
-    phone: lead.phone,
+    /**
+     * הטלפון יוצא בפורמט המקומי: 0521234567.
+     *
+     * במסד הוא נשמר כ-+972521234567 כי זה מפתח הזיהוי
+     * הייחודי, אבל הקונה מזין את המספר למערכת שלו ומחייג
+     * אליו - ובישראל זה הפורמט שעובד. מספר עם +972 אצל
+     * הקונה הוא מספר שצריך לתקן ביד לפני חיוג.
+     */
+    phone: dialPhone(lead.phone),
     email: extra.email ?? "",
     address: extra.address ?? "",
     campaign: extra.fb_campaign ?? extra.campaign ?? "",
@@ -145,6 +155,66 @@ export function applyFieldMap(
   }
 
   return out;
+}
+
+/**
+ * ============================================================
+ *  מה באמת יצא בבקשה
+ * ============================================================
+ *
+ *  **כאן היה באג שהפך את יומן ההעברות לשקר.** היומן רשם
+ *  את המטען *לפני* התבנית, ולכן הציג 12 שדות גם כשהתבנית
+ *  שלחה 3. מסך שנועד לענות על "מה בדיוק קיבל הקונה" ענה
+ *  על משהו אחר - וזו בדיוק הבדיקה שאי אפשר לעשות אחר כך.
+ *
+ *  מכאן נרשם גוף הבקשה עצמו, אחרי התבנית, כמו שהוא יצא
+ *  לרשת.
+ */
+
+/** מפתחות שערכם לא נרשם ביומן */
+const SECRET_KEYS = /^(token|secret|password|api[_-]?key)$/i;
+
+export function sentFieldsOf(
+  body: string,
+  asForm: boolean
+): Record<string, string> {
+  const mask = (out: Record<string, string>) => {
+    for (const key of Object.keys(out)) {
+      if (SECRET_KEYS.test(key)) out[key] = "•••";
+    }
+    return out;
+  };
+
+  if (asForm) {
+    try {
+      return mask(Object.fromEntries(new URLSearchParams(body)));
+    } catch {
+      return { body };
+    }
+  }
+
+  try {
+    const parsed = JSON.parse(body);
+
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const out: Record<string, string> = {};
+
+      for (const [key, value] of Object.entries(parsed)) {
+        out[key] =
+          value === null || value === undefined
+            ? ""
+            : typeof value === "object"
+              ? JSON.stringify(value)
+              : String(value);
+      }
+
+      return mask(out);
+    }
+  } catch {
+    /* גוף שאינו JSON - נרשם כמו שהוא, כדי שלא ייעלם */
+  }
+
+  return { body };
 }
 
 /**

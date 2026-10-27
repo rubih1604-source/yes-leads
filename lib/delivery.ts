@@ -28,6 +28,7 @@ import {
   retryDelayMinutes,
   isSuccess,
   renderTemplate,
+  sentFieldsOf,
 } from "./delivery-payload";
 
 /**
@@ -209,6 +210,30 @@ export async function sendDelivery(deliveryId: string): Promise<boolean> {
   const secret = target.webhookSecret?.trim();
   const asForm = target.webhookFormat === "form";
 
+  /**
+   * תבנית גוף השידור, אם הוגדרה.
+   *
+   * זה מה שמאפשר לשלוח בדיוק את המבנה שהקונה מצפה לו,
+   * כולל שדות קבועים שלא באים מהליד. בלי תבנית נשלח
+   * המטען הרגיל, כמו עד היום.
+   *
+   * נבנה כאן ולא בתוך ה-try, כי זה גם מה שנרשם ביומן -
+   * וגם כשהשליחה נכשלת צריך לדעת מה ניסינו לשלוח.
+   */
+  const template = target.bodyTemplate?.trim();
+
+  const body = template
+    ? renderTemplate(template, payload)
+    : asForm
+      ? new URLSearchParams({
+          ...payload,
+          ...(secret ? { token: secret } : {}),
+        }).toString()
+      : JSON.stringify({ ...payload, ...(secret ? { token: secret } : {}) });
+
+  /** מה שבאמת יצא - אחרי התבנית, ובלי הסוד */
+  const sentFields = sentFieldsOf(body, asForm);
+
   let httpStatus: number | null = null;
   let responseText = "";
   let networkError = "";
@@ -242,24 +267,6 @@ export async function sendDelivery(deliveryId: string): Promise<boolean> {
         headers[name.trim()] = value.trim();
       }
     }
-
-    /**
-     * תבנית גוף השידור, אם הוגדרה.
-     *
-     * זה מה שמאפשר לשלוח בדיוק את המבנה שהקונה מצפה לו,
-     * כולל שדות קבועים שלא באים מהליד. בלי תבנית נשלח
-     * המטען הרגיל, כמו עד היום.
-     */
-    const template = target.bodyTemplate?.trim();
-
-    const body = template
-      ? renderTemplate(template, payload)
-      : asForm
-        ? new URLSearchParams({
-            ...payload,
-            ...(secret ? { token: secret } : {}),
-          }).toString()
-        : JSON.stringify({ ...payload, ...(secret ? { token: secret } : {}) });
 
     /**
      * פסק זמן של 20 שניות. שרת שלא עונה תוך זה ייחשב
@@ -316,7 +323,7 @@ export async function sendDelivery(deliveryId: string): Promise<boolean> {
           httpStatus,
           response: responseText,
           error: null,
-          payload: payload as never,
+          payload: sentFields as never,
           sentAt: new Date(),
           nextTryAt: null,
         },
@@ -342,7 +349,7 @@ export async function sendDelivery(deliveryId: string): Promise<boolean> {
           `השרת של הקונה החזיר ${httpStatus}${
             responseText ? ` - ${responseText.slice(0, 120)}` : ""
           }`,
-        payload: payload as never,
+        payload: sentFields as never,
         nextTryAt: retry
           ? new Date(Date.now() + retryDelayMinutes(attempts) * 60_000)
           : null,

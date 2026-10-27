@@ -34,7 +34,7 @@ test("בלי תבנית נשלח המטען הרגיל, עם הסטטוס", () =
   const body = JSON.parse(hookBody({ lead, at, statusName: "הועבר לאלעד" }));
 
   assert.equal(body.full_name, "ישראל ישראלי");
-  assert.equal(body.phone, "+972521234567");
+  assert.equal(body.phone, "0521234567");
   assert.equal(body.email, "israel@example.com");
   assert.equal(body.status, "הועבר לאלעד");
 });
@@ -70,7 +70,7 @@ test("אסימון בלי ערך יוצא ריק ולא שובר את המבנה
   );
 
   assert.equal(body.email, "");
-  assert.equal(body.phone, "+972521234567");
+  assert.equal(body.phone, "0521234567");
 });
 
 test("שם עם גרשיים לא שובר את ה-JSON", () => {

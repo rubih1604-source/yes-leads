@@ -58,7 +58,7 @@ console.log("\nהמטען הבסיסי");
 {
   const p = buildPayload(lead, at);
   check("שם מלא מורכב משני החלקים", p.full_name, "דנה כהן");
-  check("טלפון", p.phone, "+972521234567");
+  check("טלפון יוצא בפורמט מקומי, בלי קידומת", p.phone, "0521234567");
   check("מייל", p.email, "dana@gmail.com");
   check("קמפיין", p.campaign, "גאוגרפי דרום");
   check("מזהה פייסבוק", p.fb_leadid, "1139510082091369");
@@ -80,7 +80,7 @@ console.log("\nשדות חסרים לא מעלימים שדות");
   check("מספר השדות קבוע", Object.keys(p).length, 12);
   check("שם ריק ולא חסר", p.full_name, "");
   check("מייל ריק ולא חסר", p.email, "");
-  check("טלפון עדיין שם", p.phone, "+972500000000");
+  check("טלפון עדיין שם", p.phone, "0500000000");
 }
 
 console.log("\nמיפוי שדות לכל קונה");
@@ -90,11 +90,11 @@ console.log("\nמיפוי שדות לכל קונה");
   check(
     "בלי מיפוי - הכל כמו שהוא",
     applyFieldMap(p, null).phone,
-    "+972521234567"
+    "0521234567"
   );
 
   const renamed = applyFieldMap(p, { phone: "telephone", full_name: "name" });
-  check("שם שדה הוחלף", renamed.telephone, "+972521234567");
+  check("שם שדה הוחלף", renamed.telephone, "0521234567");
   check("השם הישן נעלם", renamed.phone, undefined);
   check("שדה אחר לא נפגע", renamed.email, "dana@gmail.com");
   check("שדה שני הוחלף", renamed.name, "דנה כהן");
@@ -102,7 +102,7 @@ console.log("\nמיפוי שדות לכל קונה");
   const hidden = applyFieldMap(p, { email: "", address: "   " });
   check("ערך ריק = השדה לא נשלח", hidden.email, undefined);
   check("רווחים בלבד = גם לא נשלח", hidden.address, undefined);
-  check("השאר נשאר", hidden.phone, "+972521234567");
+  check("השאר נשאר", hidden.phone, "0521234567");
 }
 
 console.log("\nמתי מנסים שוב");

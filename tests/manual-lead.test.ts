@@ -122,7 +122,7 @@ const full: Record<string, string> = {
   full_name: "אלעד מור יוסף",
   first_name: "אלעד",
   last_name: "מור יוסף",
-  phone: "+972521234567",
+  phone: "0521234567",
   email: "a@b.com",
   address: "תל אביב",
   campaign: "קמפיין",
@@ -143,7 +143,7 @@ test("רק מה שסומן נשלח", () => {
   const out = pickFields(full, ["full_name", "phone"]);
   eq(Object.keys(out).length, 2);
   eq(out.full_name, "אלעד מור יוסף");
-  eq(out.phone, "+972521234567");
+  eq(out.phone, "0521234567");
   eq("email" in out, false);
 });
 
@@ -162,10 +162,10 @@ test("סימון של שדה שלא קיים במטען לא ממציא אותו
 test("רווחים בסימון לא מפילים את הבחירה", () => {
   const out = pickFields(full, [" phone ", ""]);
   eq(Object.keys(out).length, 1);
-  eq(out.phone, "+972521234567");
+  eq(out.phone, "0521234567");
 });
 
-test("כל 12 השדות ניתנים לבחירה", () => {
+test("כל השדות ניתנים לבחירה", () => {
   const keys = DELIVERY_FIELDS.map((f) => f.key);
   const out = pickFields(full, keys);
   eq(Object.keys(out).length, keys.length);
