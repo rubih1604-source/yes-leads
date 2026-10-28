@@ -17,11 +17,22 @@
  *  לא מצליחה, הליד עדיין נשמר ומסומן "צריך בדיקה".
  */
 
+import { splitName } from "./person-name";
+
 /** שמות השדות האפשריים לטלפון, לפי סדר עדיפות */
 const PHONE_FIELDS = ["phone", "Phone", "mobile", "telephone", "tel", "phone_number", "phoneNumber", "טלפון", "נייד"];
 
-/** שמות השדות האפשריים לשם פרטי */
-const FIRST_NAME_FIELDS = ["first_name", "firstName", "fname", "name", "full_name", "fullName", "שם", "שם_פרטי"];
+/**
+ * שמות השדות האפשריים לשם פרטי.
+ *
+ * **שדות של שם מלא לא נמצאים כאן בכוונה.** הם היו כאן,
+ * ולכן "יאיר סרוסי" נכנס כשם פרטי בזמן ש"סרוסי" נכנס כשם
+ * משפחה - והתצוגה חיברה את השניים ל"יאיר סרוסי סרוסי".
+ */
+const FIRST_NAME_FIELDS = ["first_name", "firstName", "fname", "שם_פרטי"];
+
+/** שמות השדות האפשריים לשם מלא - מפוצלים, לא נלקחים כשם פרטי */
+const FULL_NAME_FIELDS = ["full_name", "fullName", "name", "שם_מלא", "שם"];
 
 /** שמות השדות האפשריים לשם משפחה */
 const LAST_NAME_FIELDS = ["last_name", "lastName", "lname", "surname", "שם_משפחה"];
@@ -63,10 +74,17 @@ function findField(obj: unknown, candidates: string[], depth = 0): string | null
 }
 
 export function mapLeadManagerPayload(payload: unknown): MappedLead {
+  /** אותו כלל פיצול שכל המערכת משתמשת בו */
+  const { firstName, lastName } = splitName({
+    full: findField(payload, FULL_NAME_FIELDS),
+    first: findField(payload, FIRST_NAME_FIELDS),
+    last: findField(payload, LAST_NAME_FIELDS),
+  });
+
   return {
     phone: findField(payload, PHONE_FIELDS),
-    firstName: findField(payload, FIRST_NAME_FIELDS),
-    lastName: findField(payload, LAST_NAME_FIELDS),
+    firstName,
+    lastName,
     status: findField(payload, STATUS_FIELDS),
     source: findField(payload, SOURCE_FIELDS),
   };

@@ -23,6 +23,8 @@
  *  מזוהה פירושו ליד שנמכר ריק.
  */
 
+import { splitName } from "./person-name";
+
 export type CanonicalField =
   | "full_name"
   | "first_name"
@@ -172,14 +174,18 @@ export function withCanonicalFields(
    * טופס בעברית מחזיר בדרך כלל שדה אחד "שם מלא", והמערכת
    * שומרת שם פרטי ומשפחה בנפרד. בלי הפיצול, השם המלא היה
    * נכנס כשם פרטי והשדה השני היה נשאר ריק.
+   *
+   * הפיצול עצמו חי ב-person-name, כדי שלא יהיו שני כללי
+   * פיצול שונים במערכת.
    */
-  if (out.full_name && !out.first_name) {
-    const parts = out.full_name.trim().split(/\s+/);
-    out.first_name = parts[0];
-    if (parts.length > 1 && !out.last_name) {
-      out.last_name = parts.slice(1).join(" ");
-    }
-  }
+  const { firstName, lastName } = splitName({
+    full: out.full_name,
+    first: out.first_name,
+    last: out.last_name,
+  });
+
+  if (firstName) out.first_name = firstName;
+  if (lastName) out.last_name = lastName;
 
   return out;
 }
