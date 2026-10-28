@@ -120,7 +120,7 @@ export default async function LeadPage({
    * ופעם אחת אצלך הוצג כ"ליד כפול · 2 כניסות" - למרות
    * שבכל ערוץ הוא נכנס פעם אחת בלבד.
    */
-  const owner = ownerOf(lead.entries);
+  const owner = ownerOf(lead.origin);
   const ownerEntryCount = entryCountIn(lead.entries, owner);
 
   const detailKeys = [

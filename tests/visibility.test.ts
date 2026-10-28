@@ -35,25 +35,25 @@ const sale = (channelName?: string) => ({ isSale: true, channelName });
 
 /* ---------- ההסבר מסכים עם הכלל ---------- */
 
-test("ליד עם כניסה שלך - ברשימה", () => {
+test("ליד שלך - ברשימה", () => {
   const v = explainVisibility({ origin: "leadmanager", entries: [mine] });
   assert.equal(v.inMyList, true);
 });
 
-test("ליד עם כניסה שלך וגם של אלעד - ברשימה", () => {
+test("ליד שהועבר לאלעד - לא ברשימה", () => {
+  const v = explainVisibility({
+    origin: "sale",
+    entries: [mine, sale("לידים אלעד")],
+  });
+  assert.equal(v.inMyList, false, "ליד שהועבר לאלעד חזר להופיע אצלך");
+});
+
+test("כניסת מכירה בהיסטוריה לא מוציאה ליד שהבעלות שלו שלך", () => {
   const v = explainVisibility({
     origin: "leadmanager",
     entries: [sale("לידים אלעד"), mine],
   });
-  assert.equal(v.inMyList, true);
-});
-
-test("ליד שכל הכניסות שלו מכירה - לא ברשימה", () => {
-  const v = explainVisibility({
-    origin: "leadmanager",
-    entries: [sale("לידים אלעד")],
-  });
-  assert.equal(v.inMyList, false);
+  assert.equal(v.inMyList, true, "חזר הבאג שבלע לידים לנצח");
 });
 
 test("ליד בלי כניסות - ברשימה, כדי שלידים ותיקים לא ייעלמו", () => {
@@ -70,7 +70,7 @@ test("וואטסאפ בלבד - לא ליד", () => {
 
 test("ההסבר נוקב בשם הערוץ שלקח את הליד", () => {
   const v = explainVisibility({
-    origin: "leadmanager",
+    origin: "sale",
     entries: [sale("לידים אלעד")],
   });
   assert.ok(
@@ -79,17 +79,25 @@ test("ההסבר נוקב בשם הערוץ שלקח את הליד", () => {
   );
 });
 
-test("בלי שם ערוץ - נופל לשם הקמפיין", () => {
+test("ההסבר מזכיר שהגעה חדשה תחזיר אותו", () => {
+  const v = explainVisibility({
+    origin: "sale",
+    entries: [sale("לידים אלעד")],
+  });
+  assert.ok(v.reason.includes("תחזיר"), `חסר מה יקרה הלאה: ${v.reason}`);
+});
+
+test("ליד שלך עם היסטוריית מכירה - ההסבר אומר ששניהם נכונים", () => {
   const v = explainVisibility({
     origin: "leadmanager",
-    entries: [{ isSale: true, campaign: "קמפיין ממירים" }],
+    entries: [sale("לידים אלעד"), mine],
   });
-  assert.ok(v.reason.includes("קמפיין ממירים"));
+  assert.ok(v.reason.includes("נספרות"), `חסר ההסבר על ההיסטוריה: ${v.reason}`);
 });
 
 test("שני ערוצים - שניהם מוזכרים, בלי כפילות", () => {
   const v = explainVisibility({
-    origin: "leadmanager",
+    origin: "sale",
     entries: [sale("אלעד א"), sale("אלעד ב"), sale("אלעד א")],
   });
   assert.ok(v.reason.includes("אלעד א"));
@@ -97,31 +105,27 @@ test("שני ערוצים - שניהם מוזכרים, בלי כפילות", () 
   assert.equal(v.reason.split("אלעד א").length - 1, 1, "השם הופיע פעמיים");
 });
 
-test("ההסבר אומר מה לעשות ולא רק מה קרה", () => {
-  const v = explainVisibility({
-    origin: "leadmanager",
-    entries: [sale("לידים אלעד")],
-  });
-  assert.ok(v.reason.includes("ערוצים"), "חסרה ההנחיה לאן ללכת");
-});
-
 /* ---------- ההסבר לא יכול להתפצל מהכלל ---------- */
 
-test("הכלל ברשימה הוא 'יש כניסה שלך או אין כניסות'", () => {
+test("הכלל מסנן לפי הבעלות הנוכחית ולא לפי היסטוריה", () => {
   const rule = JSON.stringify(MY_LEADS_WHERE);
-  assert.ok(rule.includes('"isSale":false'), "הכלל השתנה - ההסבר חייב להשתנות איתו");
-  assert.ok(rule.includes('"none":{}'), "נעלם הענף של לידים ותיקים");
+  assert.ok(rule.includes("whatsapp"), "נעלם התנאי של וואטסאפ");
+  assert.ok(rule.includes('"sale"'), "ליד שהועבר לאלעד יחזור לרשימה שלך");
   assert.ok(
-    rule.includes('"origin":{"not":"whatsapp"}'),
-    "נעלם התנאי של וואטסאפ"
+    !rule.includes("entries"),
+    "הסינון חזר לשאול על היסטוריית הכניסות"
   );
 });
 
-test("הכלל לא חזר לגרסה שבלעה לידים", () => {
+test("שתי הגרסאות שנכשלו לא יכולות לחזור", () => {
   const rule = JSON.stringify(MY_LEADS_WHERE);
   assert.ok(
     !rule.includes('"none":{"isSale":true}'),
     "חזר הכלל שהעלים ליד לנצח אחרי כניסת מכירה אחת"
+  );
+  assert.ok(
+    !rule.includes('"some":{"isSale":false}'),
+    "חזר הכלל שהחזיר לרשימה את מי שהועבר לאלעד"
   );
 });
 

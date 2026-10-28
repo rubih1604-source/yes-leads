@@ -28,6 +28,12 @@ export default async function MorePage() {
           desc: "רק מי שקיבל דיוור וענה - בלי מי שביקש להסיר",
         },
         {
+          href: "/transfers",
+          glyph: "⇄",
+          label: "העברות לקונים",
+          desc: "כמה לידים העברת, למי, ובכמה — לפי תקופה",
+        },
+        {
           href: "/blacklist",
           glyph: "⊘",
           label: "רשימה שחורה",

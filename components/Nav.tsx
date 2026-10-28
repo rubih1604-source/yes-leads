@@ -40,6 +40,7 @@ export default function Nav({
         "/more",
         "/blacklist",
         "/broadcast-replies",
+        "/transfers",
         "/alerts",
         "/jobs",
         "/bot-log",
