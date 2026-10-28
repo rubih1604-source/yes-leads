@@ -67,6 +67,27 @@ export default function LeadCardActions({
   const pausedActive =
     botPausedUntil !== null && new Date(botPausedUntil) > new Date();
 
+  const [blacklistAsk, setBlacklistAsk] = useState(false);
+  const [blacklistBusy, setBlacklistBusy] = useState(false);
+
+  /**
+   * הוספה ידנית לרשימה השחורה.
+   *
+   * עוברת דרך אותו נתיב של ההסרה האוטומטית, כדי שלא
+   * ייווצרו שתי דרכים להיכנס לרשימה שמתנהגות שונה.
+   */
+  async function blacklistNow() {
+    setBlacklistBusy(true);
+
+    try {
+      await fetch(`/api/blacklist/${leadId}`, { method: "POST" });
+      router.refresh();
+    } finally {
+      setBlacklistBusy(false);
+      setBlacklistAsk(false);
+    }
+  }
+
   async function undo() {
     setUndoing(true);
     await fetch(`/api/leads/${leadId}/undo`, { method: "POST" });
@@ -112,6 +133,41 @@ export default function LeadCardActions({
           פתח משימה עם תזכורת
         </button>
       </div>
+
+      {/*
+        הסרה ידנית מדיוור.
+
+        הבוט מזהה בקשות הסרה לבד, אבל לא כל בקשה מגיעה
+        כהודעה: לקוח אומר את זה בטלפון, או שאתה פשוט יודע
+        שאין טעם. בלי הכפתור הזה הדרך היחידה הייתה לקוות
+        שהוא יכתוב את זה בוואטסאפ.
+      */}
+      {!doNotContact && (
+        <div className="actions" style={{ marginTop: 10 }}>
+          {blacklistAsk ? (
+            <>
+              <span style={{ fontSize: 13, color: "#b54708", alignSelf: "center" }}>
+                לא לשלוח לו דיוור יותר?
+              </span>
+              <button
+                className="btn"
+                disabled={blacklistBusy}
+                onClick={blacklistNow}
+                style={{ background: "#b42318", color: "#fff", border: "none" }}
+              >
+                {blacklistBusy ? "מוסיף..." : "כן, הסר מדיוור"}
+              </button>
+              <button className="btn" onClick={() => setBlacklistAsk(false)}>
+                ביטול
+              </button>
+            </>
+          ) : (
+            <button className="btn" onClick={() => setBlacklistAsk(true)}>
+              הסר מדיוור
+            </button>
+          )}
+        </div>
+      )}
 
       {(botMuted || pausedActive) && (
         <div

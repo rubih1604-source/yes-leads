@@ -19,6 +19,12 @@ model Lead {
   origin         String   @default("leadmanager")
   intakeAt       DateTime @default(now())
   doNotContact   Boolean  @default(false)
+  /// מתי נכנס לרשימה השחורה, למה, ומה בדיוק כתב.
+  /// בלי זה אי אפשר לדעת למה מישהו ברשימה, ואי אפשר
+  /// להגן על ההחלטה אם הוא יטען שלא ביקש.
+  doNotContactAt     DateTime?
+  doNotContactReason String?
+  doNotContactText   String?
   needsMapping   Boolean  @default(false)
   lastInboundAt  DateTime?
   chatId         String?
@@ -40,6 +46,7 @@ model Lead {
   deliveries     LeadDelivery[]
 
   @@index([status])
+  @@index([doNotContact])
   @@index([origin, intakeAt])
   @@index([subStatus])
   @@index([intakeAt])
@@ -86,6 +93,11 @@ model Message {
   leadId          String
   lead            Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
   direction       String   @default("out")
+  /// נשלחה כדיוור - רשימה שטענת, מבצע, או דיוור מרשימת
+  /// הלידים. סימון מפורש ולא ניחוש מתוך הטקסט: קודם ההיכר
+  /// היה "האם הטקסט מתחיל ב'דיוור:'", ולכן כל דיוור שיצא
+  /// כתבנית רגילה לא נספר כדיוור בכלל.
+  broadcast       Boolean  @default(false)
   templateName    String?
   bodyText        String?
   texterMessageId String?
@@ -505,6 +517,9 @@ model BroadcastDelivery {
   contactId String
   phone     String
   ok        Boolean  @default(false)
+  /// נמען שדולג כי הוא ברשימה השחורה. נרשם ולא נעלם,
+  /// כדי שתראה בדוח שהוא דולג ולא תחשוב שהוא קיבל.
+  skipped   Boolean  @default(false)
   error     String?
   at        DateTime @default(now())
 
@@ -521,6 +536,8 @@ model BroadcastSend {
   total        Int      @default(0)
   sent         Int      @default(0)
   failed       Int      @default(0)
+  /// כמה דולגו כי הם ברשימה השחורה
+  skipped      Int      @default(0)
   state        String   @default("running")
   createdAt    DateTime @default(now())
   finishedAt   DateTime?

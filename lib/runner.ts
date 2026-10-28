@@ -150,6 +150,13 @@ async function runOne(jobId: string, summary: RunSummary) {
         data: {
           leadId: lead.id,
           direction: "out",
+          /**
+           * דיוור מרשימת הלידים ודיוור מבצע מגיעים לכאן
+           * כמשימה מתוזמנת רגילה, והטקסט שלהם הוא התבנית
+           * עצמה. בלי הסימון הזה הם לא נספרו כדיוור, ומי
+           * שענה להם לא הופיע במסך ההתעניינות.
+           */
+          broadcast: (job.note ?? "").startsWith("דיוור"),
           templateName: job.templateName,
           bodyText: data.text ?? template.bodyText ?? null,
           texterMessageId: data.messageId ?? null,

@@ -22,6 +22,18 @@ export default async function MorePage() {
           desc: "טען קובץ ושלח לו תבנית - בלי שייכנס ללידים",
         },
         {
+          href: "/broadcast-replies",
+          glyph: "◉",
+          label: "התעניינות לאחר דיוור",
+          desc: "רק מי שקיבל דיוור וענה - בלי מי שביקש להסיר",
+        },
+        {
+          href: "/blacklist",
+          glyph: "⊘",
+          label: "רשימה שחורה",
+          desc: "מי ביקש לא לקבל הודעות - ולא יקבל דיוור",
+        },
+        {
           href: "/import-leads",
           glyph: "⊕",
           label: "ייבוא לידים",
@@ -32,6 +44,12 @@ export default async function MorePage() {
           glyph: "⇪",
           label: "טעינת דוח מכירות",
           desc: "העלה CSV והמערכת תעדכן סטטוסים לפי הצלבה",
+        },
+        {
+          href: "/blacklist",
+          glyph: "⊘",
+          label: "רשימה שחורה",
+          desc: "מי ביקש לא לקבל הודעות - ולא יקבל דיוור",
         },
         {
           href: "/offers",

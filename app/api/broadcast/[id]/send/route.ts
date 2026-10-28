@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isLoggedIn } from "@/lib/auth";
 import { sendTemplate } from "@/lib/texter";
+import { blacklistedDigits, splitByBlacklist } from "@/lib/blacklist";
 
 export const dynamic = "force-dynamic";
 
@@ -85,7 +86,46 @@ export async function POST(
 
   const sentIds = new Set(already.map((d) => d.contactId));
   const remaining = list.contacts.filter((c) => !sentIds.has(c.id));
-  const batch = remaining.slice(0, BATCH);
+
+  /**
+   * ============================================================
+   *  הרשימה השחורה חוסמת כאן
+   * ============================================================
+   *
+   *  **זה היה החור.** מי שכתב "הסר" סומן על הליד, אבל
+   *  הדיוור רץ על טבלת אנשי הקשר - שאף פעם לא נבדקה מולה.
+   *  התוצאה: אדם שביקש במפורש להפסיק קיבל את הדיוור הבא
+   *  מאותה רשימה.
+   *
+   *  החסימה כאן, לפני השליחה, ולא בבחירת הרשימה: רשימה
+   *  נבחרת פעם אחת ומישהו עלול לבקש הסרה אחריה. כאן זה
+   *  נבדק מחדש בכל מנה.
+   */
+  const denied = await blacklistedDigits();
+  const { allowed, blocked } = splitByBlacklist(remaining, denied);
+
+  /**
+   * הדילוג נרשם ולא נעלם.
+   *
+   * בלי הרישום הנמען היה נשאר ב"נותרו" לנצח, הדיוור לא
+   * היה מגיע לסופו, ולא היית יודע שהוא דולג בכלל.
+   */
+  for (const contact of blocked) {
+    await db.broadcastDelivery
+      .create({
+        data: {
+          sendId: send.id,
+          contactId: contact.id,
+          phone: contact.phone,
+          ok: false,
+          skipped: true,
+          error: "ברשימה שחורה - ביקש לא לקבל הודעות",
+        },
+      })
+      .catch(() => null);
+  }
+
+  const batch = allowed.slice(0, BATCH);
 
   let sent = 0;
   let failed = 0;
@@ -134,6 +174,7 @@ export async function POST(
           data: {
             leadId: lead.id,
             direction: "out",
+            broadcast: true,
             templateName: send.templateName,
             bodyText: `דיוור: ${list.name}`,
             status: result.ok ? "sent" : "failed",
@@ -154,13 +195,20 @@ export async function POST(
     await new Promise((r) => setTimeout(r, 400));
   }
 
-  const finished = remaining.length - batch.length <= 0;
+  /**
+   * הסיום נמדד מול מי שמותר לשלוח אליו.
+   *
+   * מי שדולג כבר נרשם ולא יחזור במנה הבאה, ולכן ספירה
+   * מול remaining הייתה משאירה את הדיוור "לא גמור" לנצח.
+   */
+  const finished = allowed.length - batch.length <= 0;
 
   const updated = await db.broadcastSend.update({
     where: { id: send.id },
     data: {
       sent: { increment: sent },
       failed: { increment: failed },
+      skipped: { increment: blocked.length },
       state: finished ? "done" : "running",
       finishedAt: finished ? new Date() : null,
     },
@@ -173,7 +221,10 @@ export async function POST(
     failed: updated.failed,
     total: updated.total,
     /** כמה עוד לא קיבלו - מה שמאפשר למסך להציע המשך */
-    remaining: Math.max(0, remaining.length - batch.length),
+    remaining: Math.max(0, allowed.length - batch.length),
+    /** כמה דולגו במנה הזו כי ביקשו לא לקבל הודעות */
+    skipped: blocked.length,
+    skippedTotal: updated.skipped,
     finished,
     lastError,
   });

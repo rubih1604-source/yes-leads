@@ -17,6 +17,15 @@ import {
   nextWorkingPhrase,
 } from "./working-hours";
 import { displayPhone } from "./phone";
+import { detectUnsubscribe, intentBlacklists } from "./unsubscribe";
+import { addToBlacklist } from "./blacklist";
+import {
+  readSupplierAnswer,
+  replyForAnswer,
+  SUPPLIER_QUESTION,
+  ASKED_EVENT,
+} from "./supplier-check";
+import { replyAfterBroadcast } from "./broadcast-replies";
 import { searchChatByPhone, extractChatId, sendSessionMessage } from "./texter";
 import { matchKnowledge } from "./answer";
 import { emailLeadAlert } from "./email";
@@ -118,7 +127,31 @@ export async function handleInboundMessage(params: {
     };
   }
 
-  // לפני הכל: האם הבוט בכלל אמור לדבר עכשיו?
+  /**
+   * ============================================================
+   *  בקשת הסרה נרשמת לפני כל שער
+   * ============================================================
+   *
+   *  **זה חייב לרוץ לפני הבדיקה אם הבוט מדבר.**
+   *
+   *  השער מחליט אם הבוט *עונה* - לא אם אנחנו *מקשיבים*.
+   *  בוט כבוי, שעה מחוץ לחלון, או סטטוס שלא נבחר היו
+   *  גורמים ל"הסר" לא להירשם בכלל, והאדם היה מקבל את
+   *  הדיוור הבא. בקשה להפסיק לקבל הודעות היא לא תשובה
+   *  אוטומטית - היא חובה, והיא לא תלויה בהגדרות הבוט.
+   */
+  const certain = detectUnsubscribe(params.text);
+
+  if (certain.blacklist) {
+    await addToBlacklist({
+      leadId: lead.id,
+      reason: certain.reason ?? "ביקש להסיר",
+      text: params.text,
+    });
+    actions.push("blacklist");
+  }
+
+  // האם הבוט בכלל אמור לדבר עכשיו?
   const gate = await shouldBotReply(lead.id);
 
   if (!gate.allowed) {
@@ -158,6 +191,147 @@ export async function handleInboundMessage(params: {
     where: { leadId: lead.id, direction: "out" },
     orderBy: { createdAt: "desc" },
   });
+
+  /**
+   * ============================================================
+   *  שאלת הסינון שאחרי הדיוור
+   * ============================================================
+   *
+   *  מי שענה לדיוור מקבל שאלה אחת לפני שאתה מתקשר: האם
+   *  הוא כבר לקוח של yes או סטינג. לקוח קיים שמגיב למבצע
+   *  הוא שיחה מבוזבזת - אין מה למכור לו, והוא צריך שירות.
+   *
+   *  מי שביקש להסיר כבר יצא קודם, ולכן לא מגיע לכאן.
+   */
+  const askedEvent = certain.blacklist
+    ? null
+    : await db.leadEvent
+        .findFirst({
+          where: { leadId: lead.id, type: ASKED_EVENT },
+          orderBy: { createdAt: "desc" },
+        })
+        .catch(() => null);
+
+  /**
+   * מי שביקש להסיר לא נשאל ולא נענה.
+   *
+   * בלי התנאי הזה אדם שכתב "הסר" היה מקבל בחזרה "האם אתם
+   * לקוחות של yes?" - בדיוק ההפך ממה שביקש, ושנייה לפני
+   * שהוא נכנס לרשימה השחורה.
+   */
+  if (!certain.blacklist && askedEvent) {
+    /**
+     * השאלה כבר נשאלה - ההודעה הזו היא כנראה התשובה.
+     *
+     * תשובה שאי אפשר להכריע **לא** עושה כלום ונופלת
+     * לסיווג הרגיל: ניחוש כאן מסמן לקוח אמיתי כלקוח קיים
+     * ומוציא אותו מהרשימה.
+     */
+    const answer = readSupplierAnswer(params.text);
+    const reply = replyForAnswer(answer);
+
+    if (answer && reply) {
+      await replyToLead({
+        leadId: lead.id,
+        phone: lead.phone,
+        chatId: lead.chatId,
+        text: reply,
+      });
+
+      await db.leadEvent
+        .create({
+          data: {
+            leadId: lead.id,
+            type: "supplier_check_answered",
+            actor: "bot",
+            payload: { answer, text: params.text.slice(0, 200) },
+          },
+        })
+        .catch(() => null);
+
+      if (answer === "yes") {
+        await applyStatusChange({
+          leadId: lead.id,
+          toStatus: "לקוח קיים",
+          actor: "bot",
+          note: "ענה שהוא כבר לקוח של yes/sting",
+        });
+        actions.push("status:לקוח קיים");
+      }
+
+      actions.push(`supplier:${answer}`);
+
+      return {
+        classification: {
+          intent: answer === "yes" ? "existing_customer" : "interested",
+          confidence: 0.95,
+          requestedCallbackAt: null,
+          callbackParseConfident: false,
+          requestedDate: null,
+          requestedDayPart: null,
+          suggestedReply: null,
+          reasoning: "תשובה לשאלת הסינון שאחרי הדיוור",
+        },
+        actions,
+      };
+    }
+  } else if (!certain.blacklist) {
+    /**
+     * עוד לא נשאל. אם ההודעה הזו היא תגובה לדיוור - זה
+     * הרגע לשאול, לפני כל טיפול אחר.
+     */
+    const history = await db.message
+      .findMany({
+        where: { leadId: lead.id },
+        orderBy: { createdAt: "asc" },
+        select: {
+          direction: true,
+          templateName: true,
+          bodyText: true,
+          createdAt: true,
+        },
+        take: 200,
+      })
+      .catch(() => []);
+
+    if (replyAfterBroadcast(history, new Date())) {
+      const sent = await replyToLead({
+        leadId: lead.id,
+        phone: lead.phone,
+        chatId: lead.chatId,
+        text: SUPPLIER_QUESTION,
+      });
+
+      if (sent) {
+        await db.leadEvent
+          .create({
+            data: {
+              leadId: lead.id,
+              type: ASKED_EVENT,
+              actor: "bot",
+              payload: { text: params.text.slice(0, 200) },
+            },
+          })
+          .catch(() => null);
+
+        actions.push("supplier:asked");
+
+        return {
+          classification: {
+            intent: "other",
+            confidence: 0,
+            requestedCallbackAt: null,
+            callbackParseConfident: false,
+            requestedDate: null,
+            requestedDayPart: null,
+            suggestedReply: null,
+            reasoning: "נשאלה שאלת הסינון שאחרי הדיוור",
+          },
+          actions,
+        };
+      }
+    }
+  }
 
   const settings = await getSettings();
 
@@ -214,38 +388,45 @@ export async function handleInboundMessage(params: {
   });
 
   // ---------- בקשת הסרה או חוסר עניין ברור ----------
-  if (
-    (classification.intent === "remove" ||
-      classification.intent === "not_interested") &&
-    classification.confidence >= 0.85
-  ) {
+  /**
+   * שתי דלתות, רשימה אחת.
+   *
+   * הזיהוי הוודאי גובר: אם הוא תפס, לא משנה מה הסיווג
+   * החכם החזיר. אחרת הסיווג מכריע, וזה מה שתופס ניסוחים
+   * שלא חשבנו עליהם.
+   */
+  const unsubscribe = certain.blacklist
+    ? certain
+    : intentBlacklists(classification.intent, classification.confidence);
+
+  if (unsubscribe.blacklist) {
     const previousStatus = lead.status;
 
-    await db.lead.update({
-      where: { id: lead.id },
-      data: { doNotContact: classification.intent === "remove" },
+    await addToBlacklist({
+      leadId: lead.id,
+      reason: unsubscribe.reason ?? "ביקש להסיר",
+      text: params.text,
     });
 
     await applyStatusChange({
       leadId: lead.id,
       toStatus: "לא מעוניין",
       actor: "bot",
-      note: `הבוט זיהה: ${classification.intent}`,
+      note: `${unsubscribe.reason} · ${
+        certain.blacklist ? "ניסוח מפורש" : `סיווג: ${classification.intent}`
+      }`,
     });
 
     await db.alert.create({
       data: {
         leadId: lead.id,
-        title:
-          classification.intent === "remove"
-            ? "לקוח ביקש להסיר"
-            : "לקוח אמר שלא מעוניין",
-        body: `${displayName} · הועבר ל"לא מעוניין" (היה "${previousStatus}") · הבוט. אפשר לבטל מכרטיס הליד.`,
+        title: `${unsubscribe.reason} - ברשימה שחורה`,
+        body: `${displayName} · הועבר ל"לא מעוניין" (היה "${previousStatus}") · לא יקבל דיוור. אפשר להוציא מהרשימה בכרטיס הליד.`,
       },
     });
 
     actions.push("status:לא מעוניין");
-    if (classification.intent === "remove") actions.push("do-not-contact");
+    actions.push("blacklist");
     return { classification, actions };
   }
 

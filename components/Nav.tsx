@@ -38,6 +38,8 @@ export default function Nav({
     if (href === "/more") {
       return [
         "/more",
+        "/blacklist",
+        "/broadcast-replies",
         "/alerts",
         "/jobs",
         "/bot-log",
