@@ -14,6 +14,15 @@ export async function PATCH(request: Request) {
   const data: Record<string, unknown> = {};
 
   if (typeof body.botEnabled === "boolean") data.botEnabled = body.botEnabled;
+
+  /**
+   * רק שני ערכים מותרים. ערך לא מוכר היה נשמר ומתפרש
+   * כ-"all" בקריאה, כלומר הבוט היה חוזר לענות על הכל
+   * בלי שאף אחד יבחר בזה.
+   */
+  if (body.botMode === "all" || body.botMode === "broadcast") {
+    data.botMode = body.botMode;
+  }
   if (typeof body.onlyAfterTemplate === "boolean")
     data.onlyAfterTemplate = body.onlyAfterTemplate;
 

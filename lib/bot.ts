@@ -336,6 +336,52 @@ export async function handleInboundMessage(params: {
   const settings = await getSettings();
 
   /**
+   * ============================================================
+   *  מצב "רק דיוור"
+   * ============================================================
+   *
+   *  **הבוט לא אמור לענות על כל הודעה.** התפקיד שלו כאן
+   *  הוא למקד דיוור: לשאול את שאלת הסינון, לקרוא את
+   *  התשובה, ולעצור שם.
+   *
+   *  כל מה שמעל השורה הזו כבר רץ - בקשת הסרה נרשמת, ושאלת
+   *  הסינון נשאלת ונענית. מי שהגיע עד לכאן במצב הזה הוא
+   *  מישהו שכתב לך משהו אחר, והוא **שלך**: לא מסווגים
+   *  אותו, לא עונים לו, ולא פותחים לו אוטומציה.
+   *
+   *  ההודעה כבר נשמרה בכרטיס, ולכן שום דבר לא הולך לאיבוד -
+   *  אתה פשוט רואה אותה בשיחות ומחליט בעצמך.
+   */
+  if (settings.botMode === "broadcast") {
+    await db.leadEvent
+      .create({
+        data: {
+          leadId: lead.id,
+          type: "bot_skipped",
+          actor: "bot",
+          payload: { reason: "מצב רק דיוור" },
+        },
+      })
+      .catch(() => null);
+
+    actions.push("skipped:מצב רק דיוור");
+
+    return {
+      classification: {
+        intent: "unknown",
+        confidence: 0,
+        requestedCallbackAt: null,
+        callbackParseConfident: false,
+        requestedDate: null,
+        requestedDayPart: null,
+        suggestedReply: null,
+        reasoning: "הבוט במצב 'רק דיוור' ולא מטפל בהודעות אחרות",
+      },
+      actions,
+    };
+  }
+
+  /**
    * לקוח בסטטוס "נסגר" - ההודעה שלו היא כמעט תמיד שירות.
    * אבל רק אחרי 24 שעות מרגע הסגירה. ביממה הראשונה
    * הוא עדיין באמצע התהליך והשיחה עשויה להיות מכירתית.

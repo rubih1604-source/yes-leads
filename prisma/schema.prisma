@@ -188,6 +188,11 @@ model KnowledgeItem {
 model Settings {
   id                   String   @id @default("main")
   botEnabled           Boolean  @default(true)
+  /// "all" - הבוט מטפל בכל הודעה נכנסת, כמו עד היום.
+  /// "broadcast" - הבוט מטפל **רק** בתגובות לדיוור: שואל
+  /// את שאלת הסינון, קורא את התשובה, ומפסיק שם. כל הודעה
+  /// אחרת נשארת לך בלי שהוא נוגע בה.
+  botMode              String   @default("all")
   botOnlyOutsideHours  Boolean  @default(false)
   botPauseHours        Int      @default(12)
   replyCooldownMinutes Int      @default(10)

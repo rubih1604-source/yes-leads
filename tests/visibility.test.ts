@@ -242,4 +242,58 @@ test("הכפתור לא מוצג למי שכבר ברשימה", () => {
   assert.ok(card.includes("{!doNotContact && ("));
 });
 
+
+/* ---------- מצב "רק דיוור" ---------- */
+
+const botFile = io.readFileSync("lib/bot.ts", "utf8");
+const gateFile = io.readFileSync("lib/bot-gate.ts", "utf8");
+const settingsApi = io.readFileSync("app/api/settings/route.ts", "utf8");
+
+test("יש מצב שבו הבוט עוצר לפני הסיווג", () => {
+  assert.ok(botFile.includes('settings.botMode === "broadcast"'));
+});
+
+test("העצירה היא לפני הסיווג, אחרת הוא עדיין יענה", () => {
+  const stop = botFile.indexOf('settings.botMode === "broadcast"');
+  const classify = botFile.indexOf("await classifyMessage(");
+  assert.ok(stop > -1 && classify > -1);
+  assert.ok(stop < classify, "הבוט מסווג לפני שהוא עוצר - כלומר עדיין עונה");
+});
+
+test("בקשת הסרה נרשמת לפני העצירה, בכל מצב", () => {
+  const detect = botFile.indexOf("detectUnsubscribe(params.text)");
+  const stop = botFile.indexOf('settings.botMode === "broadcast"');
+  assert.ok(detect < stop, "במצב רק-דיוור בקשות הסרה לא היו נרשמות");
+});
+
+test("שאלת הסינון נשאלת לפני העצירה", () => {
+  const ask = botFile.indexOf("SUPPLIER_QUESTION");
+  const stop = botFile.indexOf('settings.botMode === "broadcast"');
+  assert.ok(ask > -1 && ask < stop, "במצב רק-דיוור השאלה לא הייתה נשלחת");
+});
+
+test("מגבלת הסטטוסים לא חלה במצב רק-דיוור", () => {
+  assert.ok(gateFile.includes('settings.botMode !== "broadcast"'));
+  const guard = gateFile.indexOf('settings.botMode !== "broadcast"');
+  const check = gateFile.indexOf("settings.botStatuses.includes");
+  assert.ok(guard < check, "מגבלת הסטטוסים תחסום את שאלת הסינון");
+});
+
+test("שאר תנאי השער עדיין חלים", () => {
+  assert.ok(gateFile.includes("settings.botEnabled"), "אפשר לכבות את הבוט");
+  assert.ok(gateFile.includes("lead.botMuted"), "אפשר להשתיק מול לקוח");
+  assert.ok(gateFile.includes('lead.origin === "sale"'), "ליד של אלעד לא מדובר");
+});
+
+test("רק שני ערכים מתקבלים בשמירה", () => {
+  assert.ok(settingsApi.includes('body.botMode === "all"'));
+  assert.ok(settingsApi.includes('body.botMode === "broadcast"'));
+});
+
+test("יש מתג במסך ההגדרות", () => {
+  const ui = io.readFileSync("components/BotSettings.tsx", "utf8");
+  assert.ok(ui.includes("botMode"));
+  assert.ok(ui.includes("רק על תגובות לדיוור"));
+});
+
 console.log(`✓ visibility: ${passed} בדיקות עברו`);

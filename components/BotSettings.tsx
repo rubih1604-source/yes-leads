@@ -17,9 +17,11 @@ export default function BotSettings({
   pauseHours,
   cooldownMinutes,
   liveChatMinutes,
+  mode,
 }: {
   statuses: StatusDef[];
   enabled: boolean;
+  mode: string;
   fromHour: number;
   toHour: number;
   selected: string[];
@@ -94,6 +96,71 @@ export default function BotSettings({
 
       {enabled && (
         <>
+          {/* ---- מה הוא עושה ---- */}
+          <div style={{ fontSize: 13, fontWeight: 600, margin: "18px 2px 8px" }}>
+            על מה הוא עונה
+          </div>
+
+          <div style={{ display: "grid", gap: 8 }}>
+            {[
+              {
+                key: "broadcast",
+                title: "רק על תגובות לדיוור",
+                desc: "שואל את שאלת הסינון, קורא את התשובה, ועוצר שם. כל הודעה אחרת נשארת לך בלי שהוא נוגע בה.",
+              },
+              {
+                key: "all",
+                title: "על כל הודעה נכנסת",
+                desc: "מסווג כל הודעה, עונה, פותח משימות ומתזמן חזרות — רק בסטטוסים שסימנת.",
+              },
+            ].map((option) => {
+              const active = mode === option.key;
+
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => patch({ botMode: option.key })}
+                  disabled={busy || active}
+                  style={{
+                    textAlign: "right",
+                    padding: "11px 13px",
+                    borderRadius: 9,
+                    border: active ? "2px solid #1b4d8f" : "1px solid #dbe3ea",
+                    background: active ? "#f5f9ff" : "#fff",
+                    cursor: active ? "default" : "pointer",
+                  }}
+                >
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "#101828" }}>
+                    {option.title}
+                    {active ? " ✓" : ""}
+                  </div>
+                  <div style={{ fontSize: 12.5, color: "#667085", marginTop: 3, lineHeight: 1.6 }}>
+                    {option.desc}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {mode === "broadcast" && (
+            <div
+              style={{
+                marginTop: 10,
+                padding: "10px 12px",
+                borderRadius: 9,
+                background: "#f5f9ff",
+                fontSize: 12.5,
+                color: "#475467",
+                lineHeight: 1.7,
+              }}
+            >
+              במצב הזה <strong>מגבלת הסטטוסים לא חלה</strong> — כל מי שקיבל
+              דיוור וענה יקבל את שאלת הסינון, בכל סטטוס. בקשות הסרה נרשמות
+              תמיד, בכל מצב.
+            </div>
+          )}
+
           {/* ---- שעות ---- */}
           <div style={{ fontSize: 13, fontWeight: 600, margin: "18px 2px 8px" }}>
             באילו שעות הוא עונה

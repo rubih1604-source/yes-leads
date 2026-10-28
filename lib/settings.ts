@@ -8,6 +8,8 @@ import { DEFAULT_DIALER } from "./dialer";
 
 export type AppSettings = {
   botEnabled: boolean;
+  /** "all" או "broadcast" - ראה הערה בסכימה */
+  botMode: string;
   botOnlyOutsideHours: boolean;
   botPauseHours: number;
   replyCooldownMinutes: number;
@@ -48,6 +50,7 @@ export type AppSettings = {
 
 const DEFAULTS: AppSettings = {
   botEnabled: true,
+  botMode: "all",
   botOnlyOutsideHours: false,
   botPauseHours: 2,
   replyCooldownMinutes: 10,
@@ -90,6 +93,7 @@ export async function getSettings(): Promise<AppSettings> {
     });
     return {
       botEnabled: row.botEnabled,
+      botMode: row.botMode === "broadcast" ? "broadcast" : "all",
       botOnlyOutsideHours: row.botOnlyOutsideHours,
       botPauseHours: row.botPauseHours,
       replyCooldownMinutes: row.replyCooldownMinutes,
