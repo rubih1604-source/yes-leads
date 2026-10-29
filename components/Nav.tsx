@@ -41,6 +41,7 @@ export default function Nav({
         "/blacklist",
         "/broadcast-replies",
         "/transfers",
+        "/diagnostics",
         "/alerts",
         "/jobs",
         "/bot-log",

@@ -350,4 +350,37 @@ test("לסימון יש תצוגה מקדימה שלא משנה כלום", () =>
   assert.ok(!get.includes("updateMany"), "התצוגה המקדימה משנה נתונים");
 });
 
+
+/* ---------- המסכים באמת קיימים ---------- */
+
+test("לכל נתיב אבחון יש מסך שמגיעים אליו", () => {
+  assert.ok(io.existsSync("app/diagnostics/page.tsx"), "אין מסך אבחון");
+});
+
+test("האבחון מופיע בתפריט", () => {
+  const more = io.readFileSync("app/more/page.tsx", "utf8");
+  assert.ok(more.includes('href: "/diagnostics"'), "אי אפשר להגיע לאבחון");
+});
+
+test("המסך קורא לשני הנתיבים", () => {
+  const screen = io.readFileSync("components/DiagnosticsScreen.tsx", "utf8");
+  assert.ok(screen.includes("/api/diagnostics/trace"));
+  assert.ok(screen.includes("/api/diagnostics/bot-check"));
+});
+
+test("כל מסך שהוספנו מופיע בתפריט - אחרת הוא לא קיים בפועל", () => {
+  const more = io.readFileSync("app/more/page.tsx", "utf8");
+
+  for (const route of ["/blacklist", "/broadcast-replies", "/transfers", "/diagnostics"]) {
+    assert.ok(
+      more.includes(`href: "${route}"`),
+      `${route} נבנה אבל אי אפשר להגיע אליו מהתפריט`
+    );
+    assert.ok(
+      io.existsSync(`app${route}/page.tsx`),
+      `${route} בתפריט אבל אין לו מסך`
+    );
+  }
+});
+
 console.log(`✓ visibility: ${passed} בדיקות עברו`);

@@ -28,6 +28,12 @@ export default async function MorePage() {
           desc: "רק מי שקיבל דיוור וענה - בלי מי שביקש להסיר",
         },
         {
+          href: "/diagnostics",
+          glyph: "⌕",
+          label: "אבחון",
+          desc: "למה ליד לא ברשימה · למה הבוט לא שאל",
+        },
+        {
           href: "/transfers",
           glyph: "⇄",
           label: "העברות לקונים",
