@@ -25,6 +25,7 @@ import {
   replyForAnswer,
   SUPPLIER_QUESTION,
   ASKED_EVENT,
+  type SupplierAnswer,
 } from "./supplier-check";
 
 import { searchChatByPhone, extractChatId, sendSessionMessage } from "./texter";
@@ -104,6 +105,84 @@ export type BotResult = {
   classification: Classification;
   actions: string[];
 };
+
+/**
+ * ============================================================
+ *  טיפול בתשובה לשאלת הסינון
+ * ============================================================
+ *
+ *  **מימוש אחד לשני המסלולים.**
+ *
+ *  יש שתי דרכים להגיע לכאן: הלקוח ענה לשאלה שנשאלה, או
+ *  שהוא אמר את זה מעצמו בתגובה הראשונה ("יש לי כבר יס").
+ *  שתיהן אותו דבר מבחינת מה שצריך לקרות, ולכן יש כאן
+ *  פונקציה אחת - ולא שני עותקים שיתפצלו.
+ */
+async function settleSupplier(params: {
+  leadId: string;
+  phone: string;
+  chatId: string | null;
+  answer: Exclude<SupplierAnswer, null>;
+  text: string;
+  volunteered: boolean;
+  actions: string[];
+}): Promise<BotResult | null> {
+  const reply = replyForAnswer(params.answer);
+  if (!reply) return null;
+
+  await replyToLead({
+    leadId: params.leadId,
+    phone: params.phone,
+    chatId: params.chatId,
+    text: reply,
+  });
+
+  await db.leadEvent
+    .create({
+      data: {
+        leadId: params.leadId,
+        type: "supplier_check_answered",
+        actor: "bot",
+        payload: {
+          answer: params.answer,
+          text: params.text.slice(0, 200),
+          /** אמר את זה מעצמו, בלי שנשאל */
+          volunteered: params.volunteered,
+        },
+      },
+    })
+    .catch(() => null);
+
+  if (params.answer === "yes") {
+    await applyStatusChange({
+      leadId: params.leadId,
+      toStatus: "לקוח קיים",
+      actor: "bot",
+      note: params.volunteered
+        ? "אמר מעצמו שהוא כבר לקוח של yes/sting"
+        : "ענה שהוא כבר לקוח של yes/sting",
+    });
+    params.actions.push("status:לקוח קיים");
+  }
+
+  params.actions.push(`supplier:${params.answer}`);
+
+  return {
+    classification: {
+      intent: params.answer === "yes" ? "existing_customer" : "interested",
+      confidence: 0.95,
+      requestedCallbackAt: null,
+      callbackParseConfident: false,
+      requestedDate: null,
+      requestedDayPart: null,
+      suggestedReply: null,
+      reasoning: params.volunteered
+        ? "ענה מעצמו על שאלת הסינון, ולכן לא נשאל"
+        : "תשובה לשאלת הסינון שאחרי הדיוור",
+    },
+    actions: params.actions,
+  };
+}
 
 export async function handleInboundMessage(params: {
   leadId: string;
@@ -229,52 +308,19 @@ export async function handleInboundMessage(params: {
      * ומוציא אותו מהרשימה.
      */
     const answer = readSupplierAnswer(params.text);
-    const reply = replyForAnswer(answer);
 
-    if (answer && reply) {
-      await replyToLead({
+    if (answer) {
+      const handled = await settleSupplier({
         leadId: lead.id,
         phone: lead.phone,
         chatId: lead.chatId,
-        text: reply,
+        answer,
+        text: params.text,
+        volunteered: false,
+        actions,
       });
 
-      await db.leadEvent
-        .create({
-          data: {
-            leadId: lead.id,
-            type: "supplier_check_answered",
-            actor: "bot",
-            payload: { answer, text: params.text.slice(0, 200) },
-          },
-        })
-        .catch(() => null);
-
-      if (answer === "yes") {
-        await applyStatusChange({
-          leadId: lead.id,
-          toStatus: "לקוח קיים",
-          actor: "bot",
-          note: "ענה שהוא כבר לקוח של yes/sting",
-        });
-        actions.push("status:לקוח קיים");
-      }
-
-      actions.push(`supplier:${answer}`);
-
-      return {
-        classification: {
-          intent: answer === "yes" ? "existing_customer" : "interested",
-          confidence: 0.95,
-          requestedCallbackAt: null,
-          callbackParseConfident: false,
-          requestedDate: null,
-          requestedDayPart: null,
-          suggestedReply: null,
-          reasoning: "תשובה לשאלת הסינון שאחרי הדיוור",
-        },
-        actions,
-      };
+      if (handled) return handled;
     }
   } else if (!certain.blacklist) {
     /**
@@ -287,6 +333,8 @@ export async function handleInboundMessage(params: {
         orderBy: { createdAt: "asc" },
         select: {
           direction: true,
+          broadcast: true,
+          broadcastKind: true,
           templateName: true,
           bodyText: true,
           createdAt: true,
@@ -309,6 +357,37 @@ export async function handleInboundMessage(params: {
       blacklisted: lead.doNotContact,
       now: new Date(),
     });
+
+    /**
+     * ============================================================
+     *  היא כבר ענתה - לא שואלים אותה שוב
+     * ============================================================
+     *
+     *  "יש לי כבר יס" היא בדיוק התשובה שהשאלה מבררת.
+     *  לשאול אותה אחרי זה "האם את לקוחה של yes?" אומר לה
+     *  שלא קראנו מה שכתבה.
+     *
+     *  לכן אם התגובה הראשונה לדיוור כבר עונה על השאלה -
+     *  מדלגים עליה ועוברים ישר לתשובה ולסטטוס. אותו טיפול
+     *  בדיוק כמו תשובה לשאלה שנשאלה, ולא מסלול שני.
+     */
+    const volunteered = decision.askSupplier
+      ? readSupplierAnswer(params.text)
+      : null;
+
+    if (volunteered) {
+      const handled = await settleSupplier({
+        leadId: lead.id,
+        phone: lead.phone,
+        chatId: lead.chatId,
+        answer: volunteered,
+        text: params.text,
+        volunteered: true,
+        actions,
+      });
+
+      if (handled) return handled;
+    }
 
     if (decision.askSupplier) {
       const sent = await replyToLead({

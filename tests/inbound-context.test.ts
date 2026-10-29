@@ -242,4 +242,49 @@ test("האבחון מריץ את אותה הכרעה", () => {
   assert.ok(check.includes("decideInbound"));
 });
 
+
+/* ---------- ענה מעצמו, בלי שנשאל ---------- */
+
+test("תגובה שכבר עונה על השאלה לא מקבלת את השאלה", () => {
+  assert.ok(
+    bot.includes("volunteered"),
+    '"יש לי כבר יס" עדיין מקבל בחזרה "האם אתם לקוחות של yes?"'
+  );
+
+  const check = bot.indexOf("readSupplierAnswer(params.text)\n      : null");
+  const ask = bot.indexOf("text: SUPPLIER_QUESTION");
+  assert.ok(check > -1 && ask > -1);
+  assert.ok(check < ask, "השאלה נשלחת לפני שבודקים אם כבר ענו עליה");
+});
+
+test("שני המסלולים משתמשים באותו מימוש", () => {
+  const calls = bot.match(/settleSupplier\(\{/g) ?? [];
+  assert.equal(calls.length, 2, "יש מסלול תשובה שלא עובר דרך המימוש המשותף");
+});
+
+test("המימוש המשותף משנה סטטוס רק על 'כן'", () => {
+  const fn = bot.slice(
+    bot.indexOf("async function settleSupplier"),
+    bot.indexOf("export async function handleInboundMessage")
+  );
+  const yes = fn.indexOf('params.answer === "yes"');
+  const status = fn.indexOf('toStatus: "לקוח קיים"');
+  assert.ok(yes > -1 && yes < status, "סטטוס משתנה גם על 'לא'");
+});
+
+test("המימוש המשותף לא נוגע במי שלא הוכרע", () => {
+  const fn = bot.slice(
+    bot.indexOf("async function settleSupplier"),
+    bot.indexOf("export async function handleInboundMessage")
+  );
+  assert.ok(fn.includes("if (!reply) return null"), "תשובה לא ברורה מטופלת בכל זאת");
+});
+
+test("ההיסטוריה שנשלפת לבוט כוללת את סוג הדיוור", () => {
+  assert.ok(
+    bot.includes("broadcastKind: true"),
+    "ההכרעה תרוץ בלי לדעת מאיזה דיוור הוא הגיע"
+  );
+});
+
 console.log(`✓ inbound-context: ${passed} בדיקות עברו`);
