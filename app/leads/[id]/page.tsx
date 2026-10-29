@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { statusColor } from "@/lib/statuses";
-import { displayPhone, dialPhone } from "@/lib/phone";
+import { displayPhone, dialPhone, waLink } from "@/lib/phone";
 import { FIELD_LABELS, FIELD_ORDER } from "@/lib/leadmanager-mapping";
 import { getStatuses } from "@/lib/status-store";
 import { getSubStatusMap } from "@/lib/substatus";
@@ -177,6 +177,32 @@ export default async function LeadPage({
           >
             {displayPhone(lead.phone)}
           </CallLink>
+
+          {/*
+            פתיחת צ'אט בוואטסאפ ישירות על המספר הזה.
+
+            עד היום הדרך היחידה הייתה להעתיק את המספר, לפתוח
+            וואטסאפ, להדביק ולחפש. בנייד זה פותח את האפליקציה
+            על השיחה עצמה, ובמחשב את וואטסאפ ווב.
+          */}
+          {waLink(lead.phone) && (
+            <>
+              <span className="sep">·</span>
+              <a
+                href={waLink(lead.phone)!}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  color: "#1a7f37",
+                  textDecoration: "none",
+                  fontWeight: 600,
+                  fontSize: 13.5,
+                }}
+              >
+                פתח בוואטסאפ
+              </a>
+            </>
+          )}
         </div>
       </div>
 

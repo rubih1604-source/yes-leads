@@ -22,6 +22,7 @@ import { decideInbound } from "./inbound-context";
 import { addToBlacklist } from "./blacklist";
 import {
   readSupplierAnswer,
+  statesExistingCustomer,
   replyForAnswer,
   SUPPLIER_QUESTION,
   ASKED_EVENT,
@@ -371,16 +372,23 @@ export async function handleInboundMessage(params: {
      *  מדלגים עליה ועוברים ישר לתשובה ולסטטוס. אותו טיפול
      *  בדיוק כמו תשובה לשאלה שנשאלה, ולא מסלול שני.
      */
-    const volunteered = decision.askSupplier
-      ? readSupplierAnswer(params.text)
-      : null;
-
-    if (volunteered) {
+    /**
+     * **רק הצהרה מפורשת מדלגת על השאלה.**
+     *
+     * "כן" אינו הצהרה. לקוח שקיבל דיוור שנגמר ב"אם אתם
+     * מעוניינים תרשמו לי" וכתב "כן" התכוון שהוא מעוניין -
+     * ובגלל שקראתי את זה כתשובה לשאלה שלא נשאלה, הוא קיבל
+     * "פנו ל*2080" ונשלח לשירות במקום למכירה.
+     *
+     * הכלל: תמיד שואלים, אלא אם הוא כתב במפורש שהוא כבר
+     * אצלנו - בשם הספק.
+     */
+    if (decision.askSupplier && statesExistingCustomer(params.text)) {
       const handled = await settleSupplier({
         leadId: lead.id,
         phone: lead.phone,
         chatId: lead.chatId,
-        answer: volunteered,
+        answer: "yes",
         text: params.text,
         volunteered: true,
         actions,

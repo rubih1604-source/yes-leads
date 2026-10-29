@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { statusColor, type StatusDef } from "@/lib/statuses";
-import { displayPhone, dialPhone, phoneMatches } from "@/lib/phone";
+import { displayPhone, dialPhone, phoneMatches, waLink } from "@/lib/phone";
 import { DEFAULT_ROW_FIELDS, type RowFieldKey } from "@/lib/row-fields";
 import { DEFAULT_DIALER } from "@/lib/dialer";
 import CallLink from "./CallLink";
@@ -1113,6 +1113,26 @@ export default function LeadList({
                     ✆
                   </CallLink>
                   </span>
+
+                  {/*
+                    צ'אט בוואטסאפ ישירות מהשורה, בלי להיכנס
+                    לכרטיס ובלי להעתיק מספר.
+                  */}
+                  {waLink(lead.phone) && (
+                    <span onClick={(e) => e.stopPropagation()}>
+                      <a
+                        className="row-btn"
+                        href={waLink(lead.phone)!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="פתח צ'אט בוואטסאפ"
+                        style={{ color: "#1a7f37" }}
+                      >
+                        ⌨
+                      </a>
+                    </span>
+                  )}
+
                   <button
                     className="row-btn"
                     aria-label="שנה סטטוס"

@@ -245,16 +245,16 @@ test("האבחון מריץ את אותה הכרעה", () => {
 
 /* ---------- ענה מעצמו, בלי שנשאל ---------- */
 
-test("תגובה שכבר עונה על השאלה לא מקבלת את השאלה", () => {
+test("הצהרה מפורשת מדלגת על השאלה, והבדיקה קודמת לשליחה", () => {
   assert.ok(
-    bot.includes("volunteered"),
+    bot.includes("statesExistingCustomer(params.text)"),
     '"יש לי כבר יס" עדיין מקבל בחזרה "האם אתם לקוחות של yes?"'
   );
 
-  const check = bot.indexOf("readSupplierAnswer(params.text)\n      : null");
+  const declared = bot.indexOf("statesExistingCustomer(params.text)");
   const ask = bot.indexOf("text: SUPPLIER_QUESTION");
-  assert.ok(check > -1 && ask > -1);
-  assert.ok(check < ask, "השאלה נשלחת לפני שבודקים אם כבר ענו עליה");
+  assert.ok(declared > -1 && ask > -1);
+  assert.ok(declared < ask, "השאלה נשלחת לפני שבודקים אם כבר הצהיר");
 });
 
 test("שני המסלולים משתמשים באותו מימוש", () => {

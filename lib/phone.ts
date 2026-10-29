@@ -116,3 +116,32 @@ export function phoneMatches(stored: string, query: string): boolean {
   if (q.length < 3) return false;
   return phoneDigits(stored).includes(q);
 }
+
+/**
+ * ============================================================
+ *  פתיחת צ'אט בוואטסאפ
+ * ============================================================
+ *
+ *  wa.me מצפה לספרות בינלאומיות **בלי פלוס ובלי אפס**:
+ *  972521234567. כל צורה אחרת פותחת וואטסאפ על מספר שגוי
+ *  או על מסך ריק.
+ *
+ *  מספר שאינו ישראלי נשלח כספרות שלו, כי wa.me יודע
+ *  לטפל בכל קידומת מדינה - רק לא באפס מוביל.
+ */
+export function waDigits(phone: string | null | undefined): string {
+  const digits = (phone ?? "").replace(/\D/g, "");
+  if (!digits) return "";
+
+  // 0521234567 -> 972521234567
+  if (digits.startsWith("0")) return `972${digits.slice(1)}`;
+
+  return digits;
+}
+
+/** הקישור שפותח צ'אט עם המספר הזה */
+export function waLink(phone: string | null | undefined): string | null {
+  const digits = waDigits(phone);
+  if (digits.length < 9) return null;
+  return `https://wa.me/${digits}`;
+}

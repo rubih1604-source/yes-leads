@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import io from "node:fs";
 import {
   readSupplierAnswer,
+  statesExistingCustomer,
   replyForAnswer,
   SUPPLIER_QUESTION,
   REPLY_IF_CUSTOMER,
@@ -118,6 +120,66 @@ test("השאלה היא בדיוק מה שביקשת", () => {
   assert.equal(
     SUPPLIER_QUESTION,
     "רגע לפני שאני יוצר איתכם קשר, האם אתם כיום לקוחות של yes/sting?"
+  );
+});
+
+
+/* ============================================================
+   הצהרה מפורשת מול תשובה לשאלה
+   ============================================================
+
+   לקוח קיבל דיוור שנגמר ב"אם אתם מעוניינים תרשמו לי" וכתב
+   "כן". הבוט קרא את זה כתשובה לשאלת הסינון - שאלה שלא
+   נשאלה - וענה "פנו ל*2080". ליד שרצה לקנות נשלח לשירות.
+
+   מאז: רק שם של ספק מדלג על השאלה. "כן" תמיד מקבל אותה.
+*/
+
+const MUST_NOT_SKIP = [
+  "כן",
+  "כן מעוניין",
+  "בטח",
+  "אשמח",
+  "לא",
+  "מה המחיר",
+  "יש לי הוט",
+  "אני לא ביס",
+  "אני לא לקוח של סטינג",
+  "",
+];
+
+for (const t of MUST_NOT_SKIP) {
+  test(`"${t || "(ריק)"}" לא מדלג על השאלה`, () => {
+    assert.equal(statesExistingCustomer(t), false);
+  });
+}
+
+const MUST_SKIP = [
+  "יש לי כבר יס",
+  "אני לקוח של יס",
+  "אני בסטינג",
+  "יש לי yes",
+  "כבר יש לי סטינג",
+];
+
+for (const t of MUST_SKIP) {
+  test(`"${t}" מדלג על השאלה`, () => {
+    assert.equal(statesExistingCustomer(t), true);
+  });
+}
+
+const botSource = io.readFileSync("lib/bot.ts", "utf8");
+
+test("הבוט מדלג רק על הצהרה מפורשת", () => {
+  assert.ok(botSource.includes("statesExistingCustomer(params.text)"));
+});
+
+test("הבוט כבר לא מדלג על סמך תשובה רחבה", () => {
+  assert.ok(
+    !/volunteered\s*=\s*decision\.askSupplier[\s\S]{0,60}readSupplierAnswer/.test(
+      botSource
+    ),
+    '"כן" חזר לדלג על השאלה - לקוח מעוניין יישלח לשירות'
   );
 });
 

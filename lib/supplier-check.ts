@@ -156,3 +156,35 @@ export function replyForAnswer(answer: SupplierAnswer): string | null {
 
 /** סוג האירוע שמסמן שהשאלה נשאלה */
 export const ASKED_EVENT = "supplier_check_asked";
+
+/**
+ * ============================================================
+ *  הצהרה מפורשת שהוא כבר אצלנו
+ * ============================================================
+ *
+ *  **הבאג שזה מתקן, והוא עלה בליד.**
+ *
+ *  לקוח קיבל דיוור שנגמר ב"אם אתם מעוניינים תרשמו לי",
+ *  וכתב "כן". הבוט קרא את ה"כן" כתשובה לשאלת הסינון -
+ *  שאלה שמעולם לא נשאלה - וענה לו "פנו ל*2080 לקבלת
+ *  שירות". לקוח שרצה לקנות נשלח לשירות.
+ *
+ *  **הכלל, במילים שלך:** תמיד לשאול את שאלת הסינון, אלא
+ *  אם הוא כתב במפורש שהוא כבר אצלנו.
+ *
+ *  ולכן כאן, בניגוד ל-readSupplierAnswer, **"כן" אינו
+ *  מספיק.** צריך שם של ספק: יס, סטינג, yes, sting.
+ *  readSupplierAnswer נשארה רחבה כי היא קוראת תשובה
+ *  לשאלה שכן נשאלה - ושם "כן" באמת אומר כן.
+ */
+export function statesExistingCustomer(text: string): boolean {
+  const clean = normalizeText(text);
+  if (!clean) return false;
+
+  /**
+   * שלילה גוברת: "אני לא ביס" אינה הצהרה שהוא אצלנו.
+   */
+  if (NO_WORDS.some((w) => containsWord(clean, w))) return false;
+
+  return YES_PROVIDERS.some((w) => containsWord(clean, w, true));
+}
