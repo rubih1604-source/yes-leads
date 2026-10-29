@@ -296,4 +296,58 @@ test("יש מתג במסך ההגדרות", () => {
   assert.ok(ui.includes("רק על תגובות לדיוור"));
 });
 
+
+/* ---------- "למה הבוט לא שאל" ---------- */
+
+const botCheck = io.readFileSync(
+  "app/api/diagnostics/bot-check/route.ts",
+  "utf8"
+);
+
+test("האבחון מריץ את אותו שער שהבוט מריץ", () => {
+  assert.ok(
+    botCheck.includes("shouldBotReply"),
+    "האבחון בודק תנאים משלו - יענה אחרת מהבוט"
+  );
+});
+
+test("האבחון בודק זיהוי דיוור באותה פונקציה", () => {
+  assert.ok(botCheck.includes("isBroadcastMessage"));
+  assert.ok(botCheck.includes("replyAfterBroadcast"));
+});
+
+test("האבחון לא משנה כלום", () => {
+  assert.ok(!/db\.\w+\.(update|create|delete)/.test(botCheck));
+  assert.ok(!botCheck.includes("export async function POST"));
+});
+
+test("האבחון מחזיר מסקנה אחת ולא רשימת נתונים", () => {
+  assert.ok(botCheck.includes("מסקנה"));
+});
+
+const mark = io.readFileSync(
+  "app/api/maintenance/mark-broadcasts/route.ts",
+  "utf8"
+);
+
+test("הסימון לאחור דורש בחירת תבנית מפורשת", () => {
+  assert.ok(
+    mark.includes('return NextResponse.json(\n      { error: "צריך לבחור תבנית'),
+    "אפשר להריץ בלי תבנית ולסמן הכל"
+  );
+});
+
+test("הסימון נוגע רק בהודעות יוצאות שעוד לא מסומנות", () => {
+  assert.ok(mark.includes('direction: "out"'));
+  assert.ok(mark.includes("broadcast: false"));
+});
+
+test("לסימון יש תצוגה מקדימה שלא משנה כלום", () => {
+  const get = mark.slice(
+    mark.indexOf("export async function GET"),
+    mark.indexOf("export async function POST")
+  );
+  assert.ok(!get.includes("updateMany"), "התצוגה המקדימה משנה נתונים");
+});
+
 console.log(`✓ visibility: ${passed} בדיקות עברו`);
