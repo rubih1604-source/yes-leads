@@ -18,6 +18,7 @@ import {
 } from "./working-hours";
 import { displayPhone } from "./phone";
 import { detectUnsubscribe, intentBlacklists } from "./unsubscribe";
+import { decideInbound } from "./inbound-context";
 import { addToBlacklist } from "./blacklist";
 import {
   readSupplierAnswer,
@@ -25,7 +26,7 @@ import {
   SUPPLIER_QUESTION,
   ASKED_EVENT,
 } from "./supplier-check";
-import { replyAfterBroadcast } from "./broadcast-replies";
+
 import { searchChatByPhone, extractChatId, sendSessionMessage } from "./texter";
 import { matchKnowledge } from "./answer";
 import { emailLeadAlert } from "./email";
@@ -294,7 +295,22 @@ export async function handleInboundMessage(params: {
       })
       .catch(() => []);
 
-    if (replyAfterBroadcast(history, new Date())) {
+    /**
+     * ההכרעה אינה נעשית כאן.
+     *
+     * decideInbound רואה את כל התמונה - מאיזה סוג דיוור
+     * הוא הגיע, אם כבר נשאל, ואם הוא ברשימה השחורה -
+     * ומחזיר תשובה אחת. הבוט רק מבצע אותה.
+     */
+    const decision = decideInbound({
+      messages: history,
+      origin: lead.origin,
+      alreadyAsked: Boolean(askedEvent),
+      blacklisted: lead.doNotContact,
+      now: new Date(),
+    });
+
+    if (decision.askSupplier) {
       const sent = await replyToLead({
         leadId: lead.id,
         phone: lead.phone,
@@ -309,7 +325,10 @@ export async function handleInboundMessage(params: {
               leadId: lead.id,
               type: ASKED_EVENT,
               actor: "bot",
-              payload: { text: params.text.slice(0, 200) },
+              payload: {
+                text: params.text.slice(0, 200),
+                reason: decision.reason,
+              },
             },
           })
           .catch(() => null);

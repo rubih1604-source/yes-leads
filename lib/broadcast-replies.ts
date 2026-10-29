@@ -23,6 +23,8 @@ export type MessageLike = {
   direction: string;
   /** סימון מפורש שההודעה נשלחה כדיוור */
   broadcast?: boolean | null;
+  /** "data" - רשימה שנטענה · "leads" - לידים שלך או מבצע */
+  broadcastKind?: string | null;
   /** שם התבנית - קיים רק בהודעות יוצאות */
   templateName?: string | null;
   bodyText?: string | null;
@@ -42,6 +44,7 @@ export type MessageLike = {
  */
 export function isBroadcastMessage(message: MessageLike): boolean {
   if (message.direction !== "out") return false;
+  if (message.broadcastKind) return true;
   if (message.broadcast === true) return true;
   return (message.bodyText ?? "").startsWith("דיוור:");
 }

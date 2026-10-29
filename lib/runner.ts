@@ -13,6 +13,7 @@ import { applyStatusChange } from "./rules";
 import { displayPhone } from "./phone";
 import { sendEmail } from "./email";
 import { sendPush } from "./push";
+import { KIND_LEADS } from "./inbound-context";
 import { runCampaignChecks } from "./campaign-monitor";
 import { isExistingCustomer, supplierAnswer } from "./existing-customer";
 import { getSettings } from "./settings";
@@ -157,6 +158,17 @@ async function runOne(jobId: string, summary: RunSummary) {
            * שענה להם לא הופיע במסך ההתעניינות.
            */
           broadcast: (job.note ?? "").startsWith("דיוור"),
+
+          /**
+           * **דיוור ללידים שלך, לא לדאטה.**
+           *
+           * האנשים האלה כבר מוכרים לך - יש להם סטטוס,
+           * היסטוריה, וחלקם קיבלו הצעת מחיר. שאלת הסינון
+           * לא נשאלת כאן, והסימון הזה הוא מה שמונע את זה.
+           */
+          broadcastKind: (job.note ?? "").startsWith("דיוור")
+            ? KIND_LEADS
+            : null,
           templateName: job.templateName,
           bodyText: data.text ?? template.bodyText ?? null,
           texterMessageId: data.messageId ?? null,

@@ -9,6 +9,7 @@ import {
   isBroadcastMessage,
 } from "@/lib/broadcast-replies";
 import { ASKED_EVENT } from "@/lib/supplier-check";
+import { decideInbound } from "@/lib/inbound-context";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,7 @@ export async function GET(request: Request) {
         select: {
           direction: true,
           broadcast: true,
+          broadcastKind: true,
           templateName: true,
           bodyText: true,
           status: true,
@@ -80,6 +82,15 @@ export async function GET(request: Request) {
   const recognised = outgoing.filter(isBroadcastMessage);
   const window = replyAfterBroadcast(lead.messages, new Date());
 
+  /** אותה הכרעה בדיוק שהבוט מריץ */
+  const decision = decideInbound({
+    messages: lead.messages,
+    origin: lead.origin,
+    alreadyAsked: false,
+    blacklisted: lead.doNotContact,
+    now: new Date(),
+  });
+
   const asked = await db.leadEvent
     .findFirst({ where: { leadId: lead.id, type: ASKED_EVENT } })
     .catch(() => null);
@@ -102,6 +113,8 @@ export async function GET(request: Request) {
   } else if (!window) {
     verdict =
       "הוא קיבל דיוור אבל אין ממנו תגובה **אחרי** הדיוור ובתוך 30 יום. הבוט שואל רק את מי שענה.";
+  } else if (!decision.askSupplier) {
+    verdict = decision.reason;
   } else if (!gate.allowed) {
     verdict = `הבוט נעצר בשער: ${gate.reason}`;
   } else {
@@ -144,6 +157,12 @@ export async function GET(request: Request) {
         : null,
     },
     שאלת_הסינון_נשלחה: Boolean(asked),
+    סוג_הדיוור:
+      decision.window && decision.askSupplier
+        ? "דאטה שנטענה - הבוט שואל"
+        : decision.isBroadcastReply
+          ? decision.reason
+          : "—",
     מסקנה: verdict,
   });
 }

@@ -383,4 +383,62 @@ test("כל מסך שהוספנו מופיע בתפריט - אחרת הוא לא 
   }
 });
 
+
+/* ---------- נמען דיוור נרשם במערכת ---------- */
+
+const sendRoute = io.readFileSync(
+  "app/api/broadcast/[id]/send/route.ts",
+  "utf8"
+);
+
+test("הדיוור יוצר רשומה לנמען שאינו קיים", () => {
+  assert.ok(
+    sendRoute.includes("ensureLeadForContact"),
+    "הדיוור עדיין מחפש ליד קיים בלבד - הודעות לנמענים מקובץ לא נרשמות"
+  );
+  assert.ok(
+    !sendRoute.includes("db.lead\n      .findFirst"),
+    "נשאר החיפוש הישן שדילג על נמענים שאינם לידים"
+  );
+});
+
+test("ההודעה היוצאת נרשמת על הנמען", () => {
+  const ensure = sendRoute.indexOf("ensureLeadForContact");
+  const message = sendRoute.indexOf("db.message");
+  assert.ok(ensure > -1 && message > -1);
+  assert.ok(ensure < message, "ההודעה נרשמת לפני שהנמען קיים");
+});
+
+const ensureFile = io.readFileSync("lib/broadcast-lead.ts", "utf8");
+
+test("נמען דיוור לא נכנס לרשימת הלידים", () => {
+  assert.ok(ensureFile.includes("BROADCAST_ORIGIN"));
+
+  const rule = JSON.stringify(MY_LEADS_WHERE);
+  assert.ok(
+    rule.includes("broadcast"),
+    "נמעני דיוור יציפו את רשימת הלידים שלך"
+  );
+});
+
+test("ליד קיים לא מאבד את הבעלות שלו בגלל דיוור", () => {
+  assert.ok(
+    ensureFile.includes("return existing.id"),
+    "ליד קיים נדרס כנמען דיוור"
+  );
+  const existing = ensureFile.indexOf("if (existing)");
+  const create = ensureFile.indexOf("db.lead\n    .create");
+  assert.ok(existing > -1 && existing < create, "יצירה קודמת לבדיקת קיום");
+});
+
+test("טלפון לא תקין לא יוצר רשומה", () => {
+  assert.ok(ensureFile.includes("if (!phone) return null"));
+});
+
+test("ההסבר באבחון יודע להסביר נמען דיוור", () => {
+  const v = explainVisibility({ origin: "broadcast", entries: [] });
+  assert.equal(v.inMyList, false);
+  assert.ok(v.reason.includes("דאטה"), `ההסבר לא מכוון אותו: ${v.reason}`);
+});
+
 console.log(`✓ visibility: ${passed} בדיקות עברו`);

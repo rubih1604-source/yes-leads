@@ -314,8 +314,14 @@ test("זמן התגובה מוצג בקנה מידה נכון", () => {
 
 const botSrc = io.readFileSync("lib/bot.ts", "utf8");
 
-test("שאלת הסינון נשאלת רק למי שענה לדיוור", () => {
-  assert.ok(botSrc.includes("replyAfterBroadcast"));
+test("שאלת הסינון נשאלת רק למי שההכרעה אישרה", () => {
+  /**
+   * הבוט כבר לא בודק לבד אם זו תגובה לדיוור. ההכרעה
+   * עברה ל-decideInbound, שרואה גם את **סוג** הדיוור -
+   * וזה מה שמונע לשאול לקוח שקיבל הצעת מחיר בשבוע שעבר.
+   */
+  assert.ok(botSrc.includes("decideInbound"));
+  assert.ok(botSrc.includes("decision.askSupplier"));
   assert.ok(botSrc.includes("SUPPLIER_QUESTION"));
 });
 

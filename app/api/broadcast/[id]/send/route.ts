@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { isLoggedIn } from "@/lib/auth";
 import { sendTemplate } from "@/lib/texter";
 import { blacklistedDigits, splitByBlacklist } from "@/lib/blacklist";
+import { ensureLeadForContact } from "@/lib/broadcast-lead";
+import { KIND_DATA } from "@/lib/inbound-context";
 
 export const dynamic = "force-dynamic";
 
@@ -158,23 +160,37 @@ export async function POST(
       .catch(() => null);
 
     /**
-     * רישום בכרטיס הליד, אם הטלפון מוכר במערכת.
+     * ============================================================
+     *  הנמען נרשם במערכת, גם אם לא היה בה
+     * ============================================================
      *
-     * בלי זה אי אפשר היה לפתוח לקוח ולדעת שנשלחה אליו
-     * הודעת דיוור - והוא היה יכול לקבל שיחה ממך בלי שתדע
-     * שכבר פנית אליו הבוקר.
+     *  **כאן נשברה כל השרשרת.** קודם חיפשנו ליד קיים לפי
+     *  טלפון, ורשימה שנטענת מקובץ היא כמעט כולה אנשים
+     *  שאינם לידים - ולכן ההודעה היוצאת לא נרשמה על אף
+     *  אחד.
+     *
+     *  התוצאה: כשהם ענו, המערכת ראתה אדם בלי היסטוריה.
+     *  הבוט לא ידע שהוא עונה לדיוור ולא שאל, מסך
+     *  ההתעניינות לא הציג אותו, ו"הסר" ממנו לא נרשם.
+     *
+     *  מעכשיו נוצרת רשומה לפני השליחה. היא **לא** נכנסת
+     *  לרשימת הלידים שלך - רק לדאטה - ומכאן כל השרשרת
+     *  עובדת מעצמה.
      */
-    const lead = await db.lead
-      .findFirst({ where: { phone: contact.phone }, select: { id: true } })
-      .catch(() => null);
+    const leadId = await ensureLeadForContact({
+      phone: contact.phone,
+      firstName: contact.firstName,
+    });
 
-    if (lead) {
+    if (leadId) {
       await db.message
         .create({
           data: {
-            leadId: lead.id,
+            leadId,
             direction: "out",
             broadcast: true,
+            /** רשימה שנטענה מקובץ - כאן הבוט כן שואל */
+            broadcastKind: KIND_DATA,
             templateName: send.templateName,
             bodyText: `דיוור: ${list.name}`,
             status: result.ok ? "sent" : "failed",

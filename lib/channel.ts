@@ -47,6 +47,15 @@ import type { LeadIdentifiers } from "./campaign-match";
 /** הערך שנשמר ב-origin לליד ששייך למכירה */
 export const SALE_ORIGIN = "sale";
 
+/**
+ * נמען של דיוור שנטען מקובץ ועוד לא ליד אמיתי.
+ *
+ * הוא קיים במערכת כדי שההודעה שיצאה אליו תירשם עליו, וכדי
+ * שתגובה ממנו תזוהה כתגובה לדיוור. הוא לא ברשימת הלידים -
+ * אתה לא עובד עליו עד שהוא עונה.
+ */
+export const BROADCAST_ORIGIN = "broadcast";
+
 export type Channel = "mine" | "sale";
 
 /** כניסה כפי שהיא נשמרת - רק מה שצריך כדי להחליט על ערוץ */
@@ -338,7 +347,7 @@ export const MY_LEADS_WHERE = {
    *   - אותו אדם מילא שוב את הטופס שלך -> חוזר אליך
    *   - ליד שהגיע מקמפיין של אלעד -> אצלו בלבד
    */
-  origin: { notIn: ["whatsapp", SALE_ORIGIN] },
+  origin: { notIn: ["whatsapp", SALE_ORIGIN, BROADCAST_ORIGIN] },
 };
 
 export function ownerOf(origin: string): Channel {
@@ -383,6 +392,14 @@ export function explainVisibility(args: {
       inMyList: false,
       reason:
         "הגיע מוואטסאפ בלבד ולכן הוא איש קשר ולא ליד. נמצא במסך השיחות.",
+    };
+  }
+
+  if (args.origin === BROADCAST_ORIGIN) {
+    return {
+      inMyList: false,
+      reason:
+        "הוא נמען של דיוור שנטען מקובץ, ועוד לא ליד שלך. הוא נמצא בדאטה, ואם הוא יענה לדיוור הוא יופיע במסך ההתעניינות.",
     };
   }
 

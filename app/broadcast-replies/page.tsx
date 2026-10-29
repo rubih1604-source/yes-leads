@@ -54,6 +54,7 @@ export default async function BroadcastRepliesPage() {
           select: {
             direction: true,
             broadcast: true,
+            broadcastKind: true,
             templateName: true,
             bodyText: true,
             createdAt: true,
