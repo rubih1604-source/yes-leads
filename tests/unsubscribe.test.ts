@@ -57,15 +57,38 @@ const MUST_CATCH = [
   "לא להתקשר אליי",
   "STOP",
   "unsubscribe",
+];
+
+for (const text of MUST_CATCH) {
+  test(`נתפס: "${text}"`, () => {
+    assert.equal(blacklisted(text), true, `לא זוהה: ${text}`);
+  });
+}
+
+/**
+ * ============================================================
+ *  חוסר עניין מזוהה - ולא חוסם
+ * ============================================================
+ *
+ *  **השינוי מעדכון 170.** קודם "לא מעוניין" חסם בדיוק
+ *  כמו "תסירו אותי". זה לא אותו דבר: הראשון הוא סירוב
+ *  להצעה הנוכחית, השני הוא סוף הקשר.
+ *
+ *  חסימה של הראשון מוחקת לידים שבעוד חודש, כשהמחירים
+ *  משתנים, הם דאטה שווה.
+ */
+const SOFT_DECLINE = [
   "לא מעוניין",
   "לא מעוניינת",
   "לא מעונין תודה",
   "לא רלוונטי",
 ];
 
-for (const text of MUST_CATCH) {
-  test(`נתפס: "${text}"`, () => {
-    assert.equal(blacklisted(text), true, `לא זוהה: ${text}`);
+for (const text of SOFT_DECLINE) {
+  test(`מזוהה אך לא חוסם: "${text}"`, () => {
+    const match = detectUnsubscribe(text);
+    assert.equal(match.blacklist, false, `נחסם בטעות: ${text}`);
+    assert.equal(match.notInterested, true, `לא זוהה כחוסר עניין: ${text}`);
   });
 }
 
@@ -137,13 +160,20 @@ test("remove בביטחון גבוה נכנס לרשימה", () => {
   assert.equal(intentBlacklists("remove", 0.9).blacklist, true);
 });
 
-test("not_interested בביטחון גבוה נכנס לרשימה", () => {
-  assert.equal(intentBlacklists("not_interested", 0.9).blacklist, true);
+test("not_interested לא נכנס לרשימה גם בביטחון מלא", () => {
+  /**
+   * **אותו כלל בשתי הדלתות.** הסיווג החכם הוא דרך
+   * שנייה לאותה הכרעה, ולכן אסור שיחסום על מה שהזיהוי
+   * הישיר כבר לא חוסם - אחרת היינו מאבדים את אותם
+   * לידים דרך הדלת האחורית.
+   */
+  const soft = intentBlacklists("not_interested", 1);
+  assert.equal(soft.blacklist, false);
+  assert.equal(soft.notInterested, true);
 });
 
 test("ביטחון נמוך לא נכנס - רובי יחליט", () => {
   assert.equal(intentBlacklists("remove", 0.5).blacklist, false);
-  assert.equal(intentBlacklists("not_interested", 0.84).blacklist, false);
 });
 
 test("כוונה אחרת לא נכנסת", () => {

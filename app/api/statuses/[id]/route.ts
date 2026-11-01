@@ -21,6 +21,16 @@ export async function PATCH(
   }
   if (typeof body.won === "boolean") data.won = body.won;
 
+  /**
+   * קטגוריה היא שם חופשי: כותבים אותו וזו הקטגוריה.
+   * ריק מחזיר את הסטטוס לקבוצה "אחרים".
+   */
+  if (body.category !== undefined) {
+    const name =
+      typeof body.category === "string" ? body.category.trim().slice(0, 40) : "";
+    data.category = name || null;
+  }
+
   if (body.commission !== undefined) {
     const n = Number(body.commission);
     if (Number.isFinite(n) && n >= 0 && n <= 100000) data.commission = n;

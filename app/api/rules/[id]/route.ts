@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isLoggedIn } from "@/lib/auth";
+import { serializePool, parsePool } from "@/lib/template-pool";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,19 @@ export async function PATCH(
 
   if (typeof body.templateName === "string") {
     data.templateName = body.templateName || null;
+  }
+
+  /**
+   * שינוי הבנק מאפס את המונה.
+   *
+   * בלי זה, בנק שהוחלף היה ממשיך מאמצע הסבב הקודם -
+   * והתבנית הראשונה החדשה הייתה מדלגת על תורה.
+   */
+  if (body.templatePool !== undefined) {
+    data.templatePool = Array.isArray(body.templatePool)
+      ? serializePool(body.templatePool.map(String))
+      : serializePool(parsePool(body.templatePool));
+    data.poolCursor = 0;
   }
 
   if (Object.keys(data).length === 0) {

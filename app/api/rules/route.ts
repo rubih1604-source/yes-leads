@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isLoggedIn } from "@/lib/auth";
 import { isKnownStatus } from "@/lib/status-store";
+import { serializePool, parsePool } from "@/lib/template-pool";
 
 export const dynamic = "force-dynamic";
 
@@ -17,9 +18,18 @@ export async function POST(request: Request) {
     delayMinutes,
     action,
     templateName,
+    templatePool,
     targetStatus,
     note,
   } = body;
+
+  /**
+   * בנק התבניות מגיע כרשימה מהמסך. הנרמול כאן הוא
+   * היחיד - כל השאר במערכת קורא את הבנק דרך parsePool.
+   */
+  const pool = Array.isArray(templatePool)
+    ? serializePool(templatePool.map(String))
+    : serializePool(parsePool(templatePool));
 
   if (!triggerStatus || !(await isKnownStatus(triggerStatus))) {
     return NextResponse.json(
@@ -32,7 +42,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "צריך לבחור פעולה" }, { status: 400 });
   }
 
-  if (action === "send_template" && !templateName) {
+  /**
+   * תבנית אחת או בנק - אחד מהשניים חייב להיות.
+   * חוק שליחה בלי שום תבנית היה נכשל על כל ליד.
+   */
+  if (action === "send_template" && !templateName && !pool) {
     return NextResponse.json(
       { error: "צריך לבחור איזו תבנית תישלח" },
       { status: 400 }
@@ -71,7 +85,8 @@ export async function POST(request: Request) {
       stepIndex: (last?.stepIndex ?? -1) + 1,
       delayMinutes: Math.round(minutes),
       action,
-      templateName: action === "send_template" ? templateName : null,
+      templateName: action === "send_template" ? templateName || null : null,
+      templatePool: action === "send_template" ? pool : null,
       targetStatus: action === "set_status" ? targetStatus : null,
       note: typeof note === "string" && note.trim() ? note.trim().slice(0, 300) : null,
       active: true,

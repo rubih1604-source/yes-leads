@@ -42,6 +42,7 @@ export default function Nav({
         "/broadcast-replies",
         "/transfers",
         "/diagnostics",
+        "/template-drafts",
         "/alerts",
         "/jobs",
         "/bot-log",

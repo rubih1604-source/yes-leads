@@ -28,6 +28,12 @@ export default async function MorePage() {
           desc: "רק מי שקיבל דיוור וענה - בלי מי שביקש להסיר",
         },
         {
+          href: "/template-drafts",
+          glyph: "✉",
+          label: "תבניות להקמה",
+          desc: "מה להקים בטקסטר, עם השם המדויק והטקסט להעתקה",
+        },
+        {
           href: "/diagnostics",
           glyph: "⌕",
           label: "אבחון",

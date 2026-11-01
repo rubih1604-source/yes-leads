@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { statusColor, type StatusDef } from "@/lib/statuses";
+import { parsePool, poolLabel } from "@/lib/template-pool";
 
 export type RuleRow = {
   id: string;
@@ -11,6 +12,8 @@ export type RuleRow = {
   delayMinutes: number;
   action: string;
   templateName: string | null;
+  /** בנק תבניות מתחלפות, מופרדות בפסיק */
+  templatePool: string | null;
   targetStatus: string | null;
   note: string | null;
   active: boolean;
@@ -44,6 +47,124 @@ function toMinutes(amount: number, unit: string): number {
 }
 
 
+/**
+ * ============================================================
+ *  בוחר בנק התבניות
+ * ============================================================
+ *
+ *  **למה בחירה מרובה ולא תבנית אחת.**
+ *
+ *  כשיש שלוש תבניות לאותו שלב, הן יוצאות בסבב שווה -
+ *  ליד ראשון מקבל את הראשונה, שני את השנייה וכן הלאה.
+ *  חלוקה שווה היא מה שמאפשר להשוות ניסוחים: אם אחת
+ *  הייתה יוצאת יותר, לא היה אפשר לדעת אם היא ניצחה או
+ *  רק קיבלה יותר הזדמנויות.
+ *
+ *  תבנית אחת מסומנת = בדיוק ההתנהגות הישנה.
+ */
+function PoolPicker({
+  templates,
+  selected,
+  onChange,
+}: {
+  templates: TemplateChoice[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  function toggle(name: string) {
+    onChange(
+      selected.includes(name)
+        ? selected.filter((n) => n !== name)
+        : [...selected, name]
+    );
+  }
+
+  /** תבניות שמופו בחוק אבל כבר לא קיימות בטקסטר - לא נעלמות מהמסך */
+  const missing = selected.filter(
+    (name) => !templates.some((t) => t.name === name)
+  );
+
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+        אילו תבניות ישלחו
+      </div>
+      <div style={{ fontSize: 12.5, color: "#667085", marginBottom: 8, lineHeight: 1.6 }}>
+        סימון של יותר מאחת מפעיל סבב שווה ביניהן, כדי שתוכל לדעת
+        איזה ניסוח מביא יותר תגובות.
+      </div>
+
+      <div
+        style={{
+          border: "1px solid #dbe3ea",
+          borderRadius: 9,
+          maxHeight: 220,
+          overflowY: "auto",
+        }}
+      >
+        {templates.length === 0 && (
+          <div style={{ padding: 10, fontSize: 13, color: "#667085" }}>
+            אין עדיין תבניות מאושרות
+          </div>
+        )}
+        {templates.map((t) => {
+          const on = selected.includes(t.name);
+          return (
+            <label
+              key={t.name}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 9,
+                padding: "9px 11px",
+                borderBottom: "1px solid #f2f4f7",
+                background: on ? "#f5f9ff" : "#fff",
+                cursor: "pointer",
+                fontSize: 13.5,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={on}
+                onChange={() => toggle(t.name)}
+                style={{ width: 17, height: 17, flexShrink: 0 }}
+              />
+              <span>{t.displayName || t.name}</span>
+            </label>
+          );
+        })}
+        {missing.map((name) => (
+          <label
+            key={name}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 9,
+              padding: "9px 11px",
+              borderBottom: "1px solid #f2f4f7",
+              background: "#fffbeb",
+              cursor: "pointer",
+              fontSize: 13.5,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked
+              onChange={() => toggle(name)}
+              style={{ width: 17, height: 17, flexShrink: 0 }}
+            />
+            <span>{name} · לא קיימת בטקסטר</span>
+          </label>
+        ))}
+      </div>
+
+      <div style={{ fontSize: 12.5, color: "#475467", marginTop: 6 }}>
+        {poolLabel(selected.join(","))}
+      </div>
+    </div>
+  );
+}
+
 function AddRule({
   statuses,
   templates,
@@ -55,7 +176,7 @@ function AddRule({
 }) {
   const [triggerStatus, setTriggerStatus] = useState("");
   const [action, setAction] = useState("send_template");
-  const [templateName, setTemplateName] = useState("");
+  const [pool, setPool] = useState<string[]>([]);
   const [targetStatus, setTargetStatus] = useState("");
   const [amount, setAmount] = useState("5");
   const [unit, setUnit] = useState("minutes");
@@ -73,7 +194,9 @@ function AddRule({
       body: JSON.stringify({
         triggerStatus,
         action,
-        templateName,
+        /** תבנית אחת נשמרת כתבנית אחת; יותר מאחת נשמרות כבנק */
+        templateName: pool.length === 1 ? pool[0] : "",
+        templatePool: pool.length > 1 ? pool : [],
         targetStatus,
         delayMinutes: toMinutes(Number(amount), unit),
         note,
@@ -151,23 +274,11 @@ function AddRule({
       </select>
 
       {action === "send_template" && (
-        <>
-          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-            איזו תבנית
-          </div>
-          <select
-            className="field"
-            value={templateName}
-            onChange={(e) => setTemplateName(e.target.value)}
-          >
-            <option value="">— בחר תבנית —</option>
-            {templates.map((t) => (
-              <option key={t.name} value={t.name}>
-                {t.displayName || t.name}
-              </option>
-            ))}
-          </select>
-        </>
+        <PoolPicker
+          templates={templates}
+          selected={pool}
+          onChange={setPool}
+        />
       )}
 
       {action === "set_status" && (
@@ -229,7 +340,16 @@ function RuleCard({
   const [editing, setEditing] = useState(false);
   const [amount, setAmount] = useState(String(initial.amount));
   const [unit, setUnit] = useState(initial.unit);
-  const [templateName, setTemplateName] = useState(rule.templateName ?? "");
+  /**
+   * הבנק והתבנית הבודדת הם אותה שאלה במסך אחד: מה יישלח.
+   * תבנית בודדת ישנה נטענת כבנק של אחת, ולכן אין שתי
+   * דרכים לערוך את אותו דבר.
+   */
+  const [pool, setPool] = useState<string[]>(() => {
+    const fromPool = parsePool(rule.templatePool);
+    if (fromPool.length > 0) return fromPool;
+    return rule.templateName ? [rule.templateName] : [];
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -255,9 +375,19 @@ function RuleCard({
       setError("הכנס מספר תקין");
       return;
     }
+    if (rule.action === "send_template" && pool.length === 0) {
+      setError("צריך לסמן לפחות תבנית אחת");
+      return;
+    }
+
     await patch({
       delayMinutes: toMinutes(num, unit),
-      ...(rule.action === "send_template" ? { templateName } : {}),
+      ...(rule.action === "send_template"
+        ? {
+            templateName: pool[0] ?? "",
+            templatePool: pool.length > 1 ? pool : [],
+          }
+        : {}),
     });
     setEditing(false);
   }
@@ -277,17 +407,24 @@ function RuleCard({
         {rule.action === "set_status" && ` · העבר ל"${rule.targetStatus}"`}
       </div>
 
-      {rule.templateName && !editing && (
-        <div
-          style={{
-            direction: "ltr",
-            textAlign: "left",
-            fontSize: 12,
-            color: "#64748b",
-          }}
-        >
-          {rule.templateName}
-        </div>
+      {!editing && pool.length > 0 && (
+        <>
+          <div
+            style={{
+              direction: "ltr",
+              textAlign: "left",
+              fontSize: 12,
+              color: "#64748b",
+            }}
+          >
+            {pool.join(" · ")}
+          </div>
+          {pool.length > 1 && (
+            <div style={{ fontSize: 12, color: "#0891b2", fontWeight: 600 }}>
+              {poolLabel(pool.join(","))}
+            </div>
+          )}
+        </>
       )}
 
       {rule.note && !editing && <div className="when">{rule.note}</div>}
@@ -317,24 +454,11 @@ function RuleCard({
           </div>
 
           {rule.action === "send_template" && (
-            <select
-              className="field"
-              value={templateName}
-              onChange={(e) => setTemplateName(e.target.value)}
-            >
-              <option value="">— בחר תבנית —</option>
-              {templates.map((t) => (
-                <option key={t.name} value={t.name}>
-                  {t.displayName || t.name}
-                </option>
-              ))}
-              {templateName &&
-                !templates.some((t) => t.name === templateName) && (
-                  <option value={templateName}>
-                    {templateName} (לא קיימת בטקסטר)
-                  </option>
-                )}
-            </select>
+            <PoolPicker
+              templates={templates}
+              selected={pool}
+              onChange={setPool}
+            />
           )}
 
           {error && <div className="error">{error}</div>}

@@ -31,6 +31,7 @@ export async function POST() {
         delayMinutes: rule.delayMinutes,
         action: rule.action,
         templateName: rule.templateName ?? null,
+        templatePool: rule.templatePool ?? null,
         targetStatus: rule.targetStatus ?? null,
         note: rule.note,
         active: rule.active,

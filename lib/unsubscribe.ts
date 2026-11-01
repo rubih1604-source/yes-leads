@@ -30,6 +30,17 @@ export type UnsubscribeMatch = {
   blacklist: boolean;
   /** מה בדיוק זוהה - נרשם על הליד כדי שתדע למה הוא שם */
   reason: string | null;
+  /**
+   * אמר שאינו מעוניין, בלי לבקש שלא יפנו אליו יותר.
+   *
+   * **זה לא חוסם.** "לא מעוניין" הוא סירוב להצעה
+   * הנוכחית, לא סוף הקשר - ובעוד חודש, כשהמחירים
+   * משתנים, הוא דאטה שווה. חסימה שם מוחקת אותו לתמיד.
+   *
+   * רק אמירה מפורשת - "אל תפנו אליי יותר", "תסירו
+   * אותי" - חוסמת.
+   */
+  notInterested?: boolean;
 };
 
 /**
@@ -131,9 +142,21 @@ export function detectUnsubscribe(text: string): UnsubscribeMatch {
 
   if (CONTRAST.test(clean)) return { blacklist: false, reason: null };
 
+  /**
+   * **חוסר עניין מזוהה אבל לא חוסם.**
+   *
+   * קודם "לא מעוניין" הכניס לרשימה השחורה כמו "תסירו
+   * אותי", ושני הדברים אינם זהים: הראשון הוא סירוב
+   * להצעה הנוכחית, השני הוא סוף הקשר. חסימה של הראשון
+   * מוחקת דאטה שתהיה רלוונטית בעוד חודש.
+   */
   for (const pattern of NOT_INTERESTED) {
     if (pattern.test(clean)) {
-      return { blacklist: true, reason: "אמר שלא מעוניין" };
+      return {
+        blacklist: false,
+        reason: "אמר שלא מעוניין",
+        notInterested: true,
+      };
     }
   }
 
@@ -156,8 +179,13 @@ export function intentBlacklists(
     return { blacklist: true, reason: "ביקש להסיר" };
   }
 
+  /** חוסר עניין אינו בקשת הסרה - ראה detectUnsubscribe */
   if (intent === "not_interested") {
-    return { blacklist: true, reason: "אמר שלא מעוניין" };
+    return {
+      blacklist: false,
+      reason: "אמר שלא מעוניין",
+      notInterested: true,
+    };
   }
 
   return { blacklist: false, reason: null };

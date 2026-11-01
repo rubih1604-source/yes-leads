@@ -14,11 +14,12 @@ import { displayPhone } from "./phone";
 import { sendEmail } from "./email";
 import { sendPush } from "./push";
 import { KIND_LEADS } from "./inbound-context";
+import { decideReply, alertTitleFor } from "./reply-intent";
 import { runCampaignChecks } from "./campaign-monitor";
 import { isExistingCustomer, supplierAnswer } from "./existing-customer";
 import { getSettings } from "./settings";
 import { leadsForSlot, markSent, type Slot } from "./callback-list";
-import { israelParts } from "./working-hours";
+import { israelParts, shiftToWorkingHours } from "./working-hours";
 import { runDeliveries } from "./delivery";
 import { syncAdSpendDaily } from "./ad-spend";
 import {
@@ -87,18 +88,118 @@ async function runOne(jobId: string, summary: RunSummary) {
     return;
   }
 
-  // מעקה: אם הלקוח ענה מאז שהמשימה נוצרה - עוצרים
+  /**
+   * ============================================================
+   *  קוראים את השיחה לפני ששולחים
+   * ============================================================
+   *
+   *  **מה היה כאן קודם.** כל תגובה של הלקוח ביטלה את
+   *  המשימה, וזהו. "תדבר איתי מחר" ו"לא מעוניין" קיבלו
+   *  בדיוק אותו טיפול - שתיקה. אחד מהם היה עסקה.
+   *
+   *  עכשיו קוראים מה הוא כתב ומנווטים: מעבירים סטטוס,
+   *  פותחים תזכורת למועד שביקש, או מתריעים לך להתקשר.
+   *  רק כשאין שום דבר חדש - התבנית יוצאת כמתוכנן.
+   *
+   *  זו לא שכבה נוספת מעל הביטול; זו **ההחלטה עצמה**,
+   *  במקום שבו היא תמיד הייתה.
+   */
   const replied = await db.message.findFirst({
     where: {
       leadId: lead.id,
       direction: "in",
       createdAt: { gte: job.createdAt },
     },
+    orderBy: { createdAt: "desc" },
+    select: { bodyText: true },
   });
+
   if (replied) {
+    const decision = decideReply({
+      text: replied.bodyText,
+      now: new Date(),
+    });
+
+    /**
+     * ההעברה עוברת דרך applyStatusChange ולא דרך עדכון
+     * ישיר: שם נמצאים התיעוד, ביטול המשימות הישנות
+     * ותזמון החוקים של הסטטוס החדש. עדכון ישיר היה
+     * משאיר את הליד בלי כל אלה.
+     */
+    if (decision.action === "set_status" && decision.status) {
+      await applyStatusChange({
+        leadId: lead.id,
+        toStatus: decision.status,
+        actor: "bot",
+        note: decision.reason,
+      }).catch(() => null);
+
+      /** חסימה היא החלטה נפרדת מהסטטוס, והיא מגיעה מההכרעה */
+      if (decision.blacklist) {
+        await db.lead
+          .update({ where: { id: lead.id }, data: { doNotContact: true } })
+          .catch(() => null);
+      }
+
+      summary.skipped++;
+      summary.details.push(
+        `${lead.phone}: ${decision.reason} · הועבר ל"${decision.status}"`
+      );
+      await finish("cancelled", decision.reason);
+      return;
+    }
+
+    if (decision.action === "remind" && decision.remindAt) {
+      /**
+       * התזכורת נשמרת כמשימת התראה של הליד, באותו מנוע
+       * שמריץ את כל השאר. אין תור שני ואין שעון נפרד.
+       */
+      await db.scheduledJob
+        .create({
+          data: {
+            leadId: lead.id,
+            action: "notify",
+            runAt: shiftToWorkingHours(decision.remindAt),
+            note: decision.reason,
+          },
+        })
+        .catch(() => null);
+
+      await db.leadEvent
+        .create({
+          data: {
+            leadId: lead.id,
+            type: "reply_routed",
+            actor: "bot",
+            payload: {
+              intent: decision.intent,
+              remindAt: decision.remindAt.toISOString(),
+              reason: decision.reason,
+            },
+          },
+        })
+        .catch(() => null);
+
+      summary.skipped++;
+      summary.details.push(`${lead.phone}: ${decision.reason}`);
+      await finish("cancelled", decision.reason);
+      return;
+    }
+
+    /* עניין מפורש או תגובה שלא זוהתה - אתה מטפל, לא הבוט */
+    await db.alert
+      .create({
+        data: {
+          leadId: lead.id,
+          title: alertTitleFor(decision),
+          body: `${lead.firstName ?? ""} ${displayPhone(lead.phone)} · ${decision.reason}`.trim(),
+        },
+      })
+      .catch(() => null);
+
     summary.skipped++;
-    summary.details.push(`${lead.phone}: הלקוח ענה, המשימה בוטלה`);
-    await finish("cancelled", "הלקוח ענה");
+    summary.details.push(`${lead.phone}: ${decision.reason}`);
+    await finish("cancelled", decision.reason);
     return;
   }
 
@@ -210,11 +311,40 @@ async function runOne(jobId: string, summary: RunSummary) {
     }
 
     if (job.action === "notify") {
+      /**
+       * ============================================================
+       *  ההתראה אומרת מה לעשות, לא מה קרה
+       * ============================================================
+       *
+       *  "נסה להשיג את הלקוח שוב" היה אותו משפט לכל
+       *  סטטוס, ולכן לא עזר להחליט למי להתקשר קודם.
+       *  הכותרת מגיעה עכשיו ממי שיצר את המשימה -
+       *  "להתקשר שוב · ניסיון 2", "קיבל הצעת מחיר היום",
+       *  או "ביקש שתחזור אליו" - כך שהרשימה עצמה מדרגת
+       *  לך את היום.
+       *
+       *  תזכורת שנולדה מתגובה של לקוח נושאת את הסיבה על
+       *  המשימה עצמה, כי אין מאחוריה חוק.
+       */
+      const rule = job.ruleId
+        ? await db.rule
+            .findUnique({
+              where: { id: job.ruleId },
+              select: { note: true },
+            })
+            .catch(() => null)
+        : null;
+
+      const who = `${lead.firstName ?? ""} ${displayPhone(lead.phone)}`.trim();
+
       await db.alert.create({
         data: {
           leadId: lead.id,
-          title: "נסה להשיג את הלקוח שוב",
-          body: `${lead.firstName ?? ""} ${displayPhone(lead.phone)} · עדיין בסטטוס "${lead.status}" ואין תגובה`.trim(),
+          title:
+            rule?.note?.trim() ||
+            job.note?.trim() ||
+            "נסה להשיג את הלקוח שוב",
+          body: `${who} · בסטטוס "${lead.status}" ואין תגובה`,
         },
       });
       await db.leadEvent.create({

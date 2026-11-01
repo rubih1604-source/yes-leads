@@ -11,6 +11,7 @@
 import { db } from "./db";
 import { shiftToWorkingHours } from "./working-hours";
 import { queueForCallback } from "./callback-list";
+import { parsePool, templateForRule } from "./template-pool";
 
 /** מבטל את כל המשימות הממתינות של ליד. נקרא בכל שינוי ובכל תגובה. */
 export async function cancelPendingJobs(leadId: string, reason: string) {
@@ -68,6 +69,32 @@ export async function scheduleForStatus(
     const rawRunAt = new Date(now + rule.delayMinutes * 60000);
 
     /**
+     * ============================================================
+     *  איזו תבנית מהבנק יוצאת ללקוח הזה
+     * ============================================================
+     *
+     *  **הבחירה נעשית עכשיו, לא ברגע השליחה.** המשימה
+     *  המתוזמנת נושאת את השם הסופי, ולכן אפשר לראות
+     *  מראש מה ייצא למי - במסך המשימות ובאבחון. אם
+     *  הבחירה הייתה נדחית לרגע השליחה, היא הייתה נעשית
+     *  במקום שני במערכת, וזה בדיוק מה שאנחנו לא עושים.
+     *
+     *  המונה מתקדם בכל שימוש ולכן החלוקה שווה: תבנית
+     *  ראשונה, שנייה, שלישית, ושוב מהתחלה.
+     */
+    const pool = parsePool(rule.templatePool);
+    const chosen = templateForRule(rule, rule.poolCursor);
+
+    if (pool.length > 1) {
+      await db.rule
+        .update({
+          where: { id: rule.id },
+          data: { poolCursor: { increment: 1 } },
+        })
+        .catch(() => null);
+    }
+
+    /**
      * שינוי שאתה עשית יוצא בדיוק לפי העיכוב בחוק.
      * בלי דחייה לשעות פעילות ובלי הפתעות.
      */
@@ -87,14 +114,14 @@ export async function scheduleForStatus(
           ruleId: rule.id,
           stepIndex: rule.stepIndex,
           action: rule.action,
-          templateName: rule.templateName,
+          templateName: chosen,
           targetStatus: rule.targetStatus,
           runAt,
         },
         update: {
           // תזמון מחדש אחרי שהסטטוס חזר לאותו ערך
           action: rule.action,
-          templateName: rule.templateName,
+          templateName: chosen,
           targetStatus: rule.targetStatus,
           runAt,
           state: "pending",
@@ -212,27 +239,153 @@ export const DEFAULT_RULES: Array<{
   delayMinutes: number;
   action: string;
   templateName?: string;
+  /** בנק תבניות מתחלפות, מופרדות בפסיק */
+  templatePool?: string;
   targetStatus?: string;
   note: string;
   active: boolean;
 }> = [
+  /**
+   * ============================================================
+   *  אין מענה - ניסיון ראשון
+   * ============================================================
+   *
+   *  שלוש תבניות בסבב שווה. הן לא אומרות אותו דבר: אחת
+   *  מציעה לחזור, אחת שואלת אם רלוונטי, ואחת מזכירה
+   *  שהוא השאיר פרטים. הסבב השווה הוא מה שיאפשר לדעת
+   *  מי מהן מביאה יותר תגובות.
+   */
   {
     triggerStatus: "אין מענה",
     stepIndex: 0,
     delayMinutes: 5,
     action: "send_template",
-    templateName: "inbox_marketing_1",
-    note: "אחרי 5 דקות שולח את תבנית 'אין מענה'",
-    active: true,
+    templatePool: "noanswer_1,noanswer_2,noanswer_3",
+    note: "שלוש תבניות מתחלפות בסבב שווה",
+    active: false,
   },
   {
     triggerStatus: "אין מענה",
     stepIndex: 1,
-    delayMinutes: 60,
+    delayMinutes: 30,
     action: "notify",
-    note: "אחרי שעה מתריע לך לנסות להשיג את הלקוח שוב",
+    note: "להתקשר שוב · ניסיון 2",
     active: true,
   },
+
+  /**
+   * ============================================================
+   *  אין מענה 2 - ניסיון שני
+   * ============================================================
+   *
+   *  שתי תבניות: אחת נותנת מועד סגירה, אחת מוותרת על
+   *  השיחה ומציעה להמשיך בכתב. שני מסרים שונים לגמרי,
+   *  ולכן שווה למדוד מי מהם עובד.
+   */
+  {
+    triggerStatus: "אין מענה 2",
+    stepIndex: 0,
+    delayMinutes: 5,
+    action: "send_template",
+    templatePool: "noanswer2_1,noanswer2_2",
+    note: "שתי תבניות מתחלפות בסבב שווה",
+    active: false,
+  },
+  {
+    triggerStatus: "אין מענה 2",
+    stepIndex: 1,
+    delayMinutes: 45,
+    action: "notify",
+    note: "להתקשר שוב · ניסיון 3 - אחרון לפני שחרור",
+    active: true,
+  },
+
+  /**
+   * ============================================================
+   *  פולואפ אחרי הצעת מחיר
+   * ============================================================
+   *
+   *  **זה רצף, לא סבב.** שלוש התבניות לא מתחרות זו בזו -
+   *  הן שלושה צעדים אחרי אותו לקוח: באותו יום, אחרי
+   *  יומיים, ואחרי חמישה. לכן כל אחת היא צעד משלה.
+   *
+   *  כל צעד מתבטל ברגע שהלקוח עונה.
+   */
+  {
+    triggerStatus: "נשלחה הצעת מחיר",
+    stepIndex: 0,
+    delayMinutes: 6 * 60,
+    action: "send_template",
+    templateName: "quote_followup_1",
+    note: "אחרי 6 שעות · האם הספקת לעבור על ההצעה",
+    active: false,
+  },
+  {
+    triggerStatus: "נשלחה הצעת מחיר",
+    stepIndex: 1,
+    delayMinutes: 2 * 24 * 60,
+    action: "send_template",
+    templateName: "quote_followup_2",
+    note: "אחרי יומיים · מוודא שההצעה הגיעה",
+    active: false,
+  },
+  {
+    triggerStatus: "נשלחה הצעת מחיר",
+    stepIndex: 2,
+    delayMinutes: 5 * 24 * 60,
+    action: "send_template",
+    templateName: "quote_followup_3",
+    note: "אחרי 5 ימים · נתקדם או שאסגור",
+    active: false,
+  },
+  {
+    /**
+     * **ההתראה היא למכירה, לא לתיעוד.**
+     *
+     * מי שקיבל הצעת מחיר הוא הליד הכי שווה שיש לך
+     * באותו רגע. שעתיים אחרי ההצעה הוא עדיין בעניין,
+     * ושיחה שלך שם שווה יותר מכל הודעה.
+     */
+    triggerStatus: "נשלחה הצעת מחיר",
+    stepIndex: 3,
+    delayMinutes: 2 * 60,
+    action: "notify",
+    note: "להתקשר · קיבל הצעת מחיר היום, הזמן הכי טוב לסגור",
+    active: true,
+  },
+
+  /**
+   * ============================================================
+   *  לא מעוניין
+   * ============================================================
+   *
+   *  **סגירה יפה היא השקעה.** לקוח שנפרד בטוב חוזר בעוד
+   *  חודש; לקוח שנלחץ מבקש הסרה. לכן הצעד הראשון סוגר,
+   *  והשני פותח מחדש רק אחרי שעבר מספיק זמן.
+   *
+   *  התבנית השלישית (notinterested_3) לא נמצאת כאן
+   *  בכוונה: היא נשלחת כשיוצא מבצע חדש, ולא לפי שעון.
+   */
+  {
+    triggerStatus: "לא מעוניין",
+    stepIndex: 0,
+    delayMinutes: 5,
+    action: "send_template",
+    templateName: "notinterested_1",
+    note: "סוגר את הפנייה יפה ומשאיר דלת פתוחה",
+    active: false,
+  },
+  {
+    triggerStatus: "לא מעוניין",
+    stepIndex: 1,
+    delayMinutes: 30 * 24 * 60,
+    action: "send_template",
+    templateName: "notinterested_2",
+    note: "אחרי 30 יום · בדיקה חוזרת",
+    active: false,
+  },
+
+  /* ---------- חוקים קיימים ---------- */
   {
     triggerStatus: "לקוח קיים",
     stepIndex: 0,
@@ -250,32 +403,5 @@ export const DEFAULT_RULES: Array<{
     templateName: "inbox_marketing_15",
     note: "אחרי 28 שעות שולח את הפולואפ",
     active: true,
-  },
-  {
-    triggerStatus: "קיבל הצעה/פולואפ",
-    stepIndex: 1,
-    delayMinutes: 52 * 60,
-    action: "send_template",
-    templateName: "FOLLOWUP_2_TBD",
-    note: "פולואפ שני אחרי 52 שעות - כבוי עד שתיצור את התבנית",
-    active: false,
-  },
-  {
-    triggerStatus: "קיבל הצעה/פולואפ",
-    stepIndex: 2,
-    delayMinutes: 53 * 60,
-    action: "set_status",
-    targetStatus: "אין מענה לאחר הצעת מחיר",
-    note: "אם אין תגובה - מעביר לסטטוס 'אין מענה לאחר הצעת מחיר'",
-    active: false,
-  },
-  {
-    triggerStatus: "לא מעוניין",
-    stepIndex: 0,
-    delayMinutes: 30 * 24 * 60,
-    action: "send_template",
-    templateName: "REENGAGE_30D_TBD",
-    note: "ריאקטיבציה אחרי 30 יום - כבוי עד שתיצור את התבנית",
-    active: false,
   },
 ];

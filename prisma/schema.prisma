@@ -127,6 +127,15 @@ model Rule {
   delayMinutes  Int
   action        String   // send_template | notify | set_status
   templateName  String?
+
+  /// בנק תבניות שמתחלפות בסבב שווה, מופרדות בפסיק.
+  /// ריק = החוק שולח את templateName בלבד, כמו קודם.
+  /// הסבב השווה הוא מה שמאפשר להשוות ניסוחים באמת.
+  templatePool  String?
+
+  /// המונה שקובע מי התורנית. מתקדם בכל תזמון.
+  poolCursor    Int      @default(0)
+
   targetStatus  String?
   note          String?
   active        Boolean  @default(true)
@@ -273,6 +282,14 @@ model Status {
   won       Boolean  @default(false)
   builtin   Boolean  @default(false)
   commission Float   @default(0)
+
+  /// הקטגוריה שהסטטוס שייך אליה, כשם חופשי.
+  /// ריק = מופיע בקבוצה "אחרים" בסוף הרשימה.
+  ///
+  /// שדה ולא טבלה בכוונה: קטגוריה נולדת ברגע שכותבים את
+  /// שמה, ואין מה לתחזק בנפרד. סדר הקטגוריות נגזר מסדר
+  /// הסטטוסים שבתוכן.
+  category  String?
 
   /// סטטוס שמעביר את הליד לקונה.
   /// ברגע שליד מקבל את הסטטוס הזה הוא נמכר: עובר לערוץ

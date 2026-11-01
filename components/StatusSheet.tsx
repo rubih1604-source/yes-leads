@@ -2,14 +2,24 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { StatusDef } from "@/lib/statuses";
+import { groupByCategory, type StatusDef } from "@/lib/statuses";
 
 /**
- * בורר סטטוס בשני שלבים.
+ * ============================================================
+ *  בורר סטטוס בקטגוריות
+ * ============================================================
  *
- * סטטוס רגיל נשמר בלחיצה אחת. סטטוס שיש לו תת-סטטוסים
- * (למשל "מחכה למבצע") פותח שלב שני - מה חשוב ללקוח.
- * זה מה שמאפשר אחר כך לשלוח מבצע ממוקד.
+ *  **למה קטגוריות.** רשימה של ארבעה-עשר סטטוסים היא
+ *  גלילה בכל שינוי, ובסוף לוחצים על מה שקרוב במקום על
+ *  מה שנכון. הקטגוריה מקצרת את הבחירה לשתי לחיצות
+ *  קצרות במקום חיפוש ברשימה ארוכה.
+ *
+ *  **קיצור דרך שנשמר בכוונה:** קטגוריה שיש בה סטטוס
+ *  אחד בלבד נבחרת ישירות, בלי מסך ביניים ריק.
+ *
+ *  אחרי הסטטוס, סטטוס שיש לו תת-סטטוסים (למשל "מחכה
+ *  למבצע") פותח שלב נוסף - מה חשוב ללקוח. זה מה שמאפשר
+ *  אחר כך לשלוח מבצע ממוקד.
  */
 export default function StatusSheet({
   leadId,
@@ -26,6 +36,21 @@ export default function StatusSheet({
   subStatuses?: Record<string, string[]>;
   onClose: () => void;
 }) {
+  const groups = groupByCategory(statuses);
+
+  /**
+   * נפתח ישר על הקטגוריה של הסטטוס הנוכחי.
+   *
+   * ברוב השינויים הסטטוס הבא נמצא באותה קבוצה - "אין
+   * מענה" הופך ל"אין מענה 2" - ולכן זו לחיצה אחת פחות
+   * בדרך הנפוצה ביותר.
+   */
+  const [openCategory, setOpenCategory] = useState<string | null>(() => {
+    const mine = groups.find((g) =>
+      g.statuses.some((s) => s.name === current)
+    );
+    return groups.length === 1 ? groups[0].category : mine?.category ?? null;
+  });
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -130,42 +155,98 @@ export default function StatusSheet({
           </>
         ) : (
           <>
-            <h3>בחר סטטוס</h3>
+            {openCategory ? (
+              <>
+                <h3>{openCategory}</h3>
 
-            {statuses.map((s) => (
-              <button
-                key={s.name}
-                className="status-option"
-                data-current={s.name === current}
-                onClick={() => pick(s.name)}
-                disabled={busy !== null}
-              >
-                <span className="dot" style={{ background: s.color }} />
-                <span>{s.name}</span>
-                {(subStatuses[s.name]?.length ?? 0) > 0 && (
-                  <span
-                    style={{
-                      marginInlineStart: "auto",
-                      color: "#98a2b3",
-                      fontSize: 13,
-                    }}
+                {(groups.find((g) => g.category === openCategory)?.statuses ??
+                  []).map((s) => (
+                  <button
+                    key={s.name}
+                    className="status-option"
+                    data-current={s.name === current}
+                    onClick={() => pick(s.name)}
+                    disabled={busy !== null}
                   >
-                    ‹
-                  </span>
-                )}
-                {busy === s.name && (
-                  <span
-                    style={{
-                      marginInlineStart: "auto",
-                      color: "#98a2b3",
-                      fontSize: 14,
-                    }}
+                    <span className="dot" style={{ background: s.color }} />
+                    <span>{s.name}</span>
+                    {(subStatuses[s.name]?.length ?? 0) > 0 && (
+                      <span
+                        style={{
+                          marginInlineStart: "auto",
+                          color: "#98a2b3",
+                          fontSize: 13,
+                        }}
+                      >
+                        ‹
+                      </span>
+                    )}
+                    {busy === s.name && (
+                      <span
+                        style={{
+                          marginInlineStart: "auto",
+                          color: "#98a2b3",
+                          fontSize: 14,
+                        }}
+                      >
+                        שומר...
+                      </span>
+                    )}
+                  </button>
+                ))}
+
+                {groups.length > 1 && (
+                  <button
+                    className="btn"
+                    style={{ marginTop: 6 }}
+                    onClick={() => setOpenCategory(null)}
+                    disabled={busy !== null}
                   >
-                    שומר...
-                  </span>
+                    כל הקטגוריות
+                  </button>
                 )}
-              </button>
-            ))}
+              </>
+            ) : (
+              <>
+                <h3>בחר קטגוריה</h3>
+
+                {groups.map((group) => {
+                  const only =
+                    group.statuses.length === 1 ? group.statuses[0] : null;
+
+                  return (
+                    <button
+                      key={group.category}
+                      className="status-option"
+                      data-current={group.statuses.some(
+                        (s) => s.name === current
+                      )}
+                      onClick={() =>
+                        only
+                          ? pick(only.name)
+                          : setOpenCategory(group.category)
+                      }
+                      disabled={busy !== null}
+                    >
+                      <span
+                        className="dot"
+                        style={{ background: group.statuses[0].color }}
+                      />
+                      <span>{group.category}</span>
+                      <span
+                        style={{
+                          marginInlineStart: "auto",
+                          color: "#98a2b3",
+                          fontSize: 13,
+                        }}
+                      >
+                        {only ? "" : `${group.statuses.length} ‹`}
+                      </span>
+                    </button>
+                  );
+                })}
+              </>
+            )}
           </>
         )}
       </div>

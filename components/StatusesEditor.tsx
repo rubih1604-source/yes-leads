@@ -2,20 +2,40 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { StatusDef } from "@/lib/statuses";
+import { categoryNames, type StatusDef } from "@/lib/statuses";
 import { hookTokens } from "@/lib/hook-payload";
 
+/**
+ * ============================================================
+ *  פלטת הצבעים
+ * ============================================================
+ *
+ *  **למה דווקא הגוונים האלה.** הצבע הוא הפס הצדדי
+ *  שמאפשר לסרוק את רשימת הלידים בלי לקרוא. לכן כל גוון
+ *  כאן כהה מספיק כדי להיראות על רקע לבן, והמשפחות
+ *  מסודרות יחד - כחולים, סגולים, ורודים, אדומים,
+ *  כתומים, ירוקים, אפורים - כך שקל לתת לקטגוריה שלמה
+ *  גוונים מאותה משפחה.
+ */
 const PALETTE = [
-  "#2563eb",
-  "#0891b2",
-  "#7c3aed",
-  "#db2777",
-  "#ea580c",
-  "#f59e0b",
-  "#15803d",
-  "#12805c",
-  "#dc2626",
-  "#64748b",
+  /* כחולים ותכולים */
+  "#2563eb", "#1d4ed8", "#1e40af", "#0ea5e9", "#0284c7",
+  "#0891b2", "#0e7490", "#155e75",
+  /* סגולים */
+  "#7c3aed", "#6d28d9", "#5b21b6", "#8b5cf6", "#a855f7",
+  /* ורודים */
+  "#db2777", "#be185d", "#9d174d", "#ec4899", "#f472b6",
+  /* אדומים */
+  "#dc2626", "#b91c1c", "#991b1b", "#ef4444", "#f87171",
+  /* כתומים וענברים */
+  "#ea580c", "#c2410c", "#9a3412", "#f59e0b", "#d97706",
+  "#b45309", "#92400e", "#fb923c",
+  /* ירוקים */
+  "#15803d", "#166534", "#16a34a", "#22c55e", "#059669",
+  "#047857", "#12805c", "#65a30d", "#4d7c0f",
+  /* חומים ואפורים */
+  "#78350f", "#57534e", "#64748b", "#475569", "#334155",
+  "#6b7280", "#94a3b8",
 ];
 
 export default function StatusesEditor({
@@ -34,6 +54,8 @@ export default function StatusesEditor({
   const [won, setWon] = useState(false);
   const [busy, setBusy] = useState(false);
   const [rates, setRates] = useState<Record<string, string>>({});
+  /** הקטגוריה הנערכת לכל סטטוס, עד השמירה */
+  const [cats, setCats] = useState<Record<string, string>>({});
   const [transferPrices, setTransferPrices] = useState<Record<string, string>>(
     {}
   );
@@ -66,6 +88,33 @@ export default function StatusesEditor({
       setError(data.error || "ההוספה נכשלה");
     }
     setBusy(false);
+  }
+
+  /**
+   * שמירת קטגוריה.
+   *
+   * **אין "יצירת קטגוריה" נפרדת בכוונה.** הקטגוריה היא
+   * השם שכתבת, והיא נולדת ברגע שסטטוס ראשון משויך אליה.
+   * מסך נפרד לניהול קטגוריות היה דבר שני לתחזק, ורשימה
+   * שאפשר לשכוח בה קטגוריות ריקות.
+   */
+  async function saveCategory(id: string, value: string) {
+    setBusy(true);
+    setError("");
+
+    const res = await fetch(`/api/statuses/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ category: value }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setError(data.error || "הקטגוריה לא נשמרה");
+    }
+
+    setBusy(false);
+    router.refresh();
   }
 
   async function saveCommission(id: string, value: string) {
@@ -175,6 +224,12 @@ export default function StatusesEditor({
         ובחוקים.
       </div>
 
+      <datalist id="status-categories">
+        {categoryNames(statuses).map((c) => (
+          <option key={c} value={c} />
+        ))}
+      </datalist>
+
       <div className="timeline" style={{ margin: "0 0 14px" }}>
         {statuses.map((s) => (
           <div
@@ -194,6 +249,19 @@ export default function StatusesEditor({
                 }}
               />
               <span style={{ fontWeight: 600 }}>{s.name}</span>
+              {s.category && (
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "#475467",
+                    background: "#f2f4f7",
+                    borderRadius: 20,
+                    padding: "2px 8px",
+                  }}
+                >
+                  {s.category}
+                </span>
+              )}
               {s.won && (
                 <span style={{ fontSize: 11, color: "#12805c", fontWeight: 700 }}>
                   סגירה
@@ -263,6 +331,38 @@ export default function StatusesEditor({
                 </button>
               )}
             </div>
+            {s.id && (
+              <div
+                style={{
+                  display: "flex",
+                  gap: 6,
+                  alignItems: "center",
+                  marginTop: 8,
+                }}
+              >
+                <input
+                  className="field"
+                  list="status-categories"
+                  placeholder="קטגוריה"
+                  value={cats[s.id] ?? s.category ?? ""}
+                  onChange={(e) =>
+                    setCats((p) => ({ ...p, [s.id!]: e.target.value }))
+                  }
+                  style={{ marginBottom: 0, minHeight: 36, fontSize: 14, flex: 1 }}
+                />
+                <button
+                  className="btn"
+                  style={{ height: 36, flex: "0 0 auto", fontSize: 13 }}
+                  onClick={() =>
+                    saveCategory(s.id!, cats[s.id!] ?? s.category ?? "")
+                  }
+                  disabled={busy}
+                >
+                  שמור
+                </button>
+              </div>
+            )}
+
 
             {/**
               * העברה לקונה לפי סטטוס.

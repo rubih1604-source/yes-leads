@@ -34,6 +34,7 @@ export async function getStatuses(force = false): Promise<StatusDef[]> {
               position: i,
               terminal: s.terminal ?? false,
               won: s.won ?? false,
+              category: s.category ?? null,
               builtin: true,
             },
           })
@@ -49,6 +50,7 @@ export async function getStatuses(force = false): Promise<StatusDef[]> {
       name: r.name,
       color: r.color,
       position: r.position,
+      category: r.category,
       terminal: r.terminal,
       won: r.won,
       builtin: r.builtin,
