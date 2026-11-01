@@ -51,8 +51,15 @@ const inMsg = (text: string, iso: string) => ({
   createdAt: at(iso),
 });
 
+/**
+ * ברירת המחדל היא **נמען דיוור**, לא ליד שלך.
+ *
+ * קודם היה כאן "leadmanager" - כלומר כל הבדיקות של
+ * שאלת הסינון רצו על ליד שבפועל אסור לשאול אותו, וזה
+ * בדיוק המקרה שנשבר בשטח. הבעלות נבדקת בנפרד למטה.
+ */
 const base = {
-  origin: "leadmanager",
+  origin: "broadcast",
   alreadyAsked: false,
   blacklisted: false,
   now: at("2026-10-29T12:00:00Z"),
@@ -473,6 +480,116 @@ test("כישלון בחיפוש לא שובר את הבוט", () => {
 test("האבחון בודק את אותו מקור", () => {
   assert.ok(check.includes("lastListSendFor"));
   assert.ok(check.includes("ברשימת_דיוור_שנשלחה"));
+});
+
+/* ============================================================
+ *  הליד שלך לא נשאל אם הוא לקוח קיים
+ * ============================================================
+ *
+ *  קרה בפועל: לקוח שרובי טיפל בו קיבל את שאלת הסינון,
+ *  כי המספר שלו היה גם באחד מקבצי הדאטה שהועלו. ראיה
+ *  של "נמצא ברשימה" הספיקה כדי להתייחס אליו כזר.
+ */
+
+test("גם דיוור דאטה שנרשם על ליד שלך לא מפעיל את השאלה", () => {
+  /**
+   * קובץ דאטה יכול להכיל מספר שכבר ליד שלך. גם אז -
+   * הוא שלך, ואתה מכיר אותו.
+   */
+  const d = decideInbound({
+    ...base,
+    origin: "leadmanager",
+    messages: [
+      out(KIND_DATA, "2026-10-29T09:00:00Z"),
+      inMsg("מה המחיר", "2026-10-29T10:00:00Z"),
+    ],
+  });
+
+  assert.equal(d.askSupplier, false);
+  assert.equal(d.isBroadcastReply, true, "התגובה עדיין שייכת למסך ההתעניינות");
+});
+
+const MINE_ORIGINS = ["leadmanager", "facebook", "manual", "import"];
+
+for (const origin of MINE_ORIGINS) {
+  test(`ליד בבעלות "${origin}" לא נשאל שאלת סינון`, () => {
+    const sentAt = new Date("2026-11-01T09:00:00Z");
+
+    const d = decideInbound({
+      messages: [
+        {
+          direction: "in",
+          bodyText: "היי, רציתי לשאול משהו",
+          createdAt: new Date("2026-11-01T10:00:00Z"),
+        },
+      ],
+      origin,
+      alreadyAsked: false,
+      blacklisted: false,
+      listSendAt: sentAt,
+      now: new Date("2026-11-01T10:05:00Z"),
+    });
+
+    assert.equal(d.askSupplier, false, `ליד שלך נשאל: ${origin}`);
+    assert.ok(d.reason.includes("שלך"), `ההסבר לא מדויק: ${d.reason}`);
+  });
+}
+
+test("נמען דיוור אמיתי כן נשאל", () => {
+  /** בלי זה התיקון היה הורג גם את מה שכן צריך לעבוד */
+  const sentAt = new Date("2026-11-01T09:00:00Z");
+
+  const d = decideInbound({
+    messages: [
+      {
+        direction: "in",
+        bodyText: "כמה זה עולה",
+        createdAt: new Date("2026-11-01T10:00:00Z"),
+      },
+    ],
+    origin: "broadcast",
+    alreadyAsked: false,
+    blacklisted: false,
+    listSendAt: sentAt,
+    now: new Date("2026-11-01T10:05:00Z"),
+  });
+
+  assert.equal(d.askSupplier, true, "נמען דיוור אמיתי לא נשאל");
+});
+
+test("מי שכתב מעצמו לא נשאל רק בגלל חברות ברשימה", () => {
+  /**
+   * origin "whatsapp" הוא מישהו שכתב ראשון. אם לא נרשם
+   * אליו דיוור, "הוא ברשימה" היא ראיה חלשה מדי.
+   */
+  const d = decideInbound({
+    messages: [
+      {
+        direction: "in",
+        bodyText: "שלום",
+        createdAt: new Date("2026-11-01T10:00:00Z"),
+      },
+    ],
+    origin: "whatsapp",
+    alreadyAsked: false,
+    blacklisted: false,
+    listSendAt: new Date("2026-11-01T09:00:00Z"),
+    now: new Date("2026-11-01T10:05:00Z"),
+  });
+
+  assert.equal(d.askSupplier, false);
+});
+
+test("הבעלות נבדקת בפועל ולא רק מתקבלת", () => {
+  /**
+   * השדה origin הועבר להכרעה מההתחלה ופשוט לא נבדק.
+   * זו הייתה הטעות, ולכן היא נעולה כאן.
+   */
+  const src = io.readFileSync("lib/inbound-context.ts", "utf8");
+  assert.ok(
+    src.includes("NON_LEAD_ORIGINS.includes(input.origin)"),
+    "הבעלות שוב לא משפיעה על ההכרעה"
+  );
 });
 
 console.log(`✓ inbound-context: ${passed} בדיקות עברו`);

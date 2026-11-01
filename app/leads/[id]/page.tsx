@@ -8,6 +8,7 @@ import { getStatuses } from "@/lib/status-store";
 import { getSubStatusMap } from "@/lib/substatus";
 import { isExistingCustomer, supplierAnswer } from "@/lib/existing-customer";
 import LeadCardActions from "@/components/LeadCardActions";
+import LeadNotes from "@/components/LeadNotes";
 import CallLink from "@/components/CallLink";
 import { getSettings } from "@/lib/settings";
 import { doorLabel } from "@/lib/via";
@@ -239,6 +240,15 @@ export default async function LeadPage({
           dialerDesktop={settings.dialerDesktop}
         />
       </div>
+
+      {/**
+        * ההערות יושבות מתחת לפעולות ולפני ההיסטוריה.
+        *
+        * זה המקום שבו אתה כבר נמצא אחרי שיחה - סימנת
+        * סטטוס, ועכשיו כותבים מה נאמר. הערה שיש בה מועד
+        * פותחת תזכורת לבד.
+        */}
+      <LeadNotes leadId={lead.id} initial={lead.notes} />
 
       {/**
         * מתי הוא נכנס - ודרך איזו דלת.
