@@ -401,6 +401,26 @@ test("יש תבניות לכל ארבעת הסטטוסים", () => {
   }
 });
 
+test("תבניות הפולואפ לא מניחות שההצעה נשלחה בכתב", () => {
+  /**
+   * רובי לא תמיד שולח הצעה - לפעמים הוא רק מספר עליה
+   * בשיחה. "שלחתי לך את פרטי ההצעה" ללקוח שלא קיבל
+   * כלום נראה כמו הודעה שנשלחה בטעות.
+   */
+  const drafts = io.readFileSync("lib/template-drafts.ts", "utf8");
+  const block = drafts.slice(
+    drafts.indexOf("quote_followup_1"),
+    drafts.indexOf("notinterested_1")
+  );
+
+  for (const phrase of ["שלחתי לך", "ההצעה הגיעה", "שההצעה הגיעה"]) {
+    assert.ok(
+      !block.includes(phrase),
+      `תבנית פולואפ מניחה שליחה בכתב: "${phrase}"`
+    );
+  }
+});
+
 /* ---------- ההתראות ---------- */
 
 test("ההתראה אומרת מה לעשות ולא רק מה קרה", () => {

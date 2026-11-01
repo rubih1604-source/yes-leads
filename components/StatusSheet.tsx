@@ -39,18 +39,14 @@ export default function StatusSheet({
   const groups = groupByCategory(statuses);
 
   /**
-   * נפתח ישר על הקטגוריה של הסטטוס הנוכחי.
+   * **הרשימה תמיד נפתחת על כל הקטגוריות.**
    *
-   * ברוב השינויים הסטטוס הבא נמצא באותה קבוצה - "אין
-   * מענה" הופך ל"אין מענה 2" - ולכן זו לחיצה אחת פחות
-   * בדרך הנפוצה ביותר.
+   * קודם היא קפצה ישר לקטגוריה של הסטטוס הנוכחי, וזה
+   * הסתיר את שאר האפשרויות ברגע שבו דווקא צריך לראות
+   * אותן. הקטגוריה שבה הסטטוס הנוכחי מסומנת, ולא
+   * נפתחת במקומך.
    */
-  const [openCategory, setOpenCategory] = useState<string | null>(() => {
-    const mine = groups.find((g) =>
-      g.statuses.some((s) => s.name === current)
-    );
-    return groups.length === 1 ? groups[0].category : mine?.category ?? null;
-  });
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -155,98 +151,94 @@ export default function StatusSheet({
           </>
         ) : (
           <>
-            {openCategory ? (
-              <>
-                <h3>{openCategory}</h3>
+            <h3>בחר סטטוס</h3>
 
-                {(groups.find((g) => g.category === openCategory)?.statuses ??
-                  []).map((s) => (
+            {groups.map((group) => {
+              const open = expanded === group.category;
+              const holdsCurrent = group.statuses.some(
+                (x) => x.name === current
+              );
+
+              return (
+                <div key={group.category}>
                   <button
-                    key={s.name}
                     className="status-option"
-                    data-current={s.name === current}
-                    onClick={() => pick(s.name)}
+                    data-current={holdsCurrent}
+                    onClick={() =>
+                      setExpanded(open ? null : group.category)
+                    }
                     disabled={busy !== null}
                   >
-                    <span className="dot" style={{ background: s.color }} />
-                    <span>{s.name}</span>
-                    {(subStatuses[s.name]?.length ?? 0) > 0 && (
-                      <span
-                        style={{
-                          marginInlineStart: "auto",
-                          color: "#98a2b3",
-                          fontSize: 13,
-                        }}
-                      >
-                        ‹
-                      </span>
-                    )}
-                    {busy === s.name && (
-                      <span
-                        style={{
-                          marginInlineStart: "auto",
-                          color: "#98a2b3",
-                          fontSize: 14,
-                        }}
-                      >
-                        שומר...
-                      </span>
-                    )}
-                  </button>
-                ))}
-
-                {groups.length > 1 && (
-                  <button
-                    className="btn"
-                    style={{ marginTop: 6 }}
-                    onClick={() => setOpenCategory(null)}
-                    disabled={busy !== null}
-                  >
-                    כל הקטגוריות
-                  </button>
-                )}
-              </>
-            ) : (
-              <>
-                <h3>בחר קטגוריה</h3>
-
-                {groups.map((group) => {
-                  const only =
-                    group.statuses.length === 1 ? group.statuses[0] : null;
-
-                  return (
-                    <button
-                      key={group.category}
-                      className="status-option"
-                      data-current={group.statuses.some(
-                        (s) => s.name === current
-                      )}
-                      onClick={() =>
-                        only
-                          ? pick(only.name)
-                          : setOpenCategory(group.category)
-                      }
-                      disabled={busy !== null}
+                    <span
+                      className="dot"
+                      style={{ background: group.statuses[0].color }}
+                    />
+                    <span style={{ fontWeight: 600 }}>{group.category}</span>
+                    <span
+                      style={{
+                        marginInlineStart: "auto",
+                        color: "#98a2b3",
+                        fontSize: 13,
+                      }}
                     >
-                      <span
-                        className="dot"
-                        style={{ background: group.statuses[0].color }}
-                      />
-                      <span>{group.category}</span>
-                      <span
-                        style={{
-                          marginInlineStart: "auto",
-                          color: "#98a2b3",
-                          fontSize: 13,
-                        }}
-                      >
-                        {only ? "" : `${group.statuses.length} ‹`}
-                      </span>
-                    </button>
-                  );
-                })}
-              </>
-            )}
+                      {group.statuses.length} {open ? "⌄" : "‹"}
+                    </span>
+                  </button>
+
+                  {/**
+                   * הסטטוסים נפתחים מתחת לקטגוריה ולא במסך
+                   * אחר, כדי שתמיד תראה איפה אתה ברשימה.
+                   */}
+                  {open && (
+                    <div
+                      style={{
+                        marginInlineStart: 14,
+                        paddingInlineStart: 10,
+                        borderInlineStart: "2px solid #e4e9ef",
+                      }}
+                    >
+                      {group.statuses.map((x) => (
+                        <button
+                          key={x.name}
+                          className="status-option"
+                          data-current={x.name === current}
+                          onClick={() => pick(x.name)}
+                          disabled={busy !== null}
+                        >
+                          <span
+                            className="dot"
+                            style={{ background: x.color }}
+                          />
+                          <span>{x.name}</span>
+                          {(subStatuses[x.name]?.length ?? 0) > 0 && (
+                            <span
+                              style={{
+                                marginInlineStart: "auto",
+                                color: "#98a2b3",
+                                fontSize: 13,
+                              }}
+                            >
+                              ‹
+                            </span>
+                          )}
+                          {busy === x.name && (
+                            <span
+                              style={{
+                                marginInlineStart: "auto",
+                                color: "#98a2b3",
+                                fontSize: 14,
+                              }}
+                            >
+                              שומר...
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </>
         )}
       </div>
