@@ -56,6 +56,12 @@ export const SALE_ORIGIN = "sale";
  */
 export const BROADCAST_ORIGIN = "broadcast";
 
+/**
+ * בעלויות שאף פעם אינן ליד שלך: וואטסאפ בלבד, ונמען דיוור
+ * שעוד לא ענה. מכירה אינה כאן - אותה אפשר לכלול במפורש.
+ */
+export const NON_LEAD_ORIGINS = ["whatsapp", BROADCAST_ORIGIN];
+
 export type Channel = "mine" | "sale";
 
 /** כניסה כפי שהיא נשמרת - רק מה שצריך כדי להחליט על ערוץ */
@@ -235,6 +241,77 @@ export const SAME_SUBMISSION_MINUTES_NO_ID = 10;
  */
 const INITIAL_STATUSES = ["חדש", "לקוח קיים"];
 
+/**
+ * השדות שרק **הגשת טופס** נושאת.
+ *
+ * עדכון סטטוס מליד מנגר נושא טלפון וסטטוס. הגשה אמיתית
+ * נושאת את מה שהאדם מילא ואת מאיפה הוא הגיע.
+ */
+const SUBMISSION_FIELDS = [
+  "full_name",
+  "first_name",
+  "last_name",
+  "email",
+  "fb_campaign",
+  "fb_ad",
+  "fb_adset",
+  "fb_form",
+  "fb_leadid",
+  "supplier_question",
+  "address",
+];
+
+/** כמה שדות טופס מספיקים כדי לקרוא לזה הגשה */
+const SUBMISSION_MIN = 2;
+
+/**
+ * האם בפנייה הזו יש תוכן של טופס.
+ *
+ * שדה ריק אינו נספר: ליד מנגר שולח את כל העמודות שהוגדרו
+ * אצלו, וחלקן ריקות גם בעדכון סטטוס.
+ */
+export function hasSubmissionContent(
+  extra: Record<string, unknown> | null | undefined
+): boolean {
+  if (!extra) return false;
+
+  let found = 0;
+
+  for (const key of SUBMISSION_FIELDS) {
+    const value = extra[key];
+    if (typeof value === "string" && value.trim()) found++;
+    if (found >= SUBMISSION_MIN) return true;
+  }
+
+  return false;
+}
+
+/**
+ * ============================================================
+ *  הגעה או עדכון סטטוס
+ * ============================================================
+ *
+ *  **הבאג שעלה לך בלידים חודשים.**
+ *
+ *  קודם ההבחנה הייתה לפי **ערך הסטטוס**: פנייה על ליד
+ *  קיים שנושאת סטטוס שאינו "חדש" נחשבה עדכון. אבל ליד
+ *  מנגר שולח סטטוס גם כשהוא משדר **הגעה חדשה** - ואם
+ *  הסטטוס שלו שם היה "אין מענה", ההגעה נבלעה:
+ *
+ *    - לא נרשמה כניסה
+ *    - תאריך הכניסה לא התעדכן
+ *    - הליד לא צף לראש הרשימה
+ *    - וזה כן הופיע ביומן הקליטה, ולכן נראה כאילו המערכת
+ *      "מושכת" אותו לליד הישן
+ *
+ *  **המבחן עכשיו הוא על התוכן, לא על הסטטוס.** הגשה
+ *  אמיתית נושאת שדות טופס - שם, מייל, קמפיין, מודעה.
+ *  עדכון סטטוס נושא טלפון וסטטוס בלבד.
+ *
+ *  זה גם מה שמקיים את הכלל שלך: **כל הגעה נספרת**, גם של
+ *  מי שנכנס בפעם הרביעית, והליד חוזר לראש הרשימה עם
+ *  התאריך של עכשיו ותווית "כפול".
+ */
 export function isStatusUpdate(args: {
   /** הסטטוס שהגיע בפנייה, אם הגיע */
   incomingStatus: string | null;
@@ -242,11 +319,25 @@ export function isStatusUpdate(args: {
   hasSubmissionId: boolean;
   /** האם הליד כבר קיים במערכת */
   leadExists: boolean;
+  /** השדות שהגיעו בפנייה */
+  extra?: Record<string, unknown> | null;
 }): boolean {
   // הגשה עם מזהה היא תמיד הגשה אמיתית
   if (args.hasSubmissionId) return false;
 
+  // ליד חדש הוא תמיד הגעה
   if (!args.leadExists) return false;
+
+  /**
+   * יש תוכן של טופס -> הגשה, בלי קשר לסטטוס שהגיע.
+   * זו השורה שמחזירה לך את הלידים.
+   */
+  if (hasSubmissionContent(args.extra)) return false;
+
+  /**
+   * אין תוכן טופס. עכשיו הסטטוס מכריע, כמו קודם: פנייה
+   * בלי תוכן ועם סטטוס מתקדם היא עדכון.
+   */
   if (!args.incomingStatus) return false;
 
   return !INITIAL_STATUSES.includes(args.incomingStatus);
@@ -347,8 +438,32 @@ export const MY_LEADS_WHERE = {
    *   - אותו אדם מילא שוב את הטופס שלך -> חוזר אליך
    *   - ליד שהגיע מקמפיין של אלעד -> אצלו בלבד
    */
-  origin: { notIn: ["whatsapp", SALE_ORIGIN, BROADCAST_ORIGIN] },
+  origin: { notIn: [...NON_LEAD_ORIGINS, SALE_ORIGIN] },
 };
+
+/**
+ * ============================================================
+ *  אותו כלל, עם אפשרות לכלול מכירה
+ * ============================================================
+ *
+ *  **הבאג שזה מתקן.**
+ *
+ *  לתצוגה שמורה יש סימון "כולל מכירה", והוא פשוט לא עבד:
+ *  התצוגה הרחיבה את התנאי שלה, ומיד אחר כך הכלל הכללי
+ *  סינן את אותם לידים החוצה. סימנת קמפיין וראית 8 מתוך
+ *  24, בלי שום דרך לדעת למה.
+ *
+ *  פונקציה אחת לשני המצבים, ולא שני תנאים שיתפצלו.
+ */
+export function leadsWhere(includeSale = false) {
+  return {
+    origin: {
+      notIn: includeSale
+        ? [...NON_LEAD_ORIGINS]
+        : [...NON_LEAD_ORIGINS, SALE_ORIGIN],
+    },
+  };
+}
 
 export function ownerOf(origin: string): Channel {
   /**

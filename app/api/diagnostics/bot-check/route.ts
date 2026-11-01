@@ -75,7 +75,12 @@ export async function GET(request: Request) {
   }
 
   const settings = await getSettings();
-  const gate = await shouldBotReply(lead.id);
+  /**
+   * אותו שער בדיוק, ובאותו מצב: תגובה לדיוור נמדדת בשער
+   * של הדיוור, בלי מגבלת הסטטוסים. אחרת האבחון היה אומר
+   * "נחסם בסטטוס" על מישהו שבפועל כן מקבל את השאלה.
+   */
+  const gate = await shouldBotReply(lead.id, "broadcast");
 
   const outgoing = lead.messages.filter((m) => m.direction === "out");
   const lastOut = outgoing[outgoing.length - 1];

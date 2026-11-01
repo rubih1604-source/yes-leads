@@ -232,8 +232,66 @@ export async function handleInboundMessage(params: {
     actions.push("blacklist");
   }
 
-  // האם הבוט בכלל אמור לדבר עכשיו?
-  const gate = await shouldBotReply(lead.id);
+  /**
+   * ============================================================
+   *  מה ההודעה הזו - לפני שמחליטים אם לדבר
+   * ============================================================
+   *
+   *  **הסדר הזה הוא התיקון.**
+   *
+   *  קודם השער רץ ראשון, ובתוכו מגבלת הסטטוסים. נמען
+   *  דיוור שנטען מקובץ נוצר עם סטטוס "נמען דיוור", שלא
+   *  קיים ברשימת הסטטוסים שבחרת - ולכן הוא נחסם בשקט ולא
+   *  קיבל את שאלת הסינון, בזמן שליד ותיק עם סטטוס מוכר
+   *  כן קיבל. אותו דיוור, שתי התנהגויות.
+   *
+   *  עכשיו קודם יודעים **מה** ההודעה, ורק אז שואלים את
+   *  השער אם מותר לדבר - ומגבלת הסטטוסים לא חלה על תגובה
+   *  לדיוור.
+   */
+  const askedEvent = certain.blacklist
+    ? null
+    : await db.leadEvent
+        .findFirst({
+          where: { leadId: lead.id, type: ASKED_EVENT },
+          orderBy: { createdAt: "desc" },
+        })
+        .catch(() => null);
+
+  const history = certain.blacklist
+    ? []
+    : await db.message
+        .findMany({
+          where: { leadId: lead.id },
+          orderBy: { createdAt: "asc" },
+          select: {
+            direction: true,
+            broadcast: true,
+            broadcastKind: true,
+            templateName: true,
+            bodyText: true,
+            createdAt: true,
+          },
+          take: 200,
+        })
+        .catch(() => []);
+
+  const decision = decideInbound({
+    messages: history,
+    origin: lead.origin,
+    alreadyAsked: Boolean(askedEvent),
+    blacklisted: lead.doNotContact || certain.blacklist,
+    now: new Date(),
+  });
+
+  /**
+   * תגובה לדיוור - או תשובה לשאלה שכבר נשאלה - נמדדת
+   * בשער של הדיוור, בלי מגבלת הסטטוסים.
+   */
+  const scope =
+    decision.isBroadcastReply || askedEvent ? "broadcast" : "general";
+
+  const gate = await shouldBotReply(lead.id, scope);
 
   if (!gate.allowed) {
     await db.leadEvent.create({
@@ -284,15 +342,6 @@ export async function handleInboundMessage(params: {
    *
    *  מי שביקש להסיר כבר יצא קודם, ולכן לא מגיע לכאן.
    */
-  const askedEvent = certain.blacklist
-    ? null
-    : await db.leadEvent
-        .findFirst({
-          where: { leadId: lead.id, type: ASKED_EVENT },
-          orderBy: { createdAt: "desc" },
-        })
-        .catch(() => null);
-
   /**
    * מי שביקש להסיר לא נשאל ולא נענה.
    *
@@ -325,39 +374,9 @@ export async function handleInboundMessage(params: {
     }
   } else if (!certain.blacklist) {
     /**
-     * עוד לא נשאל. אם ההודעה הזו היא תגובה לדיוור - זה
-     * הרגע לשאול, לפני כל טיפול אחר.
+     * עוד לא נשאל, וההכרעה כבר נעשתה למעלה - לפני השער,
+     * כי היא זו שקובעת באיזה שער להשתמש.
      */
-    const history = await db.message
-      .findMany({
-        where: { leadId: lead.id },
-        orderBy: { createdAt: "asc" },
-        select: {
-          direction: true,
-          broadcast: true,
-          broadcastKind: true,
-          templateName: true,
-          bodyText: true,
-          createdAt: true,
-        },
-        take: 200,
-      })
-      .catch(() => []);
-
-    /**
-     * ההכרעה אינה נעשית כאן.
-     *
-     * decideInbound רואה את כל התמונה - מאיזה סוג דיוור
-     * הוא הגיע, אם כבר נשאל, ואם הוא ברשימה השחורה -
-     * ומחזיר תשובה אחת. הבוט רק מבצע אותה.
-     */
-    const decision = decideInbound({
-      messages: history,
-      origin: lead.origin,
-      alreadyAsked: Boolean(askedEvent),
-      blacklisted: lead.doNotContact,
-      now: new Date(),
-    });
 
     /**
      * ============================================================

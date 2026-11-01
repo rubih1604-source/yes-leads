@@ -287,4 +287,71 @@ test("ההיסטוריה שנשלפת לבוט כוללת את סוג הדיוו
   );
 });
 
+
+/* ---------- מגבלת הסטטוסים לא חוסמת תגובה לדיוור ---------- */
+
+const gate = io.readFileSync("lib/bot-gate.ts", "utf8");
+
+test("לשער יש מצב נפרד לתגובת דיוור", () => {
+  assert.ok(gate.includes("GateScope"));
+  assert.ok(gate.includes('scope: GateScope = "general"'));
+});
+
+test("מגבלת הסטטוסים חלה רק על הודעה רגילה", () => {
+  assert.ok(
+    gate.includes('scope === "general"'),
+    "נמען דיוור עם סטטוס שלא בחרת ייחסם ולא יקבל את השאלה"
+  );
+  const guard = gate.indexOf('scope === "general"');
+  const check = gate.indexOf("settings.botStatuses.includes");
+  assert.ok(guard > -1 && guard < check);
+});
+
+test("שאר ההגנות נשארות בשני המצבים", () => {
+  const statusGuard = gate.indexOf('scope === "general"');
+
+  for (const must of [
+    "settings.botEnabled",
+    "withinBotHours",
+    "lead.botMuted",
+    'lead.origin === "sale"',
+  ]) {
+    const at = gate.indexOf(must);
+    assert.ok(at > -1, `נעלמה הגנה: ${must}`);
+    assert.ok(at < statusGuard, `${must} ירד מתחת למגבלת הסטטוסים`);
+  }
+});
+
+test("ההכרעה נעשית לפני השער, אחרת אי אפשר לבחור מצב", () => {
+  const decide = bot.indexOf("const decision = decideInbound({");
+  const gateCall = bot.indexOf("await shouldBotReply(lead.id, scope)");
+
+  assert.ok(decide > -1 && gateCall > -1, "השער כבר לא מקבל מצב");
+  assert.ok(decide < gateCall, "השער רץ לפני שידוע מה ההודעה");
+});
+
+test("תשובה לשאלה שכבר נשאלה גם היא בשער של הדיוור", () => {
+  assert.ok(
+    bot.includes("decision.isBroadcastReply || askedEvent"),
+    "מי שנשאל אתמול ועונה היום ייחסם בסטטוס"
+  );
+});
+
+test("אין שתי שליפות היסטוריה ושתי הכרעות בבוט", () => {
+  assert.equal(
+    (bot.match(/decideInbound\(\{/g) ?? []).length,
+    1,
+    "חזרה הכרעה שנייה - היא תתפצל מהראשונה"
+  );
+  assert.equal(
+    (bot.match(/const history/g) ?? []).length,
+    1,
+    "ההיסטוריה נשלפת פעמיים"
+  );
+});
+
+test("האבחון מודד את אותו שער באותו מצב", () => {
+  assert.ok(check.includes('shouldBotReply(lead.id, "broadcast")'));
+});
+
 console.log(`✓ inbound-context: ${passed} בדיקות עברו`);

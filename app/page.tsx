@@ -6,7 +6,7 @@ import { getSubStatusMap } from "@/lib/substatus";
 import { getRevenue } from "@/lib/revenue";
 import { getSettings } from "@/lib/settings";
 import { isExistingCustomer } from "@/lib/existing-customer";
-import { MY_LEADS_WHERE } from "@/lib/channel";
+import { MY_LEADS_WHERE, leadsWhere } from "@/lib/channel";
 import { viewWhere, describeView, type ViewDef } from "@/lib/lead-views";
 import RevenueBar from "@/components/RevenueBar";
 import ViewPicker from "@/components/ViewPicker";
@@ -80,13 +80,35 @@ export default async function HomePage({
      * תצוגה שנבחרה מצמצמת **בתוך** הרשימה שלך ולא במקומה,
      * כדי שהפרדת הערוצים לא תישבר בגלל בחירת תצוגה.
      */
+    /**
+     * התצוגה קובעת גם אם לידים של מכירה נכללים.
+     *
+     * קודם התצוגה הרחיבה את עצמה והכלל הכללי סינן אותם
+     * מיד אחר כך - ולכן "כולל מכירה" לא עשה כלום, וקמפיין
+     * עם 24 הגעות הציג 8.
+     */
     where: narrowed
-      ? { AND: [MY_LEADS_WHERE, narrowed] }
+      ? { AND: [leadsWhere(activeView?.includeSale === true), narrowed] }
       : MY_LEADS_WHERE,
     /**
      * הליד האחרון שנכנס תמיד בראש.
      * createdAt כגיבוי, כדי שליד עם תאריך כניסה חריג
      * מקובץ לא ייעלם בתחתית הרשימה.
+     */
+    /**
+     * ============================================================
+     *  ממיינים לפי אותו תאריך שמוצג
+     * ============================================================
+     *
+     *  **כאן נולדה תחושת "הליד נעלם".**
+     *
+     *  הרשימה מיינה לפי intakeAt, אבל הציגה את תאריך
+     *  הכניסה האחרונה שלך. כשהשניים לא זהים - ליד הציג
+     *  תאריך של היום וישב באמצע הרשימה לפי תאריך ישן, או
+     *  להפך.
+     *
+     *  intakeAt מתעדכן בכל הגעה אמיתית, ולכן הוא התאריך
+     *  הנכון למיון וגם לתצוגה. השניים מיושרים עכשיו למטה.
      */
     orderBy: [{ intakeAt: "desc" }, { createdAt: "desc" }],
     /**
@@ -144,7 +166,14 @@ export default async function HomePage({
      * **שלך**. אם אין כניסה רשומה (ליד ותיק) - התאריך
      * הכללי של הליד.
      */
-    const mineAt = l.entries[0]?.at ?? l.intakeAt;
+    /**
+     * התאריך שמוצג הוא **אותו תאריך שהרשימה ממוינת לפיו**.
+     *
+     * קודם הוצגה הכניסה האחרונה שלך בזמן שהמיון היה לפי
+     * intakeAt, ושני אלה יכלו להיות שונים - מה שגרם לליד
+     * להציג תאריך חדש ולשבת למטה, או להפך.
+     */
+    const mineAt = l.intakeAt;
 
     return {
       id: l.id,
@@ -154,6 +183,15 @@ export default async function HomePage({
       status: l.status,
       subStatus: l.subStatus,
       duplicateOf: l.duplicateOf,
+
+      /**
+       * הבעלות עוברת לשורה כדי שליד שעבר לאלעד יסומן.
+       *
+       * הוא מופיע ברשימה רק בתצוגה שסימנת בה "כולל
+       * מכירה" - ושם חובה להבדיל אותו, אחרת תתקשר ללקוח
+       * של אלעד בלי לדעת.
+       */
+      origin: l.origin,
       entryCount: l._count.entries,
       intakeAt: mineAt.toISOString(),
       campaign: extra.fb_campaign || extra.campaign || null,

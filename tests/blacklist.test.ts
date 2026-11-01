@@ -136,7 +136,7 @@ const bot = io.readFileSync("lib/bot.ts", "utf8");
 
 test("בקשת הסרה נרשמת לפני בדיקת השער", () => {
   const detect = bot.indexOf("detectUnsubscribe(params.text)");
-  const gate = bot.indexOf("shouldBotReply(lead.id)");
+  const gate = bot.indexOf("shouldBotReply(lead.id, scope)");
 
   assert.ok(detect > -1 && gate > -1);
   assert.ok(

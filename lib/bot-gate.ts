@@ -53,7 +53,31 @@ export function withinBotHours(
   return hour >= from || hour < to;
 }
 
-export async function shouldBotReply(leadId: string): Promise<GateDecision> {
+/**
+ * ============================================================
+ *  מה השער בודק, ומה לא
+ * ============================================================
+ *
+ *  "general" - הבוט מדבר ביוזמתו על הודעה רגילה. כאן חלה
+ *  גם מגבלת הסטטוסים: הוא עונה רק ללידים בסטטוסים שבחרת.
+ *
+ *  "broadcast" - זו תגובה לדיוור, ומדובר בשאלת הסינון.
+ *  **מגבלת הסטטוסים לא חלה.**
+ *
+ *  **הבאג שזה מתקן.** נמען דיוור שנטען מקובץ נוצר עם
+ *  סטטוס "נמען דיוור", שלא קיים ברשימת הסטטוסים שבחרת -
+ *  ולכן הוא נחסם בשקט ולא קיבל את השאלה, בזמן שליד ותיק
+ *  עם סטטוס מוכר כן קיבל. אותו דיוור, שתי התנהגויות.
+ *
+ *  כל שאר התנאים נשארים בשני המצבים: בוט כבוי, מחוץ
+ *  לשעות, מושתק, ליד של אלעד, או שאתה באמצע שיחה.
+ */
+export type GateScope = "general" | "broadcast";
+
+export async function shouldBotReply(
+  leadId: string,
+  scope: GateScope = "general"
+): Promise<GateDecision> {
   const settings = await getSettings();
 
   if (!settings.botEnabled) {
@@ -94,7 +118,7 @@ export async function shouldBotReply(leadId: string): Promise<GateDecision> {
    *  דיוור בסטטוס שלא סימנת לא יקבל את שאלת הסינון - וזו
    *  בדיוק המטרה של המצב.
    */
-  if (settings.botMode !== "broadcast") {
+  if (scope === "general" && settings.botMode !== "broadcast") {
     if (settings.botStatuses.length === 0) {
       return NO("לא נבחרו סטטוסים שהבוט עונה עליהם");
     }

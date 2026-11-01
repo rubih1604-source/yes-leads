@@ -264,7 +264,49 @@ async function runOne(jobId: string, summary: RunSummary) {
 }
 
 /** מריץ את כל המשימות שהגיע זמנן */
+/**
+ * ============================================================
+ *  הרצה אחת בכל רגע נתון
+ * ============================================================
+ *
+ *  **מה זה מונע.**
+ *
+ *  שינוי סטטוס עם עיכוב 0 מריץ את המנוע מיד. משימה שהמנוע
+ *  מריץ יכולה בעצמה לשנות סטטוס, שיתזמן משימה מיידית
+ *  נוספת, שתריץ את המנוע שוב - ומכאן לולאה אינסופית
+ *  שתשלח ללקוח הודעות בלולאה.
+ *
+ *  השומר הזה אומר: אם המנוע כבר רץ, הקריאה הנוספת חוזרת
+ *  ריקה. המשימות נשארות ממתינות והסבב הנוכחי או הטיימר
+ *  יטפלו בהן. אף משימה לא אובדת - היא רק לא רצה פעמיים
+ *  במקביל.
+ */
+let engineRunning = false;
+
 export async function runDueJobs(limit = 50): Promise<RunSummary> {
+  if (engineRunning) {
+    return {
+      picked: 0,
+      taskReminders: 0,
+      sent: 0,
+      notified: 0,
+      statusChanged: 0,
+      failed: 0,
+      skipped: 0,
+      details: ["המנוע כבר רץ - הקריאה הזו דילגה"],
+    };
+  }
+
+  engineRunning = true;
+
+  try {
+    return await runDueJobsInner(limit);
+  } finally {
+    engineRunning = false;
+  }
+}
+
+async function runDueJobsInner(limit = 50): Promise<RunSummary> {
   const summary: RunSummary = {
     picked: 0,
     taskReminders: 0,

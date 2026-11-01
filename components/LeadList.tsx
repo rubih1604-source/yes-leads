@@ -18,6 +18,8 @@ export type LeadRow = {
   status: string;
   subStatus: string | null;
   duplicateOf: string | null;
+  /** הבעלות הנוכחית. "sale" = הליד עבר לקונה */
+  origin?: string | null;
   intakeAt: string;
   campaign: string | null;
   supplier: string | null;
@@ -1050,6 +1052,21 @@ export default function LeadList({
                     )}
                     {lead.existingCustomer && (
                       <span className="existing-tag">לקוח קיים</span>
+                    )}
+
+                    {/*
+                      ליד שעבר לקונה מופיע כאן רק בתצוגה
+                      שסימנת בה "כולל מכירה". בלי התווית
+                      הזו לא הייתה שום דרך להבדיל אותו
+                      מליד שלך, והיית מתקשר ללקוח של אלעד.
+                    */}
+                    {lead.origin === "sale" && (
+                      <span
+                        className="dup-tag"
+                        style={{ background: "#fef0c7", color: "#b54708" }}
+                      >
+                        עבר לאלעד
+                      </span>
                     )}
                     {(lead.duplicateOf || lead.entryCount > 1) && (
                       <span className="dup-tag">

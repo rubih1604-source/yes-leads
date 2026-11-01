@@ -468,6 +468,15 @@ async function handle(request: Request) {
         incomingStatus,
         hasSubmissionId: Boolean(incomingFbId),
         leadExists: true,
+        /**
+         * השדות שהגיעו הם מה שמכריע.
+         *
+         * בלי זה ההכרעה נשענה על ערך הסטטוס, וליד שנכנס
+         * שוב בזמן שהסטטוס שלו בליד מנגר היה "אין מענה"
+         * נבלע: בלי כניסה, בלי עדכון תאריך, ובלי לצוף
+         * לראש הרשימה.
+         */
+        extra,
       });
 
       const sameSubmission =
