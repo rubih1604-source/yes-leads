@@ -181,8 +181,13 @@ test("הקליטה מעבירה את השדות להכרעה", () => {
 });
 
 test("הגעה שאינה עדכון מעדכנת את תאריך הכניסה", () => {
+  /**
+   * הכלל עבר ל-lib/arrival כדי שגם הדלת הידנית תריץ
+   * אותו. הבדיקה כאן מוודאת שהוובוק קורא לו ולא מחזיק
+   * עותק משלו - העותק הוא מה שגרם לשתי התנהגויות.
+   */
   assert.ok(
-    hook.includes("intakeAt: sameSubmission || isSaleNow ? undefined : new Date()"),
+    hook.includes("arrivalIntakeAt({ sameSubmission, isSale: isSaleNow })"),
     "הליד לא יצוף לראש הרשימה"
   );
 });

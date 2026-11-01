@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { arrivalIntakeAt } from "@/lib/arrival";
 import { normalizePhone } from "@/lib/phone";
 import {
   mapLeadManagerPayload,
@@ -547,7 +548,7 @@ async function handle(request: Request) {
            * משתי דלתות, והגעה שהיא של אלעד - כניסה אצלו
            * לא מזיזה כלום אצלך.
            */
-          intakeAt: sameSubmission || isSaleNow ? undefined : new Date(),
+          intakeAt: arrivalIntakeAt({ sameSubmission, isSale: isSaleNow }),
 
           origin: ownerOrigin,
           extra: Object.keys(extra).length

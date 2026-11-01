@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { bumpArrival } from "@/lib/arrival";
 import { isLoggedIn } from "@/lib/auth";
 import { parseSheet } from "@/lib/sheet-parse";
 import { normalizePhone } from "@/lib/phone";
@@ -121,11 +122,59 @@ export async function POST(request: Request) {
     const already = await db.lead.findUnique({ where: { phone } });
     if (already) {
       exists++;
+
+      /**
+       * ============================================================
+       *  מספר שכבר קיים הוא הגעה חוזרת, לא "דילוג"
+       * ============================================================
+       *
+       *  **מה היה כאן קודם.** הייבוא ראה שהמספר קיים,
+       *  רשם "כבר קיים" והמשיך הלאה. לא נרשמה כניסה, לא
+       *  הופיעה תווית, והליד נשאר במקום שבו היה - כלומר
+       *  ההגעה הזו פשוט לא קרתה מבחינת המערכת.
+       *
+       *  הכלל הוא כלל: ליד שנכנס שוב צף לראש הרשימה עם
+       *  התאריך של עכשיו, מקבל כניסה נוספת, ומסומן כפול.
+       *  לא משנה מאיזו דלת הוא נכנס.
+       *
+       *  הסטטוס, השם וההיסטוריה שלו לא נוגעים.
+       */
+      if (!dryRun) {
+        await db.leadEntry
+          .create({
+            data: {
+              leadId: already.id,
+              campaign: row.campaign ?? null,
+              source: "ייבוא",
+              via: "ייבוא",
+              isSale: toSale,
+              price: 0,
+              at: new Date(),
+            },
+          })
+          .catch(() => null);
+
+        await bumpArrival(db, already.id, { isSale: toSale });
+
+        await db.leadEvent
+          .create({
+            data: {
+              leadId: already.id,
+              type: "note",
+              actor: "user",
+              payload: { imported: true, repeat: true },
+            },
+          })
+          .catch(() => null);
+      }
+
       report.push({
         name: row.name,
         phone: row.phone,
         outcome: "exists",
-        detail: `כבר קיים · ${already.status}`,
+        detail: dryRun
+          ? `קיים · ${already.status} · ייכנס שוב ויעלה לראש`
+          : `נכנס שוב · ${already.status} · עלה לראש הרשימה`,
       });
       continue;
     }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { bumpArrival } from "@/lib/arrival";
 import {
   planManualLead,
   duplicateAction,
@@ -105,6 +106,24 @@ export async function POST(req: NextRequest) {
      * ולכן תופיע עליו התווית "ליד כפול" - וזה נכון, הוא
      * באמת נכנס שוב.
      */
+
+    /**
+     * ============================================================
+     *  וההגעה הזו מקפיצה אותו לראש הרשימה
+     * ============================================================
+     *
+     *  **זה מה שחסר כאן, וזה מה שהסתיר את הליד.**
+     *
+     *  הכניסה נרשמה והתווית "כפול" הופיעה - אבל התאריך
+     *  נשאר הישן, ולכן הליד נשאר קבור באמצע הרשימה.
+     *  בפועל הוא לא היה קיים: אפשר היה למצוא אותו רק
+     *  בחיפוש לפי מספר.
+     *
+     *  אותו כלל בדיוק שהוובוק מריץ, מאותה פונקציה. רק
+     *  התאריך זז - הסטטוס, השם וההיסטוריה לא נגעו בהם.
+     */
+    await bumpArrival(db, leadId, { isSale });
+
     await db.leadEvent
       .create({
         data: {
