@@ -4,10 +4,7 @@ import { isLoggedIn } from "@/lib/auth";
 import { normalizePhone, displayPhone } from "@/lib/phone";
 import { getSettings } from "@/lib/settings";
 import { shouldBotReply } from "@/lib/bot-gate";
-import {
-  replyAfterBroadcast,
-  isBroadcastMessage,
-} from "@/lib/broadcast-replies";
+import { isBroadcastMessage } from "@/lib/broadcast-replies";
 import { ASKED_EVENT } from "@/lib/supplier-check";
 import { decideInbound } from "@/lib/inbound-context";
 import { lastListSendFor } from "@/lib/broadcast-membership";
@@ -86,7 +83,6 @@ export async function GET(request: Request) {
   const outgoing = lead.messages.filter((m) => m.direction === "out");
   const lastOut = outgoing[outgoing.length - 1];
   const recognised = outgoing.filter(isBroadcastMessage);
-  const window = replyAfterBroadcast(lead.messages, new Date());
 
   /** אותה הכרעה בדיוק שהבוט מריץ */
   /** אותו מקור שני בדיוק שהבוט בודק */
@@ -111,22 +107,33 @@ export async function GET(request: Request) {
    */
   let verdict: string;
 
+  /**
+   * **הרשימה שנטענה נבדקת לפני רישום ההודעות.**
+   *
+   * קודם הסולם הזה הכריז "לא נשלחה אליו אף הודעה יוצאת"
+   * ברגע שרישום ההודעה חסר - גם כשהרשימה שנטענה אמרה
+   * במפורש שהדיוור יצא אליו. זו בדיוק המסקנה השגויה
+   * שקיבלנו על ויויאן.
+   */
   if (lead.doNotContact) {
     verdict = "הליד ברשימה השחורה - הבוט לא פונה אליו בכוונה.";
   } else if (asked) {
     verdict = `השאלה כבר נשלחה אליו ב-${asked.createdAt.toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" })}. הבוט שואל פעם אחת בלבד.`;
-  } else if (outgoing.length === 0) {
+  } else if (outgoing.length === 0 && !listSendAt) {
     verdict = "לא נשלחה אליו אף הודעה יוצאת. הדיוור לא הגיע אליו בכלל.";
   } else if (recognised.length === 0 && !listSendAt) {
     verdict =
       "נשלחו אליו הודעות, אבל אף אחת מהן לא מסומנת כדיוור. אם הדיוור יצא לפני עדכון 152, הסימון לא היה קיים אז - הרץ 'סמן דיוור קודם' בתחזוקה.";
-  } else if (!window) {
+  } else if (!decision.window) {
     verdict =
-      "הוא קיבל דיוור אבל אין ממנו תגובה **אחרי** הדיוור ובתוך 30 יום. הבוט שואל רק את מי שענה.";
+      "הוא קיבל דיוור אבל אין ממנו תגובה אחרי הדיוור ובתוך 30 יום. הבוט שואל רק את מי שענה.";
   } else if (!decision.askSupplier) {
     verdict = decision.reason;
   } else if (!gate.allowed) {
     verdict = `הבוט נעצר בשער: ${gate.reason}`;
+  } else if (outgoing.length === 0) {
+    verdict =
+      "כל התנאים מתקיימים - הוא נמען דיוור לפי הרשימה שנטענה, והוא ענה. לא נרשמה עליו הודעה יוצאת, ולכן עד עדכון 164 הבוט לא ידע לזהות אותו כעונה לדיוור ושתק. מעכשיו הוא כן. את התגובה הזו צריך לענות ידנית.";
   } else {
     verdict =
       "כל התנאים מתקיימים. אם השאלה בכל זאת לא יצאה, בדוק את ההודעות היוצאות למטה - שליחה שנכשלה מופיעה שם עם השגיאה.";
@@ -162,10 +169,17 @@ export async function GET(request: Request) {
             שגיאה: lastOut.error?.slice(0, 200) ?? null,
           }
         : null,
-      ענה_אחרי_דיוור: window
+      /**
+       * **ההכרעה המרכזית היא שקובעת, לא ההודעות בלבד.**
+       *
+       * קודם השורה הזו נבנתה רק מרישום ההודעות, ולכן היא
+       * אמרה "לא ענה" על מי שההכרעה כן זיהתה כעונה - שתי
+       * תשובות סותרות לאותה שאלה באותה טבלה.
+       */
+      ענה_אחרי_דיוור: decision.window
         ? {
-            הדיוור: window.broadcastLabel,
-            ענה: window.replyText,
+            הדיוור: decision.window.broadcastLabel,
+            ענה: decision.window.replyText,
           }
         : null,
     },
