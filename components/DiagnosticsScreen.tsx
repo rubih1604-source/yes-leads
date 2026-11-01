@@ -282,6 +282,14 @@ function fromBotCheck(data: any): Answer {
       { label: "עובר את השער", value: text(data["שער"]?.["עובר"]) },
       { label: "סיבת השער", value: text(data["שער"]?.["סיבה"]) },
       {
+        /**
+         * הוספתי את השדה לנתונים ושכחתי להוסיף אותו לטבלה,
+         * ולכן המסך לא הציג את מה שהוא בדק.
+         */
+        label: "ברשימת דיוור שנשלחה",
+        value: text(data["דיוור"]?.["ברשימת_דיוור_שנשלחה"]),
+      },
+      {
         label: "הודעות יוצאות",
         value: text(data["דיוור"]?.["הודעות_יוצאות"]),
       },
@@ -297,6 +305,7 @@ function fromBotCheck(data: any): Answer {
         label: "שאלת הסינון נשלחה",
         value: text(data["שאלת_הסינון_נשלחה"]),
       },
+      { label: "סוג הדיוור", value: text(data["סוג_הדיוור"]) },
     ],
     raw: data,
   };

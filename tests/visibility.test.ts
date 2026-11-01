@@ -441,4 +441,34 @@ test("ההסבר באבחון יודע להסביר נמען דיוור", () => 
   assert.ok(v.reason.includes("דאטה"), `ההסבר לא מכוון אותו: ${v.reason}`);
 });
 
+
+/* ---------- המסך מציג את מה שהאבחון בודק ---------- */
+
+test("כל שדה שהאבחון מחזיר מופיע גם בטבלה במסך", () => {
+  const api = io.readFileSync(
+    "app/api/diagnostics/bot-check/route.ts",
+    "utf8"
+  );
+  const screen = io.readFileSync("components/DiagnosticsScreen.tsx", "utf8");
+
+  /**
+   * שדה שנוסף לנתונים ולא לטבלה פשוט לא נראה - וזה בדיוק
+   * מה שקרה: הוספתי "ברשימת דיוור שנשלחה" לאבחון, והמסך
+   * המשיך להציג את הרשימה הישנה.
+   */
+  for (const field of [
+    "ברשימת_דיוור_שנשלחה",
+    "הודעות_יוצאות",
+    "מזוהות_כדיוור",
+    "שאלת_הסינון_נשלחה",
+    "סוג_הדיוור",
+  ]) {
+    assert.ok(api.includes(field), `האבחון כבר לא מחזיר ${field}`);
+    assert.ok(
+      screen.includes(field),
+      `${field} נבדק אבל לא מוצג במסך`
+    );
+  }
+});
+
 console.log(`✓ visibility: ${passed} בדיקות עברו`);
