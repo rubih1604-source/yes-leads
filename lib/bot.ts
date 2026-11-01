@@ -19,6 +19,7 @@ import {
 import { displayPhone } from "./phone";
 import { detectUnsubscribe, intentBlacklists } from "./unsubscribe";
 import { decideInbound } from "./inbound-context";
+import { lastListSendFor } from "./broadcast-membership";
 import { addToBlacklist } from "./blacklist";
 import {
   readSupplierAnswer,
@@ -276,11 +277,22 @@ export async function handleInboundMessage(params: {
         })
         .catch(() => []);
 
+  /**
+   * הרשימה שנטענה היא מקור אמת שני, ובלתי תלוי.
+   *
+   * אם רישום ההודעה היוצאת חסר - וזה קרה - עדיין אפשר
+   * לדעת מהרשימה עצמה שהאדם הזה נמען דיוור.
+   */
+  const listSendAt = certain.blacklist
+    ? null
+    : await lastListSendFor(lead.phone).catch(() => null);
+
   const decision = decideInbound({
     messages: history,
     origin: lead.origin,
     alreadyAsked: Boolean(askedEvent),
     blacklisted: lead.doNotContact || certain.blacklist,
+    listSendAt,
     now: new Date(),
   });
 

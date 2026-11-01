@@ -354,4 +354,125 @@ test("האבחון מודד את אותו שער באותו מצב", () => {
   assert.ok(check.includes('shouldBotReply(lead.id, "broadcast")'));
 });
 
+
+/* ---------- הרשימה שנטענה כמקור אמת שני ---------- */
+
+const listSent = at("2026-11-01T09:00:00Z");
+
+/** "עכשיו" שאחרי השליחה - אחרת שום תגובה לא בתוך הטווח */
+const afterSend = { ...base, now: at("2026-11-01T12:00:00Z") };
+
+test("ויויאן: אין רישום הודעה, אבל היא ברשימה שנשלחה", () => {
+  const d = decideInbound({
+    ...afterSend,
+    messages: [inMsg("מעוניינת לשמוע אם המבצע בתוקף", "2026-11-01T10:00:00Z")],
+    listSendAt: listSent,
+  });
+
+  assert.equal(
+    d.isBroadcastReply,
+    true,
+    "בדיוק המקרה שקרה: הדיוור הגיע, לא נרשם, והבוט שתק"
+  );
+  assert.equal(d.askSupplier, true);
+});
+
+test("דיוור לרשימה הוא תמיד דאטה - ולכן שואלים", () => {
+  const d = decideInbound({
+    ...afterSend,
+    messages: [inMsg("כמה זה עולה", "2026-11-01T10:00:00Z")],
+    listSendAt: listSent,
+  });
+  assert.equal(d.askSupplier, true);
+});
+
+test("תגובה שקדמה לשליחת הרשימה לא נחשבת", () => {
+  const d = decideInbound({
+    ...afterSend,
+    messages: [inMsg("שאלה ישנה", "2026-10-20T10:00:00Z")],
+    listSendAt: listSent,
+  });
+  assert.equal(d.isBroadcastReply, false);
+});
+
+test("אחרי 30 יום מהשליחה - כבר לא", () => {
+  const d = decideInbound({
+    ...base,
+    messages: [inMsg("מאוחר", "2026-12-20T10:00:00Z")],
+    listSendAt: listSent,
+    now: at("2026-12-21T00:00:00Z"),
+  });
+  assert.equal(d.isBroadcastReply, false);
+});
+
+test("מי שלא ברשימה ואין לו הודעה - לא נוגעים בו", () => {
+  const d = decideInbound({
+    ...afterSend,
+    messages: [inMsg("שלום", "2026-11-01T10:00:00Z")],
+    listSendAt: null,
+  });
+  assert.equal(d.isBroadcastReply, false);
+  assert.equal(d.askSupplier, false);
+});
+
+test("רישום הודעה גובר על הרשימה - סוג הדיוור ממנו", () => {
+  const d = decideInbound({
+    ...afterSend,
+    messages: [
+      out(KIND_LEADS, "2026-11-01T09:30:00Z"),
+      inMsg("מעוניין", "2026-11-01T10:00:00Z"),
+    ],
+    listSendAt: listSent,
+  });
+
+  assert.equal(
+    d.askSupplier,
+    false,
+    "דיוור ללידים שלך הפך לדאטה בגלל הרשימה"
+  );
+});
+
+test("גם דרך הרשימה - מי שברשימה השחורה לא נשאל", () => {
+  const d = decideInbound({
+    ...afterSend,
+    blacklisted: true,
+    messages: [inMsg("הסר", "2026-11-01T10:00:00Z")],
+    listSendAt: listSent,
+  });
+  assert.equal(d.askSupplier, false);
+});
+
+const membership = io.readFileSync("lib/broadcast-membership.ts", "utf8");
+
+test("החיפוש ברשימה מדויק ולא מנחש", () => {
+  assert.ok(
+    membership.includes("where: { phone }"),
+    "השוואת טלפון חלקית תתפוס אנשים אחרים"
+  );
+});
+
+test("רק רשימה שבאמת נשלחה נחשבת", () => {
+  assert.ok(membership.includes("broadcastSend"));
+  assert.ok(
+    membership.includes('orderBy: { createdAt: "desc" }'),
+    "נלקחת שליחה ישנה במקום האחרונה"
+  );
+});
+
+test("הבוט באמת שואל את הרשימה", () => {
+  assert.ok(bot.includes("lastListSendFor(lead.phone)"));
+  const look = bot.indexOf("lastListSendFor(lead.phone)");
+  const decide = bot.indexOf("const decision = decideInbound({");
+  assert.ok(look < decide, "ההכרעה רצה לפני שידוע אם הוא ברשימה");
+});
+
+test("כישלון בחיפוש לא שובר את הבוט", () => {
+  assert.ok(bot.includes("lastListSendFor(lead.phone).catch(() => null)"));
+});
+
+test("האבחון בודק את אותו מקור", () => {
+  assert.ok(check.includes("lastListSendFor"));
+  assert.ok(check.includes("ברשימת_דיוור_שנשלחה"));
+});
+
 console.log(`✓ inbound-context: ${passed} בדיקות עברו`);

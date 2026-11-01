@@ -22,6 +22,7 @@
 import {
   isBroadcastMessage,
   replyAfterBroadcast,
+  REPLY_WINDOW_DAYS,
   type MessageLike,
   type ReplyWindow,
 } from "./broadcast-replies";
@@ -44,6 +45,18 @@ export type InboundDecision = {
 };
 
 export type InboundInput = {
+  /**
+   * מתי נשלח דיוור לרשימה שהאדם הזה נמצא בה, אם בכלל.
+   *
+   * **למה זה קיים.** הרשימה שנטענה יושבת במערכת מרגע
+   * השמירה, והיא יודעת מי נמען דיוור - גם אם רישום
+   * ההודעה היוצאת חסר. זה מה שקרה לוויויאן: היא קיבלה
+   * את הדיוור, אבל לא נרשמה עליה אף הודעה, ולכן הבוט
+   * לא ידע שהיא עונה לדיוור ושתק.
+   *
+   * הרשימה היא מקור אמת שני ובלתי תלוי לאותה שאלה.
+   */
+  listSendAt?: Date | null;
   /** כל ההודעות של הליד, בכל סדר */
   messages: MessageLike[];
   /** הבעלות של הליד */
@@ -78,10 +91,46 @@ export function lastBroadcastKind(messages: MessageLike[]): string | null {
 }
 
 /**
+ * חלון תגובה שנבנה מהרשימה שנטענה, כשאין רישום הודעה.
+ *
+ * דיוור לרשימה הוא תמיד דיוור לדאטה - זה בדיוק מה שהוא -
+ * ולכן כאן הבוט כן שואל את שאלת הסינון.
+ */
+function windowFromList(input: InboundInput): ReplyWindow | null {
+  const sentAt = input.listSendAt;
+  if (!sentAt) return null;
+
+  const cutoff = new Date(
+    sentAt.getTime() + REPLY_WINDOW_DAYS * 24 * 60 * 60 * 1000
+  );
+
+  const reply = [...input.messages]
+    .filter(
+      (m) =>
+        m.direction === "in" &&
+        m.createdAt > sentAt &&
+        m.createdAt <= cutoff &&
+        m.createdAt <= input.now
+    )
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
+
+  if (!reply) return null;
+
+  return {
+    broadcastAt: sentAt,
+    broadcastLabel: "דיוור לרשימה",
+    repliedAt: reply.createdAt,
+    replyText: (reply.bodyText ?? "").slice(0, 300),
+  };
+}
+
+/**
  * ההכרעה היחידה על הודעה נכנסת.
  */
 export function decideInbound(input: InboundInput): InboundDecision {
-  const window = replyAfterBroadcast(input.messages, input.now);
+  const window =
+    replyAfterBroadcast(input.messages, input.now) ??
+    windowFromList(input);
 
   if (!window) {
     return {
@@ -92,7 +141,13 @@ export function decideInbound(input: InboundInput): InboundDecision {
     };
   }
 
-  const kind = lastBroadcastKind(input.messages);
+  /**
+   * אם ההכרעה נשענה על הרשימה שנטענה - זה דיוור לדאטה
+   * בהגדרה, ואין צורך לחפש סוג בהודעות שאולי לא נרשמו.
+   */
+  const kind =
+    lastBroadcastKind(input.messages) ??
+    (input.listSendAt ? KIND_DATA : null);
 
   if (input.blacklisted) {
     return {

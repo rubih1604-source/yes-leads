@@ -10,6 +10,7 @@ import {
 } from "@/lib/broadcast-replies";
 import { ASKED_EVENT } from "@/lib/supplier-check";
 import { decideInbound } from "@/lib/inbound-context";
+import { lastListSendFor } from "@/lib/broadcast-membership";
 
 export const dynamic = "force-dynamic";
 
@@ -88,11 +89,15 @@ export async function GET(request: Request) {
   const window = replyAfterBroadcast(lead.messages, new Date());
 
   /** אותה הכרעה בדיוק שהבוט מריץ */
+  /** אותו מקור שני בדיוק שהבוט בודק */
+  const listSendAt = await lastListSendFor(lead.phone).catch(() => null);
+
   const decision = decideInbound({
     messages: lead.messages,
     origin: lead.origin,
     alreadyAsked: false,
     blacklisted: lead.doNotContact,
+    listSendAt,
     now: new Date(),
   });
 
@@ -112,7 +117,7 @@ export async function GET(request: Request) {
     verdict = `השאלה כבר נשלחה אליו ב-${asked.createdAt.toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" })}. הבוט שואל פעם אחת בלבד.`;
   } else if (outgoing.length === 0) {
     verdict = "לא נשלחה אליו אף הודעה יוצאת. הדיוור לא הגיע אליו בכלל.";
-  } else if (recognised.length === 0) {
+  } else if (recognised.length === 0 && !listSendAt) {
     verdict =
       "נשלחו אליו הודעות, אבל אף אחת מהן לא מסומנת כדיוור. אם הדיוור יצא לפני עדכון 152, הסימון לא היה קיים אז - הרץ 'סמן דיוור קודם' בתחזוקה.";
   } else if (!window) {
@@ -143,6 +148,9 @@ export async function GET(request: Request) {
     },
     שער: { עובר: gate.allowed, סיבה: gate.reason },
     דיוור: {
+      ברשימת_דיוור_שנשלחה: listSendAt
+        ? listSendAt.toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" })
+        : "לא",
       הודעות_יוצאות: outgoing.length,
       מזוהות_כדיוור: recognised.length,
       הודעה_אחרונה: lastOut
