@@ -46,3 +46,63 @@ export async function lastListSendFor(
 
   return send?.createdAt ?? null;
 }
+
+/**
+ * ============================================================
+ *  אותה שאלה, להרבה אנשים בבת אחת
+ * ============================================================
+ *
+ *  **למה זה קיים.**
+ *
+ *  מסך ההתעניינות עובר על אלף לידים. שאילתה לכל אחד
+ *  מהם הייתה הופכת את המסך לבלתי שמיש, ולכן הוא פשוט
+ *  לא שאל - והתוצאה היא שכל מי שקיבל דיוור מרשימה
+ *  שנטענה, ואין עליו רישום הודעה יוצאת, לא הופיע שם
+ *  בכלל. בדיוק הלידים החמים ביותר.
+ *
+ *  כאן אותה תשובה בדיוק, בשתי שאילתות לכל הרשימה.
+ */
+export async function lastListSendForMany(
+  phones: string[]
+): Promise<Map<string, Date>> {
+  const out = new Map<string, Date>();
+  if (phones.length === 0) return out;
+
+  const { db } = await import("./db");
+
+  const memberships = await db.broadcastContact
+    .findMany({
+      where: { phone: { in: phones } },
+      select: { phone: true, listId: true },
+    })
+    .catch(() => [] as Array<{ phone: string; listId: string }>);
+
+  if (memberships.length === 0) return out;
+
+  const listIds = [...new Set(memberships.map((m) => m.listId))];
+
+  const sends = await db.broadcastSend
+    .findMany({
+      where: { listId: { in: listIds } },
+      orderBy: { createdAt: "desc" },
+      select: { listId: true, createdAt: true },
+    })
+    .catch(() => [] as Array<{ listId: string; createdAt: Date }>);
+
+  /** השליחה האחרונה של כל רשימה */
+  const lastByList = new Map<string, Date>();
+  for (const send of sends) {
+    if (!lastByList.has(send.listId)) lastByList.set(send.listId, send.createdAt);
+  }
+
+  /** ולכל אדם - המאוחרת מבין הרשימות שהוא נמצא בהן */
+  for (const m of memberships) {
+    const at = lastByList.get(m.listId);
+    if (!at) continue;
+
+    const current = out.get(m.phone);
+    if (!current || at.getTime() > current.getTime()) out.set(m.phone, at);
+  }
+
+  return out;
+}

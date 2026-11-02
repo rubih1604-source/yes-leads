@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { displayPhone } from "@/lib/phone";
+import { decideInbound } from "@/lib/inbound-context";
+import { lastListSendForMany } from "@/lib/broadcast-membership";
 import {
-  replyAfterBroadcast,
   replyDelayLabel,
   sortReplies,
   isExistingCustomerStatus,
@@ -44,6 +45,7 @@ export default async function BroadcastRepliesPage() {
       select: {
         id: true,
         phone: true,
+        origin: true,
         firstName: true,
         lastName: true,
         status: true,
@@ -68,10 +70,37 @@ export default async function BroadcastRepliesPage() {
 
   const now = new Date();
 
+  /**
+   * ============================================================
+   *  גם מי שאין עליו רישום הודעה יוצאת
+   * ============================================================
+   *
+   *  **מה המסך הזה פספס.**
+   *
+   *  אדם מרשימת דאטה אינו ליד עד שהוא עונה, ולכן לא
+   *  נרשמה עליו הודעה יוצאת. המסך חיפש רק לפי הודעות
+   *  רשומות - ולכן **כל** נמעני הדיוור האמיתיים, שהם
+   *  הלידים הכי חמים שיש, לא הופיעו כאן בכלל.
+   *
+   *  עכשיו המסך שואל את אותה הכרעה שהבוט שואל, עם אותו
+   *  מקור שני: הרשימה שנטענה. שאילתה אחת לכולם.
+   */
+  const listSends = await lastListSendForMany(
+    leads.map((lead) => lead.phone)
+  ).catch(() => new Map<string, Date>());
+
   const rows = leads
     .map((lead) => {
-      const window = replyAfterBroadcast(lead.messages, now);
-      return window ? { lead, window } : null;
+      const decision = decideInbound({
+        messages: lead.messages,
+        origin: lead.origin,
+        alreadyAsked: false,
+        blacklisted: false,
+        listSendAt: listSends.get(lead.phone) ?? null,
+        now,
+      });
+
+      return decision.window ? { lead, window: decision.window } : null;
     })
     .filter((row): row is NonNullable<typeof row> => row !== null);
 
