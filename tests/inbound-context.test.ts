@@ -557,27 +557,72 @@ test("נמען דיוור אמיתי כן נשאל", () => {
   assert.equal(d.askSupplier, true, "נמען דיוור אמיתי לא נשאל");
 });
 
-test("מי שכתב מעצמו לא נשאל רק בגלל חברות ברשימה", () => {
+test("נמען דיוור שנוצר מהתגובה שלו כן נשאל", () => {
   /**
-   * origin "whatsapp" הוא מישהו שכתב ראשון. אם לא נרשם
-   * אליו דיוור, "הוא ברשימה" היא ראיה חלשה מדי.
+   * ============================================================
+   *  המקרה האמיתי שנשבר בשטח
+   * ============================================================
+   *
+   *  אדם מרשימת דאטה אינו ליד עד שהוא עונה. ברגע
+   *  שהתגובה שלו מגיעה הוא נוצר עם בעלות "whatsapp",
+   *  ולא נרשמה עליו הודעה יוצאת - כי בזמן הדיוור הוא
+   *  לא היה קיים.
+   *
+   *  דרשתי שחברות ברשימה תיחשב רק לבעלות "broadcast",
+   *  וזה פסל את **כל** נמעני הדיוור האמיתיים: לקוח ענה
+   *  לדיוור ולא קיבל כלום.
+   *
+   *  בדיקת הבעלות היא ההגנה; תנאי נוסף מעליה רק חסם.
    */
   const d = decideInbound({
     messages: [
       {
         direction: "in",
-        bodyText: "שלום",
-        createdAt: new Date("2026-11-01T10:00:00Z"),
+        bodyText: "לכמה זמן המחיר",
+        createdAt: new Date("2026-11-02T06:46:00Z"),
       },
     ],
     origin: "whatsapp",
     alreadyAsked: false,
     blacklisted: false,
-    listSendAt: new Date("2026-11-01T09:00:00Z"),
-    now: new Date("2026-11-01T10:05:00Z"),
+    listSendAt: new Date("2026-10-28T10:58:00Z"),
+    now: new Date("2026-11-02T06:50:00Z"),
   });
 
-  assert.equal(d.askSupplier, false);
+  assert.equal(d.askSupplier, true, "נמען דיוור אמיתי לא נשאל");
+  assert.equal(d.isBroadcastReply, true);
+});
+
+test("תגובה ימים אחרי הדיוור עדיין נחשבת תגובה", () => {
+  /** הדיוור יצא ברביעי, הוא ענה בשני. זה בתוך החלון. */
+  const d = decideInbound({
+    messages: [
+      {
+        direction: "in",
+        bodyText: "כמה זה עולה",
+        createdAt: new Date("2026-11-02T06:46:00Z"),
+      },
+    ],
+    origin: "broadcast",
+    alreadyAsked: false,
+    blacklisted: false,
+    listSendAt: new Date("2026-10-28T10:58:00Z"),
+    now: new Date("2026-11-02T06:50:00Z"),
+  });
+
+  assert.equal(d.askSupplier, true);
+});
+
+test("אין תנאי שפוסל נמען דיוור לפי הבעלות שלו", () => {
+  /**
+   * הבעלות קובעת רק אם הוא **שלך**. מעבר לזה היא לא
+   * אמורה לפסול אף נמען דיוור.
+   */
+  const src = io.readFileSync("lib/inbound-context.ts", "utf8");
+  assert.ok(
+    !src.includes("fromListOnly"),
+    "חזר תנאי שפוסל נמעני דיוור אמיתיים"
+  );
 });
 
 test("הבעלות נבדקת בפועל ולא רק מתקבלת", () => {
