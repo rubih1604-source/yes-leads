@@ -466,4 +466,78 @@ test("המסך באמת ממיין דרך הכלל המשותף", () => {
   assert.ok(screen.includes("broadcast: true"), "המסך לא שולף את סימון הדיוור");
 });
 
+/* ============================================================
+ *  חסימה ידנית לפי מספר
+ * ============================================================
+ *
+ *  יש מי שמבקש להפסיק בהקלטה או בשיחה. אין טקסט לזהות,
+ *  ולכן בלי דרך ידנית הוא פשוט ימשיך לקבל דיוור.
+ */
+
+test("החסימה הידנית מגיעה גם למספר שאינו ליד", () => {
+  /**
+   * **המלכודת כאן.** הסינון בדיוור קורא את הרשימה
+   * השחורה מתוך הלידים. מספר שאין לו ליד לא היה נחסם
+   * בפועל - הכפתור היה נראה עובד ולא עושה כלום.
+   */
+  const src = io.readFileSync("lib/blacklist.ts", "utf8");
+  const fn = src.slice(src.indexOf("export async function blockPhone"));
+
+  assert.ok(fn.includes("db.lead.create") || fn.includes("db.lead\n    .create"),
+    "מספר שאינו ליד לא נשמר, ולכן לא ייחסם בפועל");
+  assert.ok(fn.includes("doNotContact: true"), "הרשומה נוצרת בלי חסימה");
+});
+
+test("החסימה הידנית לא מזהמת את רשימת הלידים", () => {
+  /**
+   * הרשומה נוצרת בבעלות שאינה שלך, ולכן היא לא מופיעה
+   * ברשימת הלידים - היא קיימת רק כדי שהדיוור ידלג.
+   */
+  const src = io.readFileSync("lib/blacklist.ts", "utf8");
+  const fn = src.slice(src.indexOf("export async function blockPhone"));
+
+  assert.ok(
+    fn.includes("BROADCAST_ORIGIN"),
+    "הרשומה נוצרת כליד רגיל ותופיע ברשימה שלך"
+  );
+});
+
+test("ליד קיים נחסם בלי שנוצרת לו רשומה שנייה", () => {
+  const src = io.readFileSync("lib/blacklist.ts", "utf8");
+  const fn = src.slice(src.indexOf("export async function blockPhone"));
+
+  assert.ok(fn.includes("addToBlacklist"), "לא עובר דרך הנתיב הקיים");
+  /** "created" מופיע גם בחתימה, ולכן משווים ליצירה עצמה */
+  assert.ok(
+    fn.indexOf("addToBlacklist") < fn.indexOf(".create({"),
+    "נוצרת רשומה חדשה לפני שבודקים אם הליד קיים"
+  );
+});
+
+test("המספר מנורמל לפני החסימה", () => {
+  /**
+   * "052-123-4567" ו-"+972521234567" הם אותו אדם. בלי
+   * נרמול, החסימה לא תתפוס את הצורה שבה המספר שמור.
+   */
+  const src = io.readFileSync("lib/blacklist.ts", "utf8");
+  const fn = src.slice(src.indexOf("export async function blockPhone"));
+  assert.ok(fn.includes("normalizePhone"));
+});
+
+test("מספר לא תקין נדחה ולא נוצר ממנו כלום", () => {
+  const src = io.readFileSync("lib/blacklist.ts", "utf8");
+  const fn = src.slice(src.indexOf("export async function blockPhone"));
+  assert.ok(fn.includes("מספר לא תקין"));
+});
+
+test("יש מסך וכפתור שמגיעים לפעולה הזו", () => {
+  const api = io.readFileSync("app/api/blacklist/route.ts", "utf8");
+  const form = io.readFileSync("components/BlockPhone.tsx", "utf8");
+  const page = io.readFileSync("app/blacklist/page.tsx", "utf8");
+
+  assert.ok(api.includes("blockPhone"), "אין נתיב שרת");
+  assert.ok(form.includes("/api/blacklist"), "הטופס לא פונה לשרת");
+  assert.ok(page.includes("BlockPhone"), "הטופס לא מוצג במסך");
+});
+
 console.log(`✓ blacklist: ${passed} בדיקות עברו`);

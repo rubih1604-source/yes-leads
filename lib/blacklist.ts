@@ -148,3 +148,71 @@ export function splitByBlacklist<T extends { phone: string }>(
 
   return { allowed, blocked };
 }
+
+/**
+ * ============================================================
+ *  חסימה ידנית לפי מספר טלפון
+ * ============================================================
+ *
+ *  **למה זה נחוץ.**
+ *
+ *  חלק מהאנשים מבקשים להפסיק בהקלטה קולית, בשיחה, או
+ *  בניסוח שאף זיהוי טקסט לא יתפוס. אין שום דרך אוטומטית
+ *  לדעת את זה - ולכן צריכה להיות דרך ידנית, אחרת הם
+ *  ימשיכו לקבל דיוור.
+ *
+ *  **מספר שאינו ליד נשמר בכל זאת.**
+ *
+ *  הסינון בדיוור קורא את הרשימה השחורה מתוך הלידים, ולכן
+ *  מספר שאין לו ליד פשוט לא היה נחסם בפועל. כאן נוצרת
+ *  לו רשומה עם בעלות "נמען דיוור" - אותה בעלות שכבר
+ *  קיימת לאנשים שאינם לידים שלך, ולכן הוא **לא יופיע
+ *  ברשימת הלידים** ולא יזהם אותה.
+ */
+export async function blockPhone(args: {
+  phone: string;
+  note?: string | null;
+}): Promise<{ ok: boolean; created: boolean; phone: string; error?: string }> {
+  const { db } = await import("./db");
+  const { normalizePhone } = await import("./phone");
+  const { BROADCAST_ORIGIN } = await import("./channel");
+
+  const phone = normalizePhone(args.phone);
+
+  if (!phone) {
+    return { ok: false, created: false, phone: "", error: "מספר לא תקין" };
+  }
+
+  const existing = await db.lead
+    .findUnique({ where: { phone }, select: { id: true } })
+    .catch(() => null);
+
+  const reason = "נחסם ידנית";
+  const text = args.note?.trim()?.slice(0, 500) || null;
+
+  if (existing) {
+    const done = await addToBlacklist({
+      leadId: existing.id,
+      reason,
+      text,
+    });
+    return { ok: done, created: false, phone };
+  }
+
+  const created = await db.lead
+    .create({
+      data: {
+        phone,
+        status: "לא מעוניין/אין מענה הודעה",
+        origin: BROADCAST_ORIGIN,
+        source: reason,
+        doNotContact: true,
+        doNotContactAt: new Date(),
+        doNotContactReason: reason,
+        doNotContactText: text,
+      },
+    })
+    .catch(() => null);
+
+  return { ok: Boolean(created), created: true, phone };
+}

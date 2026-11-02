@@ -2,6 +2,7 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { displayPhone } from "@/lib/phone";
 import BlacklistRow from "@/components/BlacklistRow";
+import BlockPhone from "@/components/BlockPhone";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,8 @@ export default async function BlacklistPage() {
           <span className="count">{leads.length} אנשים</span>
         </h1>
       </div>
+
+      <BlockPhone />
 
       <div
         style={{
