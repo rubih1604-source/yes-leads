@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import io from "node:fs";
+import { withinBotHours } from "../lib/working-hours";
 import {
   decideInbound,
   lastBroadcastKind,
@@ -60,7 +61,7 @@ const inMsg = (text: string, iso: string) => ({
  */
 const base = {
   origin: "broadcast",
-  alreadyAsked: false,
+  askedAt: null as Date | null,
   blacklisted: false,
   now: at("2026-10-29T12:00:00Z"),
 };
@@ -136,7 +137,7 @@ test("מי שברשימה השחורה לא נשאל", () => {
 test("מי שכבר נשאל לא נשאל שוב", () => {
   const d = decideInbound({
     ...base,
-    alreadyAsked: true,
+    askedAt: at("2026-10-29T09:30:00Z"),
     messages: [
       out(KIND_DATA, "2026-10-29T09:00:00Z"),
       inMsg("כן", "2026-10-29T10:00:00Z"),
@@ -530,7 +531,7 @@ for (const origin of MINE_ORIGINS) {
         },
       ],
       origin,
-      alreadyAsked: false,
+      askedAt: null,
       blacklisted: false,
       listSendAt: sentAt,
       now: new Date("2026-11-01T10:05:00Z"),
@@ -554,7 +555,7 @@ test("נמען דיוור אמיתי כן נשאל", () => {
       },
     ],
     origin: "broadcast",
-    alreadyAsked: false,
+    askedAt: null,
     blacklisted: false,
     listSendAt: sentAt,
     now: new Date("2026-11-01T10:05:00Z"),
@@ -589,7 +590,7 @@ test("נמען דיוור שנוצר מהתגובה שלו כן נשאל", () =>
       },
     ],
     origin: "whatsapp",
-    alreadyAsked: false,
+    askedAt: null,
     blacklisted: false,
     listSendAt: new Date("2026-10-28T10:58:00Z"),
     now: new Date("2026-11-02T06:50:00Z"),
@@ -610,7 +611,7 @@ test("תגובה ימים אחרי הדיוור עדיין נחשבת תגובה
       },
     ],
     origin: "broadcast",
-    alreadyAsked: false,
+    askedAt: null,
     blacklisted: false,
     listSendAt: new Date("2026-10-28T10:58:00Z"),
     now: new Date("2026-11-02T06:50:00Z"),
@@ -725,7 +726,7 @@ test("מצב מבצע לא שואל מי שכבר נשאל", () => {
     ...base,
     origin: "broadcast",
     askEveryone: true,
-    alreadyAsked: true,
+    askedAt: at("2026-10-29T09:30:00Z"),
     messages: [
       out(KIND_DATA, "2026-10-29T09:00:00Z"),
       inMsg("מה המחיר", "2026-10-29T10:00:00Z"),
@@ -773,6 +774,182 @@ test("המתג מגיע מההגדרות עד המסך", () => {
   assert.ok(api.includes("botAskAll"), "אי אפשר לשמור");
   assert.ok(screen.includes("botAskAll"), "אין כפתור");
   assert.ok(page.includes("askAll={settings.botAskAll"), "הערך לא מועבר למסך");
+});
+
+/* ============================================================
+ *  24 פירושו עד חצות
+ * ============================================================
+ *
+ *  **מה שנתפס בשטח.** רובי הקליד 24 כשעת הסיום. השרת
+ *  קיבל רק עד 23 וזרק את הערך **בשקט** - המסך המשיך
+ *  להראות 24, והבוט עצר ב-23:00.
+ */
+
+test("שעת סיום 24 מכסה את כל היום מהשעה שנבחרה", () => {
+  const at = (hour: number) =>
+    new Date(Date.UTC(2026, 10, 3, hour - 2, 30));
+
+  for (const hour of [8, 12, 20, 23]) {
+    assert.equal(
+      withinBotHours(8, 24, at(hour)),
+      true,
+      `${hour}:30 אמור להיות בתוך החלון`
+    );
+  }
+
+  /** ולפני שעת ההתחלה - עדיין מחוץ */
+  assert.equal(withinBotHours(8, 24, at(7)), false);
+});
+
+test("השרת מקבל 24 כשעת סיום ולא כשעת התחלה", () => {
+  const api = io.readFileSync("app/api/settings/route.ts", "utf8");
+  assert.ok(
+    api.includes('key === "botToHour" ? 24 : 23'),
+    "24 עדיין נדחה, או שגם שעת ההתחלה מקבלת אותו"
+  );
+});
+
+test("שעה פסולה מחזירה שגיאה ולא נבלעת", () => {
+  /**
+   * בליעה שקטה היא מה שגרם למסך להראות ערך אחד ולשרת
+   * להחזיק אחר.
+   */
+  const api = io.readFileSync("app/api/settings/route.ts", "utf8");
+  const block = api.slice(
+    api.indexOf('for (const key of ["botFromHour", "botToHour"])'),
+    api.indexOf('for (const key of ["notifyEmail"')
+  );
+
+  assert.ok(block.includes("שעה לא תקינה"), "ערך פסול נזרק בשקט");
+  assert.ok(block.includes("status: 400"), "לא מוחזרת שגיאה למסך");
+});
+
+/* ============================================================
+ *  שואלים פעם אחת לכל דיוור, לא פעם אחת לכל החיים
+ * ============================================================
+ *
+ *  **הבאג שנתפס באמצע מבצע חי.** מי שנשאל בדיוור של
+ *  אוקטובר לא קיבל כלום במבצע של נובמבר - הוא נחסם
+ *  לנצח, בשקט, בלי שום סימן.
+ */
+
+test("מי שנשאל בדיוור קודם נשאל שוב במבצע חדש", () => {
+  const d = decideInbound({
+    ...base,
+    /** נשאל לפני שבוע, בדיוור הקודם */
+    askedAt: at("2026-10-22T09:00:00Z"),
+    messages: [
+      out(KIND_DATA, "2026-10-29T09:00:00Z"),
+      inMsg("אני", "2026-10-29T10:00:00Z"),
+    ],
+  });
+
+  assert.equal(d.askSupplier, true, "נחסם בגלל דיוור ישן");
+});
+
+test("מי שנשאל בתוך הדיוור הזה לא נשאל שוב", () => {
+  const d = decideInbound({
+    ...base,
+    askedAt: at("2026-10-29T09:30:00Z"),
+    messages: [
+      out(KIND_DATA, "2026-10-29T09:00:00Z"),
+      inMsg("מה המחיר", "2026-10-29T10:00:00Z"),
+    ],
+  });
+
+  assert.equal(d.askSupplier, false);
+  assert.ok(d.reason.includes("כבר נשלחה"));
+});
+
+test("נשאל בדיוק ברגע הדיוור נחשב בתוכו", () => {
+  /** גבול: שווה לזמן הדיוור הוא בתוך הדיוור */
+  const d = decideInbound({
+    ...base,
+    askedAt: at("2026-10-29T09:00:00Z"),
+    messages: [
+      out(KIND_DATA, "2026-10-29T09:00:00Z"),
+      inMsg("מה המחיר", "2026-10-29T10:00:00Z"),
+    ],
+  });
+
+  assert.equal(d.askSupplier, false);
+});
+
+test("מעולם לא נשאל - נשאל", () => {
+  const d = decideInbound({
+    ...base,
+    askedAt: null,
+    messages: [
+      out(KIND_DATA, "2026-10-29T09:00:00Z"),
+      inMsg("אני", "2026-10-29T10:00:00Z"),
+    ],
+  });
+
+  assert.equal(d.askSupplier, true);
+});
+
+test("ספירת השאלות החוזרות מוגבלת לדיוור הנוכחי", () => {
+  /**
+   * אחרת מי שמיצה את המכסה באוקטובר לא יקבל כלום
+   * לעולם.
+   */
+  const bot = io.readFileSync("lib/bot.ts", "utf8");
+  assert.ok(
+    bot.includes("const since = decision.window?.broadcastAt"),
+    "הספירה רצה מתחילת הזמן"
+  );
+  assert.ok(bot.includes("createdAt: { gte: since }"));
+});
+
+/* ---------- פעולת ההשלמה ---------- */
+
+test("ההשלמה מריצה את אותה הכרעה ושולחת באותו מסלול", () => {
+  /**
+   * פעולה שמחליטה לבד או שולחת במסלול משלה הייתה
+   * מתנהגת אחרת מהבוט ברגע הלא נכון.
+   */
+  const route = io.readFileSync(
+    "app/api/maintenance/catch-up-asks/route.ts",
+    "utf8"
+  );
+
+  assert.ok(route.includes("decideInbound"), "מחליטה לבד");
+  assert.ok(route.includes("replyToLead"), "שולחת במסלול משלה");
+  assert.ok(route.includes("askEveryone: settings.botAskAll"), "מתעלמת ממצב מבצע");
+});
+
+test("ההשלמה מכבדת את אותם מעקות", () => {
+  const route = io.readFileSync(
+    "app/api/maintenance/catch-up-asks/route.ts",
+    "utf8"
+  );
+
+  assert.ok(route.includes("doNotContact: false"), "שולחת לרשימה השחורה");
+  assert.ok(route.includes("botMuted: false"), "שולחת למי שהבוט מושתק אצלו");
+});
+
+test("ההשלמה רושמת שנשאל, כדי שלא יישאל פעמיים", () => {
+  const route = io.readFileSync(
+    "app/api/maintenance/catch-up-asks/route.ts",
+    "utf8"
+  );
+  assert.ok(route.includes("type: ASKED_EVENT"));
+});
+
+test("יש הצגה לפני שליחה", () => {
+  const route = io.readFileSync(
+    "app/api/maintenance/catch-up-asks/route.ts",
+    "utf8"
+  );
+  const get = route.slice(route.indexOf("export async function GET"), route.indexOf("export async function POST"));
+
+  assert.ok(!get.includes("replyToLead"), "'הצג' שולח הודעות");
+  assert.ok(!get.includes("db.leadEvent"), "'הצג' כותב למסד");
+});
+
+test("הפעולה מופיעה במסך התחזוקה", () => {
+  const screen = io.readFileSync("components/MaintenanceScreen.tsx", "utf8");
+  assert.ok(screen.includes("catch-up-asks"));
 });
 
 console.log(`✓ inbound-context: ${passed} בדיקות עברו`);

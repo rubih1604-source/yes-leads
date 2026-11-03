@@ -94,7 +94,7 @@ export default async function BroadcastRepliesPage() {
       const decision = decideInbound({
         messages: lead.messages,
         origin: lead.origin,
-        alreadyAsked: false,
+        askedAt: null,
         blacklisted: false,
         listSendAt: listSends.get(lead.phone) ?? null,
         now,

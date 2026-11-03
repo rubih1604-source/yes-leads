@@ -91,7 +91,7 @@ export async function GET(request: Request) {
   const decision = decideInbound({
     messages: lead.messages,
     origin: lead.origin,
-    alreadyAsked: false,
+    askedAt: null,
     blacklisted: lead.doNotContact,
     listSendAt,
     /** אותו מתג בדיוק - אחרת האבחון יענה אחרת מהבוט */

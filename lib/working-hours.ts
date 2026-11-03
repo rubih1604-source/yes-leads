@@ -180,3 +180,31 @@ export function minutesSinceWorkingClose(
 
   return parts.minutes - window.closeMin;
 }
+
+/**
+ * ============================================================
+ *  שעות הבוט
+ * ============================================================
+ *
+ *  **למה כאן ולא ב-bot-gate.** זו פונקציה טהורה, והיא
+ *  ישבה בקובץ שמושך את המסד - ולכן אי אפשר היה לבדוק
+ *  אותה בכלל. הכלל שקובע מתי לקוח מקבל הודעה חייב
+ *  להיות מכוסה.
+ *
+ *  **שעת סיום 24 פירושה עד חצות**, כי ההשוואה היא
+ *  `hour < to`.
+ */
+/** האם השעה עכשיו בתוך חלון הפעילות של הבוט */
+export function withinBotHours(
+  from: number,
+  to: number,
+  now = new Date()
+): boolean {
+  const hour = Math.floor(israelParts(now).minutes / 60);
+
+  // חלון רגיל, למשל 8 עד 21
+  if (from <= to) return hour >= from && hour < to;
+
+  // חלון שחוצה חצות, למשל 20 עד 2
+  return hour >= from || hour < to;
+}

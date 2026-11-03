@@ -88,11 +88,34 @@ export async function PATCH(request: Request) {
     );
   }
 
+  /**
+   * ============================================================
+   *  שעות הבוט
+   * ============================================================
+   *
+   *  **24 הוא ערך תקין לשעת הסיום.** בדיקת החלון היא
+   *  `hour < to`, ולכן 24 פירושו "עד חצות" - בדיוק מה
+   *  שמתכוונים אליו כשכותבים 24. קודם הוא נדחה, והמסך
+   *  המשיך להציג אותו כאילו נשמר.
+   *
+   *  **וערך פסול מחזיר שגיאה ולא נזרק בשקט.** הבליעה
+   *  השקטה היא מה שגרם למסך להראות דבר אחד ולשרת
+   *  להחזיק אחר - ואז הבוט עוצר שעה לפני שחשבת.
+   */
   for (const key of ["botFromHour", "botToHour"]) {
-    if (body[key] !== undefined) {
-      const n = Number(body[key]);
-      if (Number.isFinite(n) && n >= 0 && n <= 23) data[key] = Math.round(n);
+    if (body[key] === undefined) continue;
+
+    const n = Number(body[key]);
+    const max = key === "botToHour" ? 24 : 23;
+
+    if (!Number.isFinite(n) || n < 0 || n > max) {
+      return NextResponse.json(
+        { error: `שעה לא תקינה - צריך מספר בין 0 ל-${max}` },
+        { status: 400 }
+      );
     }
+
+    data[key] = Math.round(n);
   }
 
   for (const key of ["notifyEmail", "notifyPush", "notifyBanner"]) {

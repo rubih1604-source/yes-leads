@@ -62,8 +62,20 @@ export type InboundInput = {
   messages: MessageLike[];
   /** הבעלות של הליד */
   origin: string;
-  /** האם כבר נשאל בעבר */
-  alreadyAsked: boolean;
+  /**
+   * מתי נשאל שאלת הסינון בפעם האחרונה, אם בכלל.
+   *
+   * **למה תאריך ולא "כן/לא".**
+   *
+   * הכלל הוא "שואלים פעם אחת לכל דיוור", לא פעם אחת
+   * לכל החיים. מי שנשאל בדיוור של אוקטובר ועונה למבצע
+   * של נובמבר הוא תגובה חדשה לגמרי - ובערך בוליאני הוא
+   * היה נחסם לנצח, בשקט.
+   *
+   * ההשוואה נעשית כאן כי כאן יודעים מתי יצא הדיוור
+   * שהתגובה הזו שייכת לו.
+   */
+  askedAt?: Date | null;
   /** האם הוא ברשימה השחורה */
   blacklisted: boolean;
   /**
@@ -173,7 +185,15 @@ export function decideInbound(input: InboundInput): InboundDecision {
     };
   }
 
-  if (input.alreadyAsked) {
+  /**
+   * נשאל **בתוך הדיוור הזה** - לא נשאל שוב.
+   * נשאל לפניו - זה דיוור חדש, והשאלה פתוחה מחדש.
+   */
+  const askedThisBroadcast =
+    Boolean(input.askedAt) &&
+    input.askedAt!.getTime() >= window.broadcastAt.getTime();
+
+  if (askedThisBroadcast) {
     return {
       isBroadcastReply: true,
       askSupplier: false,

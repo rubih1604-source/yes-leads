@@ -56,7 +56,14 @@ async function resolveChatId(leadId: string, phone: string, known: string | null
 }
 
 /** שולח הודעת טקסט ללקוח ומתעד אותה */
-async function replyToLead(params: {
+/**
+ * שליחה ללקוח.
+ *
+ * מיוצאת כדי שפעולת ההשלמה תשלח **באותו מסלול בדיוק** -
+ * אותו איתור צ'אט, אותו רישום הודעה, אותו טיפול בכשל.
+ * מסלול שליחה שני היה מתנהג אחרת ברגע הלא נכון.
+ */
+export async function replyToLead(params: {
   leadId: string;
   phone: string;
   chatId: string | null;
@@ -293,7 +300,7 @@ export async function handleInboundMessage(params: {
   const decision = decideInbound({
     messages: history,
     origin: lead.origin,
-    alreadyAsked: Boolean(askedEvent),
+    askedAt: askedEvent?.createdAt ?? null,
     blacklisted: lead.doNotContact || certain.blacklist,
     listSendAt,
     askEveryone: settings.botAskAll,
@@ -414,8 +421,23 @@ export async function handleInboundMessage(params: {
      * במצב "כל הודעה", במקום לקבל טיפול רגיל.
      */
     if (!answer && decision.isBroadcastReply) {
+      /**
+       * **נספרות רק השאלות של הדיוור הזה.**
+       *
+       * ספירה מתחילת הזמן הייתה אומרת שמי שנשאל פעמיים
+       * באוקטובר מיצה את המכסה לנצח, וגם במבצע חדש הוא
+       * לא יקבל כלום.
+       */
+      const since = decision.window?.broadcastAt;
+
       const asks = await db.leadEvent
-        .count({ where: { leadId: lead.id, type: ASKED_EVENT } })
+        .count({
+          where: {
+            leadId: lead.id,
+            type: ASKED_EVENT,
+            ...(since ? { createdAt: { gte: since } } : {}),
+          },
+        })
         .catch(() => MAX_SUPPLIER_ASKS);
 
       if (asks < MAX_SUPPLIER_ASKS) {
