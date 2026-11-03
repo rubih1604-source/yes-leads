@@ -9,7 +9,32 @@
 
 import { db } from "./db";
 import { sendTemplate, shouldRetrySend } from "./texter";
-import { applyStatusChange } from "./rules";
+/**
+ * ============================================================
+ *  למה הייבוא הזה דינמי
+ * ============================================================
+ *
+ *  **זה היה מעגל, והוא הפיל את הבוט על כל הודעה.**
+ *
+ *  rules טוען את runner בזמן ריצה (כדי להריץ מיד משימה
+ *  עם עיכוב 0), ו-runner ייבא את rules בראש הקובץ. בבנייה
+ *  של Next שני הקבצים נדחסים לאותו חבילה, ואז אחד מהם
+ *  מנסה להשתמש בשני לפני שהוא אותחל:
+ *
+ *    ReferenceError: Cannot access '_' before initialization
+ *
+ *  השגיאה הזו נזרקה בכל הודעה נכנסת, והבוט לא הספיק
+ *  לעשות כלום - בזמן שהאבחון הראה שכל התנאים מתקיימים.
+ *
+ *  ייבוא דינמי כאן מנתק את הקשר בזמן האתחול. אין יותר
+ *  תלות מעגלית בין השניים.
+ */
+async function applyStatusChange(
+  ...args: Parameters<typeof import("./rules")["applyStatusChange"]>
+) {
+  const { applyStatusChange: run } = await import("./rules");
+  return run(...args);
+}
 import { displayPhone } from "./phone";
 import { sendEmail } from "./email";
 import { sendPush } from "./push";
