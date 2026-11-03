@@ -104,6 +104,20 @@ export async function GET(request: Request) {
     .catch(() => null);
 
   /**
+   * **כשל של הבוט הוא התשובה החשובה ביותר כאן.**
+   *
+   * כשכל התנאים מתקיימים והשאלה לא יצאה, הסיבה היא
+   * כמעט תמיד שהבוט נפל. בלי השורה הזו האבחון אומר
+   * "הכל תקין" ומשאיר אותך בלי כלום.
+   */
+  const crashed = await db.leadEvent
+    .findFirst({
+      where: { leadId: lead.id, type: "bot_failed" },
+      orderBy: { createdAt: "desc" },
+    })
+    .catch(() => null);
+
+  /**
    * הסיבה הראשונה שעוצרת, לפי הסדר שבו הבוט עצמו בודק.
    * סדר אחר היה מצביע על הסיבה הלא נכונה.
    */
@@ -117,7 +131,10 @@ export async function GET(request: Request) {
    * במפורש שהדיוור יצא אליו. זו בדיוק המסקנה השגויה
    * שקיבלנו על ויויאן.
    */
-  if (lead.doNotContact) {
+  if (crashed) {
+    const payload = (crashed.payload ?? {}) as { error?: string };
+    verdict = `הבוט קרס בטיפול בהודעה הזו ב-${crashed.createdAt.toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" })}. זו הסיבה שלא יצא כלום: ${(payload.error ?? "").slice(0, 300)}`;
+  } else if (lead.doNotContact) {
     verdict = "הליד ברשימה השחורה - הבוט לא פונה אליו בכוונה.";
   } else if (asked) {
     verdict = `השאלה כבר נשלחה אליו ב-${asked.createdAt.toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" })}. הבוט שואל פעם אחת בלבד.`;
@@ -187,6 +204,11 @@ export async function GET(request: Request) {
         : null,
     },
     שאלת_הסינון_נשלחה: Boolean(asked),
+    הבוט_קרס: crashed
+      ? crashed.createdAt.toLocaleString("he-IL", {
+          timeZone: "Asia/Jerusalem",
+        })
+      : "לא",
     סוג_הדיוור:
       decision.window && decision.askSupplier
         ? "דאטה שנטענה - הבוט שואל"

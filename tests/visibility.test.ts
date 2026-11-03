@@ -583,4 +583,52 @@ test("השער באמת לא מגביל סטטוסים בתגובה לדיוור
   );
 });
 
+/* ---------- כשל של הבוט לא נבלע ---------- */
+
+test("כשל של הבוט משאיר עקבות", () => {
+  /**
+   * **הנקודה העיוורת הגדולה ביותר.** כאן ישב catch
+   * ריק: הבוט נפל, הלקוח לא קיבל כלום, ולא נשאר שום
+   * סימן. האבחון אמר "כל התנאים מתקיימים" ולא היה שום
+   * דבר לאחוז בו.
+   */
+  const hook = io.readFileSync("app/api/webhooks/texter/route.ts", "utf8");
+
+  assert.ok(
+    !/catch\s*\{\s*\n\s*\/\/[^\n]*\n\s*\}/.test(hook),
+    "נשאר catch שבולע שגיאה בלי לרשום כלום"
+  );
+  assert.ok(hook.includes('type: "bot_failed"'), "הכשל לא נרשם על הליד");
+  assert.ok(hook.includes("הבוט קרס"), "לא נפתחת התראה על כשל");
+});
+
+test("ההודעה נשמרת גם כשהבוט קורס", () => {
+  /** הטיפול בכשל חייב לבוא אחרי שההודעה כבר נשמרה */
+  const hook = io.readFileSync("app/api/webhooks/texter/route.ts", "utf8");
+  /** ההשוואה לקריאה עצמה, לא לשורת הייבוא בראש הקובץ */
+  assert.ok(
+    hook.indexOf('direction: "in"') <
+      hook.indexOf("await handleInboundMessage({"),
+    "הבוט רץ לפני שההודעה נשמרה"
+  );
+});
+
+test("האבחון מצביע על הקריסה במקום לומר שהכל תקין", () => {
+  const api = io.readFileSync(
+    "app/api/diagnostics/bot-check/route.ts",
+    "utf8"
+  );
+  const screen = io.readFileSync("components/DiagnosticsScreen.tsx", "utf8");
+
+  assert.ok(api.includes('type: "bot_failed"'), "האבחון לא בודק קריסה");
+  assert.ok(api.includes("הבוט_קרס"), "הקריסה לא מוחזרת");
+  assert.ok(screen.includes("הבוט_קרס"), "הקריסה לא מוצגת במסך");
+
+  /** והמסקנה מצביעה עליה לפני כל סיבה אחרת */
+  assert.ok(
+    api.indexOf("if (crashed)") < api.indexOf("} else if (lead.doNotContact)"),
+    "המסקנה בודקת קריסה אחרי סיבות אחרות"
+  );
+});
+
 console.log(`✓ visibility: ${passed} בדיקות עברו`);

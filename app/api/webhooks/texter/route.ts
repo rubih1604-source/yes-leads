@@ -300,8 +300,58 @@ async function handle(request: Request) {
         leadId: lead.id,
         text: mapped.text ?? "",
       });
-    } catch {
-      // הבוט נכשל - ההודעה עדיין נשמרה וההתראה נוצרה
+    } catch (err) {
+      /**
+       * ============================================================
+       *  כשל של הבוט חייב להשאיר עקבות
+       * ============================================================
+       *
+       *  **הנקודה העיוורת הגדולה ביותר במערכת.**
+       *
+       *  כאן ישב `catch` ריק. אם הבוט נפל מכל סיבה -
+       *  שדה חסר, שגיאת רשת, באג - ההודעה נשמרה, הלקוח
+       *  לא קיבל כלום, ו**לא נשאר שום סימן**: לא התראה,
+       *  לא רישום, ולא שורה באבחון.
+       *
+       *  התוצאה היא בדיוק מה שקרה: האבחון מראה שכל
+       *  התנאים מתקיימים, והשאלה לא יצאה - בלי שום דרך
+       *  לדעת למה.
+       *
+       *  ההודעה עדיין נשמרת והרצף עדיין נעצר; רק השתיקה
+       *  נגמרת.
+       */
+      const message =
+        err instanceof Error
+          ? `${err.message}\n${(err.stack ?? "").slice(0, 600)}`
+          : String(err).slice(0, 600);
+
+      await db.leadEvent
+        .create({
+          data: {
+            leadId: lead.id,
+            type: "bot_failed",
+            actor: "system",
+            payload: { error: message, text: (mapped.text ?? "").slice(0, 200) },
+          },
+        })
+        .catch(() => null);
+
+      await db.alert
+        .create({
+          data: {
+            leadId: lead.id,
+            title: "הבוט קרס - הלקוח לא קיבל תשובה",
+            body: `${lead.firstName ?? displayPhone(lead.phone)}: ${(mapped.text ?? "").slice(0, 100)}\n\n${message.slice(0, 300)}`,
+          },
+        })
+        .catch(() => null);
+
+      await db.webhookLog
+        .update({
+          where: { id: log.id },
+          data: { error: `הבוט קרס: ${message.slice(0, 400)}` },
+        })
+        .catch(() => null);
     }
 
     return NextResponse.json({

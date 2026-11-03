@@ -310,6 +310,7 @@ function fromBotCheck(data: any): Answer {
         value: text(data["שאלת_הסינון_נשלחה"]),
       },
       { label: "סוג הדיוור", value: text(data["סוג_הדיוור"]) },
+      { label: "הבוט קרס", value: text(data["הבוט_קרס"]) },
     ],
     raw: data,
   };
