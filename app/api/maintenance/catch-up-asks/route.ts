@@ -33,10 +33,34 @@ export const dynamic = "force-dynamic";
  *  POST = שולח להם את השאלה.
  */
 
-async function pending() {
-  const since = new Date(
-    Date.now() - (REPLY_WINDOW_DAYS + 5) * 24 * 60 * 60 * 1000
-  );
+/**
+ * ============================================================
+ *  רק הדיוור הנוכחי, לא חודש אחורה
+ * ============================================================
+ *
+ *  **למה ברירת המחדל צרה.**
+ *
+ *  הפעולה נועדה להשלים תגובות שאבדו **בדיוור שרץ עכשיו**.
+ *  חלון של חודש הכניס אליה 117 אנשים - רובם ישנים, חלקם
+ *  כבר דיברו איתך מזמן, ושליחה אליהם הייתה נראית להם
+ *  מקרית ומוזרה.
+ *
+ *  12 שעות מכסות מבצע שיצא היום. מי שצריך יותר מעביר
+ *  ?hours=N בכתובת, ורואה בדיוק כמה זה מוסיף לפני
+ *  ששולח.
+ */
+const DEFAULT_HOURS = 12;
+
+function hoursFrom(request: Request): number {
+  const raw = new URL(request.url).searchParams.get("hours");
+  const n = Number(raw);
+
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_HOURS;
+  return Math.min(n, REPLY_WINDOW_DAYS * 24);
+}
+
+async function pending(hours: number) {
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000);
 
   const leads = await db.lead
     .findMany({
@@ -44,6 +68,7 @@ async function pending() {
         /** המעקות של הבוט חלים גם כאן */
         doNotContact: false,
         botMuted: false,
+        /** **התגובה עצמה** חייבת להיות בתוך החלון */
         messages: { some: { direction: "in", createdAt: { gte: since } } },
       },
       select: {
@@ -54,7 +79,18 @@ async function pending() {
         origin: true,
         chatId: true,
         messages: {
-          where: { createdAt: { gte: since } },
+          /**
+           * ההיסטוריה נקראת רחב יותר מהחלון, אחרת הדיוור
+           * עצמו נופל מחוץ לטווח ואי אפשר לזהות שהתגובה
+           * היא תגובה אליו.
+           */
+          where: {
+            createdAt: {
+              gte: new Date(
+                Date.now() - (REPLY_WINDOW_DAYS + 5) * 24 * 60 * 60 * 1000
+              ),
+            },
+          },
           orderBy: { createdAt: "asc" },
           select: {
             direction: true,
@@ -96,20 +132,32 @@ async function pending() {
         now,
       });
 
-      return decision.askSupplier ? { lead, decision } : null;
+      if (!decision.askSupplier) return null;
+
+      /**
+       * ההכרעה מסתכלת על כל ההיסטוריה, ולכן צריך לוודא
+       * שהתגובה שבגללה הוא נבחר היא **מהחלון** ולא תגובה
+       * ישנה שנשארה פתוחה.
+       */
+      const repliedAt = decision.window?.repliedAt;
+      if (!repliedAt || repliedAt.getTime() < since.getTime()) return null;
+
+      return { lead, decision };
     })
     .filter((row): row is NonNullable<typeof row> => row !== null);
 }
 
 /** קוראת בלבד */
-export async function GET() {
+export async function GET(request: Request) {
   if (!isLoggedIn()) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const rows = await pending();
+  const hours = hoursFrom(request);
+  const rows = await pending(hours);
 
   return NextResponse.json({
+    חלון: `${hours} שעות אחורה`,
     כמה: rows.length,
     מי: rows.map((r) =>
       `${r.lead.firstName ?? ""} ${displayPhone(r.lead.phone)} · ענה: "${(
@@ -119,16 +167,17 @@ export async function GET() {
     מסקנה:
       rows.length === 0
         ? "אין אף אחד שהגיב לדיוור ולא קיבל את השאלה."
-        : `${rows.length} אנשים הגיבו לדיוור ולא קיבלו את שאלת הסינון. שליחה תשלח להם אותה עכשיו.`,
+        : `${rows.length} אנשים הגיבו ב-${hours} השעות האחרונות ולא קיבלו את שאלת הסינון. שליחה תשלח להם אותה עכשיו. להרחיב את החלון - הוסף ?hours=48 לכתובת.`,
   });
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   if (!isLoggedIn()) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const rows = await pending();
+  const hours = hoursFrom(request);
+  const rows = await pending(hours);
 
   let sent = 0;
   let failed = 0;

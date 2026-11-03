@@ -952,4 +952,163 @@ test("הפעולה מופיעה במסך התחזוקה", () => {
   assert.ok(screen.includes("catch-up-asks"));
 });
 
+test("ההשלמה מוגבלת לדיוור הנוכחי ולא לחודש אחורה", () => {
+  /**
+   * **מה שנתפס לפני שליחה.** חלון של חודש הכניס 117
+   * אנשים לפעולה - רובם ישנים, וחלקם כבר דיברו איתו
+   * מזמן. שליחה אליהם הייתה נראית מקרית ומוזרה.
+   */
+  const route = io.readFileSync(
+    "app/api/maintenance/catch-up-asks/route.ts",
+    "utf8"
+  );
+
+  assert.ok(route.includes("const DEFAULT_HOURS = 12"), "ברירת המחדל רחבה מדי");
+  assert.ok(route.includes("hoursFrom(request)"), "אי אפשר לכוון את החלון");
+  assert.ok(
+    route.includes("repliedAt.getTime() < since.getTime()"),
+    "תגובה ישנה עדיין יכולה להיכנס לרשימה"
+  );
+});
+
+test("ההיסטוריה נקראת רחב מהחלון, אחרת הדיוור נעלם", () => {
+  /**
+   * אם קוראים רק 12 שעות, הדיוור עצמו נופל מחוץ לטווח
+   * ואי אפשר לזהות שהתגובה היא תגובה אליו - והרשימה
+   * תצא ריקה תמיד.
+   */
+  const route = io.readFileSync(
+    "app/api/maintenance/catch-up-asks/route.ts",
+    "utf8"
+  );
+  assert.ok(route.includes("REPLY_WINDOW_DAYS + 5"));
+});
+
+/* ============================================================
+ *  הדיוור לא סותם את הבוט
+ * ============================================================
+ *
+ *  **הכשל שנתפס באמצע מבצע חי.** הד של דיוור שיצא
+ *  מהמערכת נקרא כ"רובי ענה ידנית", והבוט הושתק מול
+ *  הליד לשעות - בדיוק בחלון שבו הלקוחות עונים לדיוור.
+ */
+
+test("הד של תבנית או דיוור אינו נחשב תשובה ידנית", () => {
+  const hook = io.readFileSync("app/api/webhooks/texter/route.ts", "utf8");
+
+  assert.ok(hook.includes("ourCampaign"), "אין בדיקה שההודעה היא הד שלנו");
+  assert.ok(
+    hook.includes("!alreadyOurs && !matchedByText && !ourCampaign"),
+    "ההשתקה עדיין מופעלת על הד של דיוור"
+  );
+});
+
+test("הזיהוי לא נשען על טקסט זהה בלבד", () => {
+  /**
+   * תבנית עם משתנים מרונדרת אחרת ממה שנשמר, ולכן
+   * השוואת טקסט לבדה תיכשל תמיד על דיוור.
+   */
+  const hook = io.readFileSync("app/api/webhooks/texter/route.ts", "utf8");
+  const block = hook.slice(
+    hook.indexOf("const ourCampaign"),
+    hook.indexOf("if (!alreadyOurs && !matchedByText && !ourCampaign)")
+  );
+
+  assert.ok(block.includes("templateName: { not: null }"));
+  assert.ok(block.includes("broadcast: true"));
+});
+
+test("יש דרך לשחרר לידים שכבר הושתקו", () => {
+  const route = io.readFileSync(
+    "app/api/maintenance/release-bot-pause/route.ts",
+    "utf8"
+  );
+
+  assert.ok(route.includes("botPausedUntil: null"), "לא משחרר כלום");
+  /** נוגע רק בהשתקה - לא בהשתקה הידנית ולא בשום שדה אחר */
+  /** ההשוואה לכתיבה בפועל, לא להזכרה בהערה */
+  assert.ok(!route.includes("botMuted:"), "נוגע בהשתקה הידנית שלך");
+  /**
+   * "status: 401" הוא קוד HTTP, לא סטטוס ליד. הבדיקה
+   * מכוונת לכתיבה למסד בלבד.
+   */
+  const writes = route.slice(route.indexOf("updateMany"));
+  assert.ok(!writes.includes("status:"), "משנה סטטוסים");
+
+  const get = route.slice(
+    route.indexOf("export async function GET"),
+    route.indexOf("export async function POST")
+  );
+  assert.ok(!get.includes("updateMany"), "'הצג' משנה נתונים");
+});
+
+/* ============================================================
+ *  השער לא חונק תגובה לדיוור
+ * ============================================================
+ *
+ *  **שלושת החסמים שחנקו את המבצע.** כולם רצים לפני
+ *  שאלת הסינון, וכולם נועדו למצב הרגיל:
+ *
+ *  1. השתקה אחרי תשובה שלך
+ *  2. שתי הודעות נכנסות = "שיחה חיה"
+ *  3. המתנה בין תשובות
+ *
+ *  השלישי הוא הקטלני: שאלת הסינון היא הודעה רגילה,
+ *  ולכן **התשובה לשאלה** נחסמה בגלל השאלה עצמה. התהליך
+ *  בן שני השלבים לא יכול היה להסתיים בכלל.
+ */
+
+test("תגובה לדיוור עוברת את השער אחרי המעקות הקשיחים", () => {
+  const gate = io.readFileSync("lib/bot-gate.ts", "utf8");
+
+  const pass = gate.indexOf('if (scope === "broadcast") {');
+  assert.ok(pass > -1, "אין מסלול מהיר לתגובת דיוור");
+
+  /** מה שחייב להישאר לפניו */
+  for (const check of [
+    "settings.botEnabled",
+    "withinBotHours",
+    'lead.origin === "sale"',
+    "lead.botMuted",
+  ]) {
+    assert.ok(
+      gate.indexOf(check) < pass,
+      `${check} כבר לא חוסם תגובה לדיוור - מעקה שנפרץ`
+    );
+  }
+
+  /** ומה שחייב להיות אחריו */
+  for (const throttle of [
+    "lead.botPausedUntil",
+    "recentInbound >= 2",
+    "replyCooldownMinutes",
+  ]) {
+    assert.ok(
+      gate.indexOf(throttle) > pass,
+      `${throttle} עדיין חונק תגובה לדיוור`
+    );
+  }
+});
+
+test("המצב הרגיל לא השתנה", () => {
+  /**
+   * המסלול המהיר חל **רק** על תגובת דיוור. בשיחה רגילה
+   * כל ההגנות נשארות: לא נתפרץ לשיחה חיה ולא נציף.
+   */
+  const gate = io.readFileSync("lib/bot-gate.ts", "utf8");
+  assert.ok(gate.includes("lead.botPausedUntil && lead.botPausedUntil > now"));
+  assert.ok(gate.includes("if (recentInbound >= 2)"));
+  assert.ok(gate.includes("if (recentReply)"));
+});
+
+test("הרשימה השחורה נבדקת עוד לפני השער", () => {
+  /** המעקה היחיד שלא יכול להיות תלוי בשער */
+  const bot = io.readFileSync("lib/bot.ts", "utf8");
+  /** ההשוואה לקריאה עצמה, לא לשורת הייבוא בראש הקובץ */
+  assert.ok(
+    bot.indexOf("if (certain.blacklist)") < bot.indexOf("await shouldBotReply("),
+    "בקשת הסרה נבדקת אחרי השער"
+  );
+});
+
 console.log(`✓ inbound-context: ${passed} בדיקות עברו`);
