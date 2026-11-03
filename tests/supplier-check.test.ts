@@ -6,6 +6,10 @@ import {
   customerPatternSources,
   replyForAnswer,
   SUPPLIER_QUESTION,
+  SUPPLIER_QUESTION_AGAIN,
+  MAX_SUPPLIER_ASKS,
+  NEEDS_YOU_EVENT,
+  ASKED_EVENT,
   REPLY_IF_CUSTOMER,
   REPLY_IF_NOT_CUSTOMER,
 } from "../lib/supplier-check";
@@ -260,6 +264,137 @@ test("אין יוד כפולה באף תבנית", () => {
       `יוד כפולה לא תתאים אחרי נרמול: ${source}`
     );
   }
+});
+
+/* ============================================================
+ *  תגובה שלא אומרת אם הוא לקוח
+ * ============================================================
+ *
+ *  **מה נשבר בלי זה.** הלקוח כתב משהו, השאלה כבר נשאלה,
+ *  והתשובה לא הכריעה - ואז לא קרה כלום. אדם מתעניין
+ *  כותב ולא מקבל דבר.
+ */
+
+const UNCLEAR = [
+  "מתי אפשר לדבר",
+  "כמה זה עולה",
+  "תשלח לי פרטים",
+  "אני צריך לבדוק עם אשתי",
+  "מה כולל המבצע",
+];
+
+for (const text of UNCLEAR) {
+  test(`לא נחשבת תשובה: "${text}"`, () => {
+    assert.equal(
+      readSupplierAnswer(text),
+      null,
+      `סווג כתשובה ודאית: ${text}`
+    );
+  });
+}
+
+test("השאלה החוזרת שונה מהראשונה", () => {
+  /**
+   * אותו משפט מילה במילה אומר ללקוח שלא קראו אותו.
+   */
+  assert.notEqual(SUPPLIER_QUESTION_AGAIN, SUPPLIER_QUESTION);
+  assert.ok(SUPPLIER_QUESTION_AGAIN.includes("yes"));
+  assert.ok(SUPPLIER_QUESTION_AGAIN.includes("sting"));
+});
+
+test("התקרה היא שתי שאלות ולא יותר", () => {
+  /**
+   * בלי תקרה, מי שכותב משפטים שאינם תשובה מקבל את
+   * השאלה בלולאה - וזו הדרך הבטוחה לקבל בקשת הסרה.
+   */
+  assert.equal(MAX_SUPPLIER_ASKS, 2);
+});
+
+test("הבוט שואל שוב ועוצר בתקרה", () => {
+  const bot = io.readFileSync("lib/bot.ts", "utf8");
+
+  assert.ok(
+    bot.includes("SUPPLIER_QUESTION_AGAIN"),
+    "תגובה לא ברורה עדיין נענית בשתיקה"
+  );
+  assert.ok(
+    bot.includes("asks < MAX_SUPPLIER_ASKS"),
+    "אין תקרה - הלקוח יקבל את השאלה בלולאה"
+  );
+  assert.ok(
+    bot.includes("ענה ולא ברור - צריך אותך"),
+    "אחרי התקרה לא נפתחת התראה, והלקוח נשכח"
+  );
+});
+
+test("השאלה החוזרת נספרת, אחרת התקרה חסרת משמעות", () => {
+  const bot = io.readFileSync("lib/bot.ts", "utf8");
+  const block = bot.slice(
+    bot.indexOf("SUPPLIER_QUESTION_AGAIN,\n          });"),
+    bot.indexOf("supplier:asked-again")
+  );
+  assert.ok(
+    bot.includes("again: true") && bot.includes("type: ASKED_EVENT"),
+    "השאלה החוזרת לא נרשמת"
+  );
+});
+
+test("תשובה ברורה אחרי השאלה החוזרת עדיין מטופלת", () => {
+  /** הזרימה לא נשברת: כן/לא ממשיכים כרגיל */
+  assert.equal(readSupplierAnswer("לא"), "no");
+  assert.equal(readSupplierAnswer("כן"), "yes");
+  assert.equal(readSupplierAnswer("יש לי כבר יס"), "yes");
+
+  /**
+   * "אני בהוט" הוא כן תשובה: הוא אצל מתחרה, כלומר לא
+   * אצלנו. נבדק כאן במפורש כדי שלא ייחשב בטעות עמום.
+   */
+  assert.equal(readSupplierAnswer("אני בהוט"), "no");
+});
+
+/* ---------- שהתיקון לא ידלוף למקומות אחרים ---------- */
+
+test("השאלה החוזרת רק בתוך חלון של תגובה לדיוור", () => {
+  /**
+   * **הדליפה שנתפסה לפני ההעלאה.** הענף הזה רץ לפני
+   * בדיקת מצב הבוט. בלי התנאי, ליד שנשאל פעם את שאלת
+   * הסינון היה מקבל אותה שוב על כל הודעה לא ברורה -
+   * גם חודש אחרי, וגם במצב "כל הודעה", במקום לקבל
+   * טיפול רגיל.
+   */
+  const bot = io.readFileSync("lib/bot.ts", "utf8");
+  assert.ok(
+    bot.includes("if (!answer && decision.isBroadcastReply)"),
+    "השאלה החוזרת יכולה לצאת מחוץ להקשר של דיוור"
+  );
+});
+
+test("ההתראה נפתחת פעם אחת בלבד", () => {
+  /**
+   * בלי זה, כל הודעה נוספת מאותו אדם פותחת התראה
+   * חדשה, ורשימת ההתראות הופכת לרעש.
+   */
+  const bot = io.readFileSync("lib/bot.ts", "utf8");
+  assert.ok(bot.includes("NEEDS_YOU_EVENT"), "אין סימון שההתראה כבר נפתחה");
+  assert.ok(
+    bot.indexOf("NEEDS_YOU_EVENT") < bot.indexOf('title: "ענה ולא ברור'),
+    "הבדיקה נעשית אחרי שההתראה כבר נוצרה"
+  );
+  assert.ok(bot.includes("if (!already)"), "ההתראה נוצרת בלי תנאי");
+});
+
+test("הסימון נפרד מסימון השאלה", () => {
+  /** שני אירועים שונים, אחרת הספירה של השאלות תתקלקל */
+  assert.notEqual(NEEDS_YOU_EVENT, ASKED_EVENT);
+});
+
+test("מצב המבצע לא משנה את נוסח התשובות", () => {
+  /**
+   * המתג קובע **את מי** שואלים, לא **מה** עונים.
+   */
+  assert.equal(replyForAnswer("yes"), REPLY_IF_CUSTOMER);
+  assert.equal(replyForAnswer("no"), REPLY_IF_NOT_CUSTOMER);
+  assert.equal(replyForAnswer(null), null);
 });
 
 console.log(`✓ supplier-check (סימולציות): ${passed} בדיקות עברו`);

@@ -18,6 +18,7 @@ export default function BotSettings({
   cooldownMinutes,
   liveChatMinutes,
   mode,
+  askAll,
 }: {
   statuses: StatusDef[];
   enabled: boolean;
@@ -28,6 +29,8 @@ export default function BotSettings({
   pauseHours: number;
   cooldownMinutes: number;
   liveChatMinutes: number;
+  /** שאלת הסינון גם לדיוור ללידים שלך */
+  askAll: boolean;
 }) {
   const [from, setFrom] = useState(String(fromHour));
   const [to, setTo] = useState(String(toHour));
@@ -97,6 +100,41 @@ export default function BotSettings({
       {enabled && (
         <>
           {/* ---- מה הוא עושה ---- */}
+          <div style={{ fontSize: 13, fontWeight: 600, margin: "18px 2px 8px" }}>
+            מצב מבצע
+          </div>
+
+          <button
+            type="button"
+            className="status-option"
+            onClick={() => patch({ botAskAll: !askAll })}
+            disabled={busy}
+          >
+            <span
+              className="dot"
+              style={{ background: askAll ? "#12805c" : "#dbe3ea" }}
+            />
+            <span>
+              שאל את שאלת הסינון את כל מי שעונה לדיוור
+            </span>
+          </button>
+
+          <div
+            style={{
+              fontSize: 12.5,
+              color: "#667085",
+              margin: "6px 2px 0",
+              lineHeight: 1.65,
+            }}
+          >
+            כבוי: רק מי שהגיע מדאטה שנטענה נשאל. ליד שאתה מכיר לא
+            נשאל אם הוא לקוח של yes.
+            <br />
+            דלוק: <strong>גם הלידים שלך</strong> נשאלים. נכון לדיוור
+            מבצע — גם מי שדיברת איתו לפני חודשיים יכול להיות כבר לקוח,
+            ואז אין מה למכור לו.
+          </div>
+
           <div style={{ fontSize: 13, fontWeight: 600, margin: "18px 2px 8px" }}>
             על מה הוא עונה
           </div>

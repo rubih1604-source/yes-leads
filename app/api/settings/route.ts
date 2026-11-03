@@ -20,6 +20,10 @@ export async function PATCH(request: Request) {
    * כ-"all" בקריאה, כלומר הבוט היה חוזר לענות על הכל
    * בלי שאף אחד יבחר בזה.
    */
+  if (typeof body.botAskAll === "boolean") {
+    data.botAskAll = body.botAskAll;
+  }
+
   if (body.botMode === "all" || body.botMode === "broadcast") {
     data.botMode = body.botMode;
   }

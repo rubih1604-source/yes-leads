@@ -259,7 +259,13 @@ test("הצהרה מפורשת מדלגת על השאלה, והבדיקה קוד�
   );
 
   const declared = bot.indexOf("statesExistingCustomer(params.text)");
-  const ask = bot.indexOf("text: SUPPLIER_QUESTION");
+
+  /**
+   * הפסיק חשוב: בלעדיו ההתאמה תופסת גם את
+   * SUPPLIER_QUESTION_AGAIN, שהיא השאלה החוזרת ויושבת
+   * קודם בקובץ - והבדיקה הייתה משווה לשליחה הלא נכונה.
+   */
+  const ask = bot.indexOf("text: SUPPLIER_QUESTION,");
   assert.ok(declared > -1 && ask > -1);
   assert.ok(declared < ask, "השאלה נשלחת לפני שבודקים אם כבר הצהיר");
 });
@@ -635,6 +641,138 @@ test("הבעלות נבדקת בפועל ולא רק מתקבלת", () => {
     src.includes("NON_LEAD_ORIGINS.includes(input.origin)"),
     "הבעלות שוב לא משפיעה על ההכרעה"
   );
+});
+
+/* ============================================================
+ *  מצב מבצע - שואלים את כולם
+ * ============================================================
+ *
+ *  **למה זה מתג ולא ניחוש.** מבצע יוצא לרשימה שלמה, וגם
+ *  מי שדיברת איתו לפני חודשיים יכול להיות כבר לקוח של
+ *  yes - ואז אין מה למכור לו, וצריך להפנות אותו לשירות.
+ *  ההחלטה הזו היא של רובי, ולכן היא הגדרה.
+ */
+
+test("במצב מבצע גם הליד שלך נשאל", () => {
+  const d = decideInbound({
+    ...base,
+    origin: "leadmanager",
+    askEveryone: true,
+    messages: [
+      out(KIND_LEADS, "2026-10-29T09:00:00Z"),
+      inMsg("מה המחיר", "2026-10-29T10:00:00Z"),
+    ],
+  });
+
+  assert.equal(d.askSupplier, true, "ליד שלך לא נשאל במצב מבצע");
+});
+
+test("במצב מבצע גם דיוור ללידים מפעיל את השאלה", () => {
+  const d = decideInbound({
+    ...base,
+    origin: "broadcast",
+    askEveryone: true,
+    messages: [
+      out(KIND_LEADS, "2026-10-29T09:00:00Z"),
+      inMsg("כמה זה", "2026-10-29T10:00:00Z"),
+    ],
+  });
+
+  assert.equal(d.askSupplier, true);
+});
+
+test("בלי מצב מבצע ההגנה חוזרת מיד", () => {
+  /**
+   * המתג לא משנה את הכלל - הוא רק משהה אותו. ברגע
+   * שהוא כבוי, ליד שלך שוב אינו נשאל.
+   */
+  for (const flag of [false, undefined]) {
+    const d = decideInbound({
+      ...base,
+      origin: "leadmanager",
+      askEveryone: flag,
+      messages: [
+        out(KIND_LEADS, "2026-10-29T09:00:00Z"),
+        inMsg("מה המחיר", "2026-10-29T10:00:00Z"),
+      ],
+    });
+
+    assert.equal(d.askSupplier, false, `ההגנה לא חזרה עבור ${flag}`);
+  }
+});
+
+test("מצב מבצע לא עוקף את הרשימה השחורה", () => {
+  /**
+   * **המעקה שאסור לפרוץ.** מי שביקש שלא יפנו אליו לא
+   * מקבל הודעה, גם לא במבצע.
+   */
+  const d = decideInbound({
+    ...base,
+    origin: "broadcast",
+    askEveryone: true,
+    blacklisted: true,
+    messages: [
+      out(KIND_DATA, "2026-10-29T09:00:00Z"),
+      inMsg("מה המחיר", "2026-10-29T10:00:00Z"),
+    ],
+  });
+
+  assert.equal(d.askSupplier, false);
+});
+
+test("מצב מבצע לא שואל מי שכבר נשאל", () => {
+  const d = decideInbound({
+    ...base,
+    origin: "broadcast",
+    askEveryone: true,
+    alreadyAsked: true,
+    messages: [
+      out(KIND_DATA, "2026-10-29T09:00:00Z"),
+      inMsg("מה המחיר", "2026-10-29T10:00:00Z"),
+    ],
+  });
+
+  assert.equal(d.askSupplier, false);
+});
+
+test("מצב מבצע לא הופך הודעה סתמית לתגובת דיוור", () => {
+  /** בלי דיוור קודם אין חלון, ולכן אין מה לשאול */
+  const d = decideInbound({
+    ...base,
+    origin: "broadcast",
+    askEveryone: true,
+    messages: [inMsg("שלום", "2026-10-29T10:00:00Z")],
+  });
+
+  assert.equal(d.isBroadcastReply, false);
+  assert.equal(d.askSupplier, false);
+});
+
+test("הבוט והאבחון מריצים את אותו מתג", () => {
+  /**
+   * אבחון שלא מקבל את המתג היה עונה אחרת מהבוט - וזה
+   * בדיוק סוג הפער שאי אפשר לראות.
+   */
+  const bot = io.readFileSync("lib/bot.ts", "utf8");
+  const diag = io.readFileSync(
+    "app/api/diagnostics/bot-check/route.ts",
+    "utf8"
+  );
+
+  assert.ok(bot.includes("askEveryone: settings.botAskAll"));
+  assert.ok(diag.includes("askEveryone: settings.botAskAll"));
+});
+
+test("המתג מגיע מההגדרות עד המסך", () => {
+  const settings = io.readFileSync("lib/settings.ts", "utf8");
+  const api = io.readFileSync("app/api/settings/route.ts", "utf8");
+  const screen = io.readFileSync("components/BotSettings.tsx", "utf8");
+  const page = io.readFileSync("app/settings/page.tsx", "utf8");
+
+  assert.ok(settings.includes("botAskAll"), "לא נקרא מהמסד");
+  assert.ok(api.includes("botAskAll"), "אי אפשר לשמור");
+  assert.ok(screen.includes("botAskAll"), "אין כפתור");
+  assert.ok(page.includes("askAll={settings.botAskAll"), "הערך לא מועבר למסך");
 });
 
 console.log(`✓ inbound-context: ${passed} בדיקות עברו`);

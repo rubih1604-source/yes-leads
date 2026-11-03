@@ -278,6 +278,10 @@ function fromBotCheck(data: any): Answer {
       { label: "ברשימה שחורה", value: text(data["ליד"]?.["ברשימה_שחורה"]) },
       { label: "הבוט דלוק", value: text(data["הגדרות"]?.["בוט_דלוק"]) },
       { label: "מצב הבוט", value: text(data["הגדרות"]?.["מצב"]) },
+      {
+        label: "שואל את כולם",
+        value: text(data["הגדרות"]?.["שואל_את_כולם"]),
+      },
       { label: "שעות הבוט", value: text(data["הגדרות"]?.["שעות"]) },
       { label: "עובר את השער", value: text(data["שער"]?.["עובר"]) },
       { label: "סיבת השער", value: text(data["שער"]?.["סיבה"]) },

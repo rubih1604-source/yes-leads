@@ -85,6 +85,7 @@ export default async function SettingsPage() {
         statuses={statuses}
         enabled={settings.botEnabled}
         mode={settings.botMode}
+        askAll={settings.botAskAll}
         fromHour={settings.botFromHour}
         toHour={settings.botToHour}
         selected={settings.botStatuses}

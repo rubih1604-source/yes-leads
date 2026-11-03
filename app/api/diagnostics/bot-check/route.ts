@@ -94,6 +94,8 @@ export async function GET(request: Request) {
     alreadyAsked: false,
     blacklisted: lead.doNotContact,
     listSendAt,
+    /** אותו מתג בדיוק - אחרת האבחון יענה אחרת מהבוט */
+    askEveryone: settings.botAskAll,
     now: new Date(),
   });
 
@@ -151,6 +153,7 @@ export async function GET(request: Request) {
     הגדרות: {
       בוט_דלוק: settings.botEnabled,
       מצב: settings.botMode === "broadcast" ? "רק דיוור" : "כל הודעה",
+      שואל_את_כולם: settings.botAskAll,
       שעות: `${settings.botFromHour}:00-${settings.botToHour}:00`,
     },
     שער: { עובר: gate.allowed, סיבה: gate.reason },

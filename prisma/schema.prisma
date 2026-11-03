@@ -214,6 +214,13 @@ model Settings {
   /// את שאלת הסינון, קורא את התשובה, ומפסיק שם. כל הודעה
   /// אחרת נשארת לך בלי שהוא נוגע בה.
   botMode              String   @default("all")
+
+  /// שאלת הסינון גם למי שקיבל דיוור מרשימת הלידים שלך.
+  ///
+  /// בדרך כלל כבוי: ליד שאתה מכיר לא נשאל אם הוא לקוח
+  /// של yes. בדיוור מבצע זה הפוך - גם מי שמוכר לך יכול
+  /// להיות כבר לקוח, ואז אין מה למכור לו.
+  botAskAll            Boolean  @default(false)
   botOnlyOutsideHours  Boolean  @default(false)
   botPauseHours        Int      @default(12)
   replyCooldownMinutes Int      @default(10)

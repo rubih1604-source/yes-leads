@@ -66,6 +66,20 @@ export type InboundInput = {
   alreadyAsked: boolean;
   /** האם הוא ברשימה השחורה */
   blacklisted: boolean;
+  /**
+   * לשאול את שאלת הסינון **כל** מי שענה לדיוור, גם ליד
+   * שאתה מכיר.
+   *
+   * **למה זה הגיוני דווקא בדיוור מבצע.** בדרך כלל ליד
+   * שלך לא נשאל, כי אתה יודע מי הוא. אבל מבצע יוצא
+   * לרשימה שלמה, וגם מי שדיברת איתו לפני חודשיים יכול
+   * להיות כבר לקוח של yes - ואז אין מה למכור לו, וצריך
+   * להפנות אותו לשירות.
+   *
+   * ההחלטה הזו היא שלך ולא של המערכת, ולכן היא מתג
+   * בהגדרות ולא ניחוש לפי תוכן ההודעה.
+   */
+  askEveryone?: boolean;
   now: Date;
 };
 
@@ -192,7 +206,7 @@ export function decideInbound(input: InboundInput): InboundDecision {
    */
   const mine = !NON_LEAD_ORIGINS.includes(input.origin);
 
-  if (mine) {
+  if (mine && !input.askEveryone) {
     return {
       isBroadcastReply: true,
       askSupplier: false,
@@ -226,7 +240,7 @@ export function decideInbound(input: InboundInput): InboundDecision {
    * לשאול אותם "האם אתם לקוחות yes" זה לגלות שאינך זוכר
    * מי הם. השאלה נועדה לרשימה שנטענה מקובץ בלבד.
    */
-  if (kind !== KIND_DATA) {
+  if (kind !== KIND_DATA && !input.askEveryone) {
     return {
       isBroadcastReply: true,
       askSupplier: false,
@@ -240,6 +254,8 @@ export function decideInbound(input: InboundInput): InboundDecision {
     isBroadcastReply: true,
     askSupplier: true,
     window,
-    reason: "תגובה לדיוור מדאטה שנטענה",
+    reason: input.askEveryone
+      ? "תגובה לדיוור · מצב מבצע - שואלים את כולם"
+      : "תגובה לדיוור מדאטה שנטענה",
   };
 }

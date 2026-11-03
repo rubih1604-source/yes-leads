@@ -27,6 +27,9 @@ import {
   replyForAnswer,
   SUPPLIER_QUESTION,
   ASKED_EVENT,
+  SUPPLIER_QUESTION_AGAIN,
+  MAX_SUPPLIER_ASKS,
+  NEEDS_YOU_EVENT,
   type SupplierAnswer,
 } from "./supplier-check";
 
@@ -293,6 +296,7 @@ export async function handleInboundMessage(params: {
     alreadyAsked: Boolean(askedEvent),
     blacklisted: lead.doNotContact || certain.blacklist,
     listSendAt,
+    askEveryone: settings.botAskAll,
     now: new Date(),
   });
 
@@ -383,6 +387,114 @@ export async function handleInboundMessage(params: {
       });
 
       if (handled) return handled;
+    }
+
+    /**
+     * ============================================================
+     *  ענה - ולא אמר אם הוא לקוח
+     * ============================================================
+     *
+     *  **מה היה כאן קודם.** תשובה שאי אפשר להכריע פשוט
+     *  לא עשתה כלום, והשיחה נעצרה בשקט. הלקוח כתב, ולא
+     *  קיבל דבר.
+     *
+     *  "מתי אפשר לדבר", "כמה זה עולה", "אני בהוט" -
+     *  כולן תגובות של אדם מתעניין שעדיין לא ענה על
+     *  השאלה. שואלים שוב, פעם אחת, בניסוח אחר.
+     *
+     *  **ואז עוצרים.** אחרי שתי שאלות בן אדם עדיף על
+     *  עוד הודעה אוטומטית, ולכן נפתחת התראה לרובי.
+     */
+    /**
+     * **רק בתוך חלון של תגובה לדיוור.**
+     *
+     * הענף הזה רץ לפני בדיקת מצב הבוט, ולכן בלי התנאי
+     * הזה ליד שנשאל פעם את שאלת הסינון היה מקבל אותה
+     * שוב על כל הודעה לא ברורה - גם חודש אחרי, וגם
+     * במצב "כל הודעה", במקום לקבל טיפול רגיל.
+     */
+    if (!answer && decision.isBroadcastReply) {
+      const asks = await db.leadEvent
+        .count({ where: { leadId: lead.id, type: ASKED_EVENT } })
+        .catch(() => MAX_SUPPLIER_ASKS);
+
+      if (asks < MAX_SUPPLIER_ASKS) {
+        const sent = await replyToLead({
+          leadId: lead.id,
+          phone: lead.phone,
+          chatId: lead.chatId,
+          text: SUPPLIER_QUESTION_AGAIN,
+        });
+
+        if (sent) {
+          await db.leadEvent
+            .create({
+              data: {
+                leadId: lead.id,
+                type: ASKED_EVENT,
+                actor: "bot",
+                payload: {
+                  text: params.text.slice(0, 200),
+                  reason: "התשובה לא הכריעה - נשאל שוב",
+                  again: true,
+                },
+              },
+            })
+            .catch(() => null);
+
+          actions.push("supplier:asked-again");
+
+          return {
+            classification: {
+              intent: "other",
+              confidence: 0,
+              requestedCallbackAt: null,
+              callbackParseConfident: false,
+              requestedDate: null,
+              requestedDayPart: null,
+              suggestedReply: null,
+              reasoning: "התשובה לא הכריעה, נשאל שוב",
+            },
+            actions,
+          };
+        }
+      } else {
+        /**
+         * **התראה אחת, לא אחת לכל הודעה.**
+         *
+         * בלי הבדיקה הזו, כל הודעה נוספת מאותו אדם
+         * הייתה פותחת התראה חדשה - ורשימת ההתראות
+         * הופכת לרעש שאי אפשר לקרוא.
+         */
+        const already = await db.leadEvent
+          .findFirst({ where: { leadId: lead.id, type: NEEDS_YOU_EVENT } })
+          .catch(() => null);
+
+        if (!already) {
+          await db.alert
+            .create({
+              data: {
+                leadId: lead.id,
+                title: "ענה ולא ברור - צריך אותך",
+                body: `${lead.firstName ?? ""} ${displayPhone(lead.phone)} · "${params.text.slice(0, 120)}"`.trim(),
+              },
+            })
+            .catch(() => null);
+
+          await db.leadEvent
+            .create({
+              data: {
+                leadId: lead.id,
+                type: NEEDS_YOU_EVENT,
+                actor: "bot",
+                payload: { text: params.text.slice(0, 200) },
+              },
+            })
+            .catch(() => null);
+        }
+
+        actions.push("supplier:needs-you");
+      }
     }
   } else if (!certain.blacklist) {
     /**
