@@ -11,7 +11,8 @@ export function middleware(request: NextRequest) {
   const isPublic =
     pathname.startsWith("/login") ||
     pathname.startsWith("/api/login") ||
-    pathname.startsWith("/api/webhooks");
+    pathname.startsWith("/api/webhooks") ||
+    pathname.startsWith("/api/public"); // מוגן בטוקן משלו (מסך הצד)
 
   if (isPublic) return NextResponse.next();
 
