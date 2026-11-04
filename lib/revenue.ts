@@ -39,11 +39,21 @@ function startOfMonth(now = new Date()): Date {
   return fromIsrael(p.year, p.month, 1, 0);
 }
 
+/** טווח חופשי - למסך הצד, שבו בוחרים יום, שבוע, חודש או טווח */
+export type RevenueRange = { from: Date; to: Date; label: string };
+
 export async function getRevenue(
-  period: "today" | "month" = "month"
+  period: "today" | "month" | RevenueRange = "month"
 ): Promise<RevenueSummary> {
   const now = new Date();
-  const from = period === "today" ? startOfIsraelDay(now) : startOfMonth(now);
+  const isRange = typeof period === "object";
+  const from = isRange
+    ? period.from
+    : period === "today"
+    ? startOfIsraelDay(now)
+    : startOfMonth(now);
+  const to = isRange ? period.to : now;
+  const label = isRange ? period.label : period === "today" ? "היום" : "החודש";
 
   const [statuses, subs, settings] = await Promise.all([
     getStatuses(),
@@ -60,7 +70,7 @@ export async function getRevenue(
       progress: 0,
       deals: 0,
       breakdown: [],
-      periodLabel: period === "today" ? "היום" : "החודש",
+      periodLabel: label,
     };
   }
 
@@ -72,7 +82,7 @@ export async function getRevenue(
     where: {
       type: "status_changed",
       toStatus: { in: wonNames },
-      createdAt: { gte: from },
+      createdAt: { gte: from, lt: to },
     },
     select: { leadId: true, toStatus: true },
   });
@@ -137,6 +147,6 @@ export async function getRevenue(
     progress: target > 0 ? Math.min(100, Math.round((earned / target) * 100)) : 0,
     deals,
     breakdown,
-    periodLabel: period === "today" ? "היום" : "החודש",
+    periodLabel: label,
   };
 }
