@@ -243,57 +243,62 @@ test("הכפתור לא מוצג למי שכבר ברשימה", () => {
 });
 
 
-/* ---------- מצב "רק דיוור" ---------- */
+/* ---------- בוט אחד, בלי מצבים ---------- */
 
-const botFile = io.readFileSync("lib/bot.ts", "utf8");
-const gateFile = io.readFileSync("lib/bot-gate.ts", "utf8");
+const botFile = io.readFileSync("lib/campaign-bot.ts", "utf8");
 const settingsApi = io.readFileSync("app/api/settings/route.ts", "utf8");
 
-test("יש מצב שבו הבוט עוצר לפני הסיווג", () => {
-  assert.ok(botFile.includes('settings.botMode === "broadcast"'));
-});
+/**
+ * ============================================================
+ *  מה נבדק כאן קודם, ולמה זה הוחלף
+ * ============================================================
+ *
+ *  כל הבדיקות בחלק הזה שמרו על המצב "רק דיוור" מול "כל
+ *  הודעה": שהעצירה קודמת לסיווג, שמגבלת הסטטוסים לא חלה,
+ *  שהשער עדיין חוסם. כולן תיארו נכון את הבוט הקודם -
+ *  והבוט הקודם נמחק, יחד עם השער, הסיווג והמצבים.
+ *
+ *  מה ששומרים עליו עכשיו הוא מה שיש: מתג אחד, בלי מצב
+ *  שני שאפשר להיתקע בו.
+ */
 
-test("העצירה היא לפני הסיווג, אחרת הוא עדיין יענה", () => {
-  const stop = botFile.indexOf('settings.botMode === "broadcast"');
-  const classify = botFile.indexOf("await classifyMessage(");
-  assert.ok(stop > -1 && classify > -1);
-  assert.ok(stop < classify, "הבוט מסווג לפני שהוא עוצר - כלומר עדיין עונה");
-});
-
-test("בקשת הסרה נרשמת לפני העצירה, בכל מצב", () => {
+test("בקשת הסרה נרשמת לפני כל חסימה", () => {
   const detect = botFile.indexOf("detectUnsubscribe(params.text)");
-  const stop = botFile.indexOf('settings.botMode === "broadcast"');
-  assert.ok(detect < stop, "במצב רק-דיוור בקשות הסרה לא היו נרשמות");
+  const quiet = botFile.indexOf("hours < QUIET_HOURS");
+  assert.ok(detect > -1 && quiet > -1);
+  assert.ok(detect < quiet, "מי שבתוך השקט יבקש הסרה ולא ייחסם");
 });
 
-test("שאלת הסינון נשאלת לפני העצירה", () => {
-  const ask = botFile.indexOf("SUPPLIER_QUESTION");
-  const stop = botFile.indexOf('settings.botMode === "broadcast"');
-  assert.ok(ask > -1 && ask < stop, "במצב רק-דיוור השאלה לא הייתה נשלחת");
+test("שאלת הסינון יוצאת מהבוט", () => {
+  assert.ok(botFile.includes("SUPPLIER_QUESTION"));
 });
 
-test("מגבלת הסטטוסים לא חלה במצב רק-דיוור", () => {
-  assert.ok(gateFile.includes('settings.botMode !== "broadcast"'));
-  const guard = gateFile.indexOf('settings.botMode !== "broadcast"');
-  const check = gateFile.indexOf("settings.botStatuses.includes");
-  assert.ok(guard < check, "מגבלת הסטטוסים תחסום את שאלת הסינון");
+test("אין מצבים ואין מגבלת סטטוסים", () => {
+  for (const gone of ["botMode", "botStatuses", "withinBotHours", "scope"]) {
+    assert.ok(!botFile.includes(gone), `חזר מנגנון המצבים: ${gone}`);
+  }
 });
 
-test("שאר תנאי השער עדיין חלים", () => {
-  assert.ok(gateFile.includes("settings.botEnabled"), "אפשר לכבות את הבוט");
-  assert.ok(gateFile.includes("lead.botMuted"), "אפשר להשתיק מול לקוח");
-  assert.ok(gateFile.includes('lead.origin === "sale"'), "ליד של אלעד לא מדובר");
-});
-
-test("רק שני ערכים מתקבלים בשמירה", () => {
-  assert.ok(settingsApi.includes('body.botMode === "all"'));
-  assert.ok(settingsApi.includes('body.botMode === "broadcast"'));
-});
-
-test("יש מתג במסך ההגדרות", () => {
+test("יש מתג אחד במסך ההגדרות, והוא נשמר", () => {
   const ui = io.readFileSync("components/BotSettings.tsx", "utf8");
-  assert.ok(ui.includes("botMode"));
-  assert.ok(ui.includes("רק על תגובות לדיוור"));
+  assert.ok(ui.includes("campaignBot"), "אין מתג במסך");
+  assert.ok(settingsApi.includes("campaignBot"), "אי אפשר לשמור את המתג");
+
+  /**
+   * המסך לא מציג כפתורים שאינם מחוברים לכלום. כל אלה
+   * היו חסימות אמיתיות בבוט הקודם, ואחרי שהוא נמחק הם
+   * נשארו ככפתורים שמבטיחים שליטה שלא קיימת.
+   */
+  for (const dead of [
+    "botMode",
+    "botStatuses",
+    "botFromHour",
+    "replyCooldownMinutes",
+    "liveChatMinutes",
+    "botPauseHours",
+  ]) {
+    assert.ok(!ui.includes(dead), `נשאר כפתור שלא עושה כלום: ${dead}`);
+  }
 });
 
 
@@ -304,15 +309,32 @@ const botCheck = io.readFileSync(
   "utf8"
 );
 
-test("האבחון מריץ את אותו שער שהבוט מריץ", () => {
+test("האבחון בודק את אותם שלושה תנאים שהבוט בודק", () => {
+  /**
+   * **זו הבדיקה שהצילה את עצמה.** האבחון הקודם הריץ את
+   * השער שנמחק; אבחון שמדווח על חסימה שלא קיימת גרוע
+   * יותר מאין אבחון.
+   */
+  assert.ok(botCheck.includes("settings.campaignBot"), "המתג לא נבדק");
+  assert.ok(botCheck.includes("doNotContact"), "הרשימה השחורה לא נבדקת");
+  assert.ok(botCheck.includes("QUIET_HOURS"), "השקט לא נבדק");
   assert.ok(
-    botCheck.includes("shouldBotReply"),
-    "האבחון בודק תנאים משלו - יענה אחרת מהבוט"
+    !botCheck.includes("shouldBotReply"),
+    "האבחון מריץ את השער שנמחק"
   );
 });
 
-test("האבחון בודק זיהוי דיוור באותה פונקציה", () => {
-  assert.ok(botCheck.includes("isBroadcastMessage"));
+test("האבחון מראה מה הבוט באמת עשה", () => {
+  /**
+   * במקום להסיק מהתנאים, האבחון מציג את ההחלטה של הבוט
+   * עצמו על כל הודעה. זה מה שהיה חסר כשהכל נראה תקין
+   * ושום דבר לא יצא.
+   */
+  assert.ok(botCheck.includes('"campaign_bot"'), "לא נקראות ההחלטות של הבוט");
+  assert.ok(botCheck.includes("מה_הבוט_עשה"), "ההחלטות לא מוחזרות");
+
+  const screen = io.readFileSync("components/DiagnosticsScreen.tsx", "utf8");
+  assert.ok(screen.includes("מה_הבוט_עשה"), "ההחלטות לא מוצגות במסך");
   /**
    * זיהוי התגובה לדיוור עבר כולו ל-decideInbound, שקורא
    * ל-replyAfterBroadcast בעצמו. האבחון שקרא לשתיהן החזיק
@@ -320,12 +342,8 @@ test("האבחון בודק זיהוי דיוור באותה פונקציה", ()
    * "ענה אחרי דיוור: לא" לצד "דאטה שנטענה - הבוט שואל".
    */
   assert.ok(
-    botCheck.includes("decideInbound"),
-    "האבחון לא מריץ את ההכרעה המרכזית"
-  );
-  assert.ok(
-    !botCheck.includes("replyAfterBroadcast"),
-    "האבחון מחזיק זיהוי תגובה משלו במקביל להכרעה המרכזית"
+    botCheck.includes("readSupplierAnswer"),
+    "האבחון לא קורא את התשובה באותה פונקציה שהבוט קורא בה"
   );
 });
 
@@ -465,50 +483,59 @@ test("כל שדה שהאבחון מחזיר מופיע גם בטבלה במסך"
   const screen = io.readFileSync("components/DiagnosticsScreen.tsx", "utf8");
 
   /**
-   * שדה שנוסף לנתונים ולא לטבלה פשוט לא נראה - וזה בדיוק
-   * מה שקרה: הוספתי "ברשימת דיוור שנשלחה" לאבחון, והמסך
-   * המשיך להציג את הרשימה הישנה.
+   * ============================================================
+   *  הרשימה נגזרת מהקוד, ולא נכתבת ביד
+   * ============================================================
+   *
+   *  שדה שנוסף לנתונים ולא לטבלה פשוט לא נראה - וזה בדיוק
+   *  מה שקרה: הוספתי "ברשימת דיוור שנשלחה" לאבחון, והמסך
+   *  המשיך להציג את הרשימה הישנה.
+   *
+   *  **ורשימה שנכתבת ביד מתיישנת.** כשהאבחון נכתב מחדש,
+   *  הבדיקה הזו נפלה על שדות שכבר לא קיימים - כלומר היא
+   *  שמרה על העבר במקום על ההווה. עכשיו היא קוראת את
+   *  השדות מהקוד עצמו, ולכן היא לא יכולה להתיישן.
    */
-  for (const field of [
-    "ברשימת_דיוור_שנשלחה",
-    "הודעות_יוצאות",
-    "מזוהות_כדיוור",
-    "שאלת_הסינון_נשלחה",
-    "סוג_הדיוור",
-  ]) {
-    assert.ok(api.includes(field), `האבחון כבר לא מחזיר ${field}`);
-    assert.ok(
-      screen.includes(field),
-      `${field} נבדק אבל לא מוצג במסך`
-    );
+  const returned = api.slice(api.indexOf("return NextResponse.json({"));
+
+  const fields = Array.from(
+    new Set(
+      (returned.match(/^\s{4}([\u0590-\u05FF][\u0590-\u05FF_]*):/gm) ?? []).map(
+        (m) => m.trim().replace(":", "")
+      )
+    )
+  );
+
+  assert.ok(fields.length >= 5, `נמצאו רק ${fields.length} שדות - הגזירה לא עובדת`);
+
+  for (const field of fields) {
+    assert.ok(screen.includes(field), `${field} מוחזר מהאבחון אבל לא מוצג במסך`);
   }
 });
 
 
 /* ---------- המסקנה לא סותרת את הרשימה שנטענה ---------- */
 
-test("האבחון לא מכריז 'לא נשלחה אף הודעה' כשהרשימה אומרת שכן", () => {
+test("האבחון לא מכריז 'הכל תקין' כשהמתג כבוי", () => {
   const api = io.readFileSync(
     "app/api/diagnostics/bot-check/route.ts",
     "utf8"
   );
 
   /**
-   * הרשימה שנטענה היא מקור אמת שני. אם המסקנה מתעלמת
-   * ממנה, האבחון אומר "הדיוור לא הגיע אליו בכלל" על
-   * מישהו שהדיוור כן הגיע אליו - וזה שולח אותנו לחפש
-   * במקום הלא נכון.
+   * **הסיבה שהחליפה את כל הקודמות.** האבחון הקודם מדד
+   * "האם הדיוור הגיע אליו", "האם זו תגובה לדיוור" ועוד -
+   * כללים שנמחקו. עכשיו הסיבה הראשונה והנפוצה ביותר
+   * לשתיקה היא פשוטה: המתג כבוי. היא חייבת להופיע
+   * **לפני** כל מסקנה אחרת, אחרת האבחון יחפש תקלה
+   * במקום שאין בה תקלה.
    */
-  assert.ok(
-    api.includes("outgoing.length === 0 && !listSendAt"),
-    "המסקנה 'לא נשלחה אף הודעה' לא מתחשבת ברשימה שנטענה"
-  );
+  const switchOff = api.indexOf("!settings.campaignBot");
+  const allGood = api.indexOf("כל התנאים מתקיימים");
 
-  /** אותו דבר על החלון: ההכרעה היא זו שסופרת, לא ההודעות בלבד */
-  assert.ok(
-    api.includes("!decision.window"),
-    "בדיקת התגובה לא משתמשת בהכרעה המרכזית"
-  );
+  assert.ok(switchOff > -1, "המתג לא נבדק במסקנה");
+  assert.ok(allGood > -1, "אין מסקנה חיובית");
+  assert.ok(switchOff < allGood, "האבחון יאמר 'הכל תקין' כשהמתג כבוי");
 });
 
 /* ---------- מסך ההתעניינות רואה את מי שהבוט רואה ---------- */
@@ -555,31 +582,30 @@ test("הבדיקה של הרשימה נעשית בשאילתה אחת ולא פ�
 
 /* ---------- המסך לא סותר את ההתנהגות ---------- */
 
-test("האזהרה על סטטוסים לא מופיעה במצב רק-דיוור", () => {
+test("המסך אומר בדיוק מה המתג עושה", () => {
   /**
-   * **מה שנתפס בשטח.** האזהרה "לא בחרת סטטוסים, ולכן
-   * הוא לא עונה לאף אחד" הופיעה גם במצב "רק דיוור",
-   * שבו מגבלת הסטטוסים לא חלה בכלל.
+   * **מה שנתפס בשטח, ומה שהוסר.** המסך הציג אזהרה "לא
+   * בחרת סטטוסים, ולכן הוא לא עונה לאף אחד" - גם במצב
+   * שבו מגבלת הסטטוסים לא חלה בכלל. כלומר הוא אמר
+   * שהבוט מושבת בדיוק כשהוא עבד, ושלח לשנות הגדרות
+   * באמצע דיוור חי.
    *
-   * כלומר המסך אמר שהבוט מושבת בדיוק כשהוא עובד -
-   * והיה שולח לשנות הגדרות באמצע דיוור חי.
+   * המצבים והסטטוסים נמחקו, ואיתם האזהרה. מה שנשאר
+   * חייב לומר את האמת על שני המצבים של המתג.
    */
   const screen = io.readFileSync("components/BotSettings.tsx", "utf8");
 
-  /** ההשוואה היא לקוד, לא להערה שמזכירה את אותו נוסח */
-  const warn = screen.indexOf("picked.length === 0 ? (");
-  const guard = screen.indexOf('mode === "broadcast" ?');
-
-  assert.ok(guard > -1, "האזהרה לא מבחינה בין המצבים");
-  assert.ok(guard < warn, "הבדיקה של המצב נעשית אחרי האזהרה");
-});
-
-test("השער באמת לא מגביל סטטוסים בתגובה לדיוור", () => {
-  /** המסך אומר את זה - והקוד חייב להסכים */
-  const gate = io.readFileSync("lib/bot-gate.ts", "utf8");
   assert.ok(
-    gate.includes('scope === "general"'),
-    "מגבלת הסטטוסים חלה גם על תגובות לדיוור"
+    screen.includes("כל מי שכותב מקבל תשובה"),
+    "המסך לא אומר מה קורה כשהמתג דלוק"
+  );
+  assert.ok(
+    screen.includes("שום דבר לא נשלח ללקוח אוטומטית"),
+    "המסך לא אומר מה קורה כשהמתג כבוי"
+  );
+  assert.ok(
+    screen.includes("24 שעות"),
+    "המסך לא מזכיר את השקט של 24 שעות"
   );
 });
 
@@ -607,8 +633,7 @@ test("ההודעה נשמרת גם כשהבוט קורס", () => {
   const hook = io.readFileSync("app/api/webhooks/texter/route.ts", "utf8");
   /** ההשוואה לקריאה עצמה, לא לשורת הייבוא בראש הקובץ */
   assert.ok(
-    hook.indexOf('direction: "in"') <
-      hook.indexOf("await handleInboundMessage({"),
+    hook.indexOf('direction: "in"') < hook.indexOf("handleCampaignReply"),
     "הבוט רץ לפני שההודעה נשמרה"
   );
 });
@@ -620,15 +645,88 @@ test("האבחון מצביע על הקריסה במקום לומר שהכל ת�
   );
   const screen = io.readFileSync("components/DiagnosticsScreen.tsx", "utf8");
 
-  assert.ok(api.includes('type: "bot_failed"'), "האבחון לא בודק קריסה");
+  assert.ok(api.includes('"bot_failed"'), "האבחון לא בודק קריסה");
   assert.ok(api.includes("הבוט_קרס"), "הקריסה לא מוחזרת");
   assert.ok(screen.includes("הבוט_קרס"), "הקריסה לא מוצגת במסך");
 
   /** והמסקנה מצביעה עליה לפני כל סיבה אחרת */
   assert.ok(
-    api.indexOf("if (crashed)") < api.indexOf("} else if (lead.doNotContact)"),
+    api.indexOf("if (crashedNow)") <
+      api.indexOf("} else if (!settings.campaignBot)"),
     "המסקנה בודקת קריסה אחרי סיבות אחרות"
   );
+});
+
+test("קריסה ישנה לא נחשבת תשובה להודעה חדשה", () => {
+  /**
+   * **תקלה באבחון עצמו.** הוא הציג את הקריסה האחרונה
+   * שהייתה אי פעם. אחרי שהכשל תוקן, האבחון המשיך
+   * להכריז "הבוט קרס" לנצח, ולא היה אפשר לדעת אם
+   * התיקון עבד.
+   */
+  const api = io.readFileSync(
+    "app/api/diagnostics/bot-check/route.ts",
+    "utf8"
+  );
+
+  assert.ok(api.includes("crashedNow"), "הקריסה לא נבדקת מול זמן ההודעה");
+  assert.ok(
+    api.includes("crashed.createdAt.getTime() >= lastInbound.createdAt.getTime()"),
+    "אין השוואה בין זמן הקריסה לזמן ההודעה האחרונה"
+  );
+  assert.ok(
+    api.includes("if (crashedNow)"),
+    "המסקנה עדיין נשענת על קריסה ישנה"
+  );
+  assert.ok(
+    api.includes("כתב_לנו"),
+    "אי אפשר להשוות את הזמנים במסך"
+  );
+});
+
+/* ---------- בריאות המערכת ---------- */
+
+test("כשל של המנוע נרשם ולא נשאר בקונסול", () => {
+  /**
+   * **הנקודה העיוורת השנייה.** המנוע כתב שגיאות
+   * לקונסול בלבד. כשהוא קרס בכל סבב, שום הודעה
+   * מתוזמנת לא יצאה - לא הפולואפ אחרי 6 שעות ולא
+   * "אין מענה" - ובמערכת לא היה שום סימן.
+   */
+  const inst = io.readFileSync("instrumentation.ts", "utf8");
+
+  assert.ok(inst.includes("engineRanAt"), "הסבב לא נרשם");
+  assert.ok(inst.includes("engineError"), "הכשל לא נרשם");
+  assert.ok(
+    inst.indexOf("catch (err)") < inst.indexOf("engineRanAt"),
+    "הרישום נעשה רק כשהסבב מצליח"
+  );
+});
+
+test("מסך הבריאות עונה על השאלות שחשובות", () => {
+  const api = io.readFileSync("app/api/health/system/route.ts", "utf8");
+
+  for (const check of [
+    "engineRanAt",
+    "state: \"pending\", runAt",
+    "bot_failed",
+    "leadEntry",
+  ]) {
+    assert.ok(api.includes(check), `המסך לא בודק ${check}`);
+  }
+
+  /** קוראת בלבד - מסך אבחון לא משנה נתונים */
+  assert.ok(
+    !/db\.\w+\.(update|create|delete|updateMany)/.test(api),
+    "מסך הבריאות משנה נתונים"
+  );
+});
+
+test("מסך הבריאות מחובר לתפריט", () => {
+  const more = io.readFileSync("app/more/page.tsx", "utf8");
+  const nav = io.readFileSync("components/Nav.tsx", "utf8");
+  assert.ok(more.includes("/health"), "אין דרך למסך");
+  assert.ok(nav.includes("/health"));
 });
 
 console.log(`✓ visibility: ${passed} בדיקות עברו`);

@@ -2,11 +2,8 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isLoggedIn } from "@/lib/auth";
 import { displayPhone } from "@/lib/phone";
-import { getSettings } from "@/lib/settings";
-import { decideInbound } from "@/lib/inbound-context";
-import { lastListSendForMany } from "@/lib/broadcast-membership";
-import { replyToLead } from "@/lib/bot";
-import { SUPPLIER_QUESTION, ASKED_EVENT } from "@/lib/supplier-check";
+import { askSupplierQuestion } from "@/lib/campaign-bot";
+import { ASKED_EVENT, DONE_EVENT } from "@/lib/supplier-check";
 import { REPLY_WINDOW_DAYS } from "@/lib/broadcast-replies";
 
 export const dynamic = "force-dynamic";
@@ -25,9 +22,12 @@ export const dynamic = "force-dynamic";
  *  באמצע מבצע זה הפרש של עסקאות: אנשים ענו, לא קיבלו
  *  כלום, והם יושבים בצד בלי שאף אחד יודע.
  *
- *  **אותה הכרעה בדיוק.** מי שראוי לקבל את השאלה נקבע כאן
- *  באותה פונקציה שהבוט מריץ, ונשלח באותו מסלול שליחה.
- *  אין כאן היגיון שני שיכול לסטות ממנו.
+ *  **אותם שלושה תנאים של הבוט, ולא תנאים משלה.**
+ *
+ *  קודם רצה כאן הכרעה נפרדת שבדקה מקור, סוג דיוור ועוד -
+ *  היגיון שני שיכול לסטות מהבוט, ואכן סטה. עכשיו התנאי
+ *  פשוט כמו של הבוט: הגיב, לא ברשימה שחורה, ולא נשאל
+ *  ולא נסגר מולו תהליך מאז התגובה.
  *
  *  GET  = מראה מי מחכה. לא שולח כלום.
  *  POST = שולח להם את השאלה.
@@ -65,9 +65,7 @@ async function pending(hours: number) {
   const leads = await db.lead
     .findMany({
       where: {
-        /** המעקות של הבוט חלים גם כאן */
         doNotContact: false,
-        botMuted: false,
         /** **התגובה עצמה** חייבת להיות בתוך החלון */
         messages: { some: { direction: "in", createdAt: { gte: since } } },
       },
@@ -75,74 +73,38 @@ async function pending(hours: number) {
         id: true,
         phone: true,
         firstName: true,
-        status: true,
-        origin: true,
-        chatId: true,
         messages: {
-          /**
-           * ההיסטוריה נקראת רחב יותר מהחלון, אחרת הדיוור
-           * עצמו נופל מחוץ לטווח ואי אפשר לזהות שהתגובה
-           * היא תגובה אליו.
-           */
-          where: {
-            createdAt: {
-              gte: new Date(
-                Date.now() - (REPLY_WINDOW_DAYS + 5) * 24 * 60 * 60 * 1000
-              ),
-            },
-          },
-          orderBy: { createdAt: "asc" },
-          select: {
-            direction: true,
-            broadcast: true,
-            broadcastKind: true,
-            templateName: true,
-            bodyText: true,
-            createdAt: true,
-          },
-          take: 100,
-        },
-        events: {
-          where: { type: ASKED_EVENT },
+          where: { direction: "in", createdAt: { gte: since } },
           orderBy: { createdAt: "desc" },
           take: 1,
-          select: { createdAt: true },
+          select: { bodyText: true, createdAt: true },
+        },
+        events: {
+          where: { type: { in: [ASKED_EVENT, DONE_EVENT] } },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { type: true, createdAt: true },
         },
       },
       take: 1000,
     })
     .catch(() => []);
 
-  const listSends = await lastListSendForMany(
-    leads.map((lead) => lead.phone)
-  ).catch(() => new Map<string, Date>());
-
-  const settings = await getSettings();
-  const now = new Date();
-
   return leads
     .map((lead) => {
-      const decision = decideInbound({
-        messages: lead.messages,
-        origin: lead.origin,
-        askedAt: lead.events[0]?.createdAt ?? null,
-        blacklisted: false,
-        listSendAt: listSends.get(lead.phone) ?? null,
-        askEveryone: settings.botAskAll,
-        now,
-      });
-
-      if (!decision.askSupplier) return null;
+      const replied = lead.messages[0];
+      if (!replied) return null;
 
       /**
-       * ההכרעה מסתכלת על כל ההיסטוריה, ולכן צריך לוודא
-       * שהתגובה שבגללה הוא נבחר היא **מהחלון** ולא תגובה
-       * ישנה שנשארה פתוחה.
+       * אם כבר נשאל - או שנסגר מולו תהליך - **אחרי**
+       * התגובה הזו, הוא טופל. לפניה: התגובה אבדה.
        */
-      const repliedAt = decision.window?.repliedAt;
-      if (!repliedAt || repliedAt.getTime() < since.getTime()) return null;
+      const last = lead.events[0];
+      if (last && last.createdAt.getTime() >= replied.createdAt.getTime()) {
+        return null;
+      }
 
-      return { lead, decision };
+      return { lead, replyText: replied.bodyText ?? "" };
     })
     .filter((row): row is NonNullable<typeof row> => row !== null);
 }
@@ -160,9 +122,10 @@ export async function GET(request: Request) {
     חלון: `${hours} שעות אחורה`,
     כמה: rows.length,
     מי: rows.map((r) =>
-      `${r.lead.firstName ?? ""} ${displayPhone(r.lead.phone)} · ענה: "${(
-        r.decision.window?.replyText ?? ""
-      ).slice(0, 60)}"`.trim()
+      `${r.lead.firstName ?? ""} ${displayPhone(r.lead.phone)} · ענה: "${r.replyText.slice(
+        0,
+        60
+      )}"`.trim()
     ),
     מסקנה:
       rows.length === 0
@@ -182,35 +145,19 @@ export async function POST(request: Request) {
   let sent = 0;
   let failed = 0;
 
-  for (const { lead, decision } of rows) {
-    const ok = await replyToLead({
-      leadId: lead.id,
-      phone: lead.phone,
-      chatId: lead.chatId,
-      text: SUPPLIER_QUESTION,
-    }).catch(() => false);
-
-    if (!ok) {
-      failed++;
-      continue;
-    }
-
-    sent++;
-
+  for (const { lead } of rows) {
     /**
-     * נרשם בדיוק כמו שהבוט רושם, כדי שלא ישאל שוב
-     * כשהתשובה תגיע.
+     * **השליחה והרישום הם של הבוט עצמו.**
+     *
+     * קודם היה כאן עותק שני: שליחה אחת ורישום נפרד
+     * אחריה. אם השליחה הצליחה והרישום נכשל, אותו אדם
+     * היה נשאל שוב. עכשיו זו אותה פונקציה שהבוט מריץ,
+     * ולכן אין שתי גרסאות שיכולות להיפרד.
      */
-    await db.leadEvent
-      .create({
-        data: {
-          leadId: lead.id,
-          type: ASKED_EVENT,
-          actor: "bot",
-          payload: { reason: decision.reason, catchUp: true },
-        },
-      })
-      .catch(() => null);
+    const ok = await askSupplierQuestion(lead.id).catch(() => false);
+
+    if (ok) sent++;
+    else failed++;
   }
 
   return NextResponse.json({

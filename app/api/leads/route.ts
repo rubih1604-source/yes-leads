@@ -161,6 +161,10 @@ export async function POST(req: NextRequest) {
               fallback: Number(channel?.pricePerLead ?? 0),
             }).price
           : 0,
+        /** השדות של ההגעה הזו - ראה ההערה בסכימה */
+        extra: Object.keys(plan.extra).length
+          ? (plan.extra as Prisma.InputJsonObject)
+          : undefined,
         at: new Date(),
       },
     })
@@ -193,7 +197,11 @@ export async function POST(req: NextRequest) {
     }).catch(() => false);
   }
 
-  /** אותה התראה בדיוק כמו ליד אמיתי */
+  /**
+   * אותו מייל בדיוק כמו ליד אמיתי, **בלי הפעמון**: אתה
+   * הזנת את הליד הזה בעצמך ברגע זה, ואין טעם להתריע לך
+   * על מה שהרגע הקלדת.
+   */
   void notifyNewLead({
     leadId,
     firstName: plan.firstName,
@@ -203,6 +211,7 @@ export async function POST(req: NextRequest) {
     extra: plan.extra,
     channelName: channel?.name ?? null,
     isSale,
+    manual: true,
     at: new Date(),
   });
 

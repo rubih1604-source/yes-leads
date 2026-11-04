@@ -130,19 +130,22 @@ test("הסיום נמדד מול המותרים, אחרת הדיוור לא יי
   assert.ok(send.includes("allowed.length - batch.length <= 0"));
 });
 
-/* ---------- שהבוט רושם לפני השער ---------- */
+/* ---------- שהבוט רושם לפני כל חסימה ---------- */
 
-const bot = io.readFileSync("lib/bot.ts", "utf8");
+const bot = io.readFileSync("lib/campaign-bot.ts", "utf8");
 
-test("בקשת הסרה נרשמת לפני בדיקת השער", () => {
+test("בקשת הסרה נרשמת לפני השקט של 24 שעות", () => {
+  /**
+   * קודם הבדיקה הזו רצה מול השער המשותף, שנמחק. העיקרון
+   * זהה: מה שעוצר את הבוט לא יכול לעצור **רישום** של
+   * בקשת הסרה - אחרת מי שבתוך השקט יבקש להסיר, ולא
+   * ייחסם.
+   */
   const detect = bot.indexOf("detectUnsubscribe(params.text)");
-  const gate = bot.indexOf("shouldBotReply(lead.id, scope)");
+  const quiet = bot.indexOf("hours < QUIET_HOURS");
 
-  assert.ok(detect > -1 && gate > -1);
-  assert.ok(
-    detect < gate,
-    "בוט כבוי או מחוץ לשעות יגרום ל'הסר' לא להירשם"
-  );
+  assert.ok(detect > -1 && quiet > -1);
+  assert.ok(detect < quiet, "מי שבתוך השקט יבקש הסרה ולא ייחסם");
 });
 
 test("הבוט כותב לרשימה דרך המקום האחד", () => {
@@ -310,40 +313,46 @@ test("זמן התגובה מוצג בקנה מידה נכון", () => {
 });
 
 
-/* ---------- החיווט של 150 ---------- */
+/* ---------- החיווט של בוט הדיוור ---------- */
 
-const botSrc = io.readFileSync("lib/bot.ts", "utf8");
+const botSrc = bot;
 
-test("שאלת הסינון נשאלת רק למי שההכרעה אישרה", () => {
-  /**
-   * הבוט כבר לא בודק לבד אם זו תגובה לדיוור. ההכרעה
-   * עברה ל-decideInbound, שרואה גם את **סוג** הדיוור -
-   * וזה מה שמונע לשאול לקוח שקיבל הצעת מחיר בשבוע שעבר.
-   */
-  assert.ok(botSrc.includes("decideInbound"));
-  assert.ok(botSrc.includes("decision.askSupplier"));
+test("שאלת הסינון יוצאת מהבוט עצמו", () => {
   assert.ok(botSrc.includes("SUPPLIER_QUESTION"));
 });
 
 test("תשובה 'כן' משנה סטטוס ללקוח קיים", () => {
+  /**
+   * ההשוואה נעשית **בתוך הענף** ולא על הקובץ כולו:
+   * setExistingCustomer מופיע גם במסלול "הצהיר מעצמו",
+   * שקודם לענף הזה, ולכן חיפוש מתחילת הקובץ היה מוצא
+   * אותו שם ולא כאן.
+   */
   const yes = botSrc.indexOf('answer === "yes"');
-  const status = botSrc.indexOf('toStatus: "לקוח קיים"');
-  assert.ok(yes > -1 && status > -1);
-  assert.ok(status > yes, "שינוי הסטטוס לא תלוי בתשובה");
+  assert.ok(yes > -1, "אין ענף לתשובה 'כן'");
+
+  const branch = botSrc.slice(yes, yes + 600);
+  assert.ok(
+    branch.includes("setExistingCustomer"),
+    "תשובה 'כן' לא מעבירה ל'לקוח קיים'"
+  );
 });
 
 test("מי שברשימה השחורה לא נשאל ולא נענה", () => {
   /**
    * בלי זה אדם שכתב "הסר" מקבל בחזרה "האם אתם לקוחות
    * של yes?" - ההפך הגמור ממה שביקש.
+   *
+   * בבוט הנקי זה תנאי אחד בראש הפונקציה, לפני כל שליחה,
+   * ולא שני ענפים נפרדים שכל אחד מהם צריך הגנה משלו.
    */
+  const blocked = botSrc.indexOf("lead.doNotContact");
+  const firstSend = botSrc.indexOf("await send(lead,");
+
+  assert.ok(blocked > -1, "הרשימה השחורה לא נבדקת בכלל");
   assert.ok(
-    botSrc.includes("!certain.blacklist && askedEvent"),
-    "ענף התשובה לא מוגן מפני מי שביקש להסיר"
-  );
-  assert.ok(
-    botSrc.includes("} else if (!certain.blacklist) {"),
-    "ענף השאלה לא מוגן מפני מי שביקש להסיר"
+    blocked < firstSend,
+    "הרשימה השחורה נבדקת אחרי שליחה - מי שביקש הסרה יקבל הודעה"
   );
 });
 

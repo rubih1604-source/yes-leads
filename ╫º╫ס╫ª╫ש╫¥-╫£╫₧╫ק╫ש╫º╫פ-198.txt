@@ -1,0 +1,17 @@
+קבצים למחיקה מהריפו - גרסה 198
+==================================
+
+הבוט הקודם נמחק. את הקבצים האלה צריך למחוק מגיטהאב
+בעצמך, כי קובץ ZIP יכול להוסיף ולעדכן - אבל לא למחוק.
+
+  lib/bot.ts
+  lib/bot-gate.ts
+  lib/classify.ts
+  lib/callback-time.ts
+  app/api/leads/[id]/bot/route.ts
+  app/api/maintenance/release-bot-pause/route.ts
+  tests/callback.test.ts
+
+אם הם יישארו - האתר עדיין ייבנה ויעבוד, כי שום דבר
+לא מייבא אותם יותר. אבל הם קוד מת, והבדיקות דורשות
+שהם לא קיימים.

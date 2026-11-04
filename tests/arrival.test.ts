@@ -285,7 +285,7 @@ test("מסלול הוואטסאפ מעדכן רק מתי הוא כתב", () => {
 });
 
 test("הבוט לא נוגע בסדר רשימת הלידים", () => {
-  const bot = io.readFileSync("lib/bot.ts", "utf8");
+  const bot = io.readFileSync("lib/campaign-bot.ts", "utf8");
   assert.ok(!bot.includes("intakeAt"), "הבוט מזיז לידים ברשימה");
 });
 

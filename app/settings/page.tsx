@@ -81,18 +81,7 @@ export default async function SettingsPage() {
       />
 
       <div className="section-title">העוזר</div>
-      <BotSettings
-        statuses={statuses}
-        enabled={settings.botEnabled}
-        mode={settings.botMode}
-        askAll={settings.botAskAll}
-        fromHour={settings.botFromHour}
-        toHour={settings.botToHour}
-        selected={settings.botStatuses}
-        pauseHours={settings.botPauseHours}
-        cooldownMinutes={settings.replyCooldownMinutes}
-        liveChatMinutes={settings.liveChatMinutes}
-      />
+      <BotSettings campaignBot={settings.campaignBot} />
 
       <SettingsScreen settings={settings as SettingsRow} />
       <div className="section-title">רשימת חזרה</div>

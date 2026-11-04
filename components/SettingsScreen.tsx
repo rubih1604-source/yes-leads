@@ -3,30 +3,28 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+/**
+ * ============================================================
+ *  מה הוסר מהמסך הזה
+ * ============================================================
+ *
+ *  כאן ישבו שעות שתיקה, דקות המתנה, חלון "שיחה חיה",
+ *  ושלושת הטקסטים "מה העוזר עונה ללקוח" - מעוניין, מחוץ
+ *  לשעות, ובקשת חזרה.
+ *
+ *  **כולם היו של הבוט הקודם, שנמחק.** אף אחד מהם לא
+ *  נשלח יותר לאף לקוח. להשאיר שדות טקסט שאפשר לכתוב
+ *  בהם הודעה שלא תישלח לעולם זה הדבר הגרוע מכולם, ולכן
+ *  הם ירדו.
+ *
+ *  מה שנשאר במסך הזה הוא מה שעובד.
+ */
 export type SettingsRow = {
-  botEnabled: boolean;
-  botOnlyOutsideHours: boolean;
-  botPauseHours: number;
-  replyCooldownMinutes: number;
-  liveChatMinutes: number;
-  onlyAfterTemplate: boolean;
   revenueTarget: number;
-  afterHoursGrace: number;
-  requireTemplateFirst: boolean;
-  replyInterested: string;
-  replyAfterHours: string;
-  replyCallback: string;
 };
 
 export default function SettingsScreen({ settings }: { settings: SettingsRow }) {
-  const [pauseHours, setPauseHours] = useState(String(settings.botPauseHours));
-  const [cooldown, setCooldown] = useState(String(settings.replyCooldownMinutes));
-  const [tInterested, setTInterested] = useState(settings.replyInterested);
-  const [tAfterHours, setTAfterHours] = useState(settings.replyAfterHours);
-  const [tCallback, setTCallback] = useState(settings.replyCallback);
-  const [live, setLive] = useState(String(settings.liveChatMinutes));
   const [target, setTarget] = useState(String(settings.revenueTarget));
-  const [grace, setGrace] = useState(String(settings.afterHoursGrace));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const router = useRouter();
@@ -79,59 +77,6 @@ export default function SettingsScreen({ settings }: { settings: SettingsRow }) 
         </div>
       </div>
 
-      <div className="card">
-        <div style={{ fontWeight: 600, marginBottom: 4 }}>
-          מה העוזר עונה ללקוח
-        </div>
-        <div style={{ fontSize: 13, color: "#64748b", marginBottom: 14 }}>
-          הטקסטים נשלחים בדיוק כפי שתכתוב אותם כאן.
-        </div>
-
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-          כשהלקוח מעוניין או מבקש שתתקשר (בשעות עבודה)
-        </div>
-        <textarea
-          className="field"
-          style={{ height: 70, padding: 12, resize: "vertical" }}
-          value={tInterested}
-          onChange={(e) => setTInterested(e.target.value)}
-        />
-
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-          אותו דבר, אבל מחוץ לשעות העבודה
-        </div>
-        <textarea
-          className="field"
-          style={{ height: 70, padding: 12, resize: "vertical" }}
-          value={tAfterHours}
-          onChange={(e) => setTAfterHours(e.target.value)}
-        />
-
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-          כשהלקוח ביקש שתחזור אליו בזמן מסוים
-        </div>
-        <textarea
-          className="field"
-          style={{ height: 70, padding: 12, resize: "vertical" }}
-          value={tCallback}
-          onChange={(e) => setTCallback(e.target.value)}
-        />
-
-        <button
-          className="btn primary"
-          onClick={() =>
-            patch({
-              replyInterested: tInterested,
-              replyAfterHours: tAfterHours,
-              replyCallback: tCallback,
-            })
-          }
-          disabled={busy}
-        >
-          שמור טקסטים
-        </button>
-      </div>
-
       <div className="section-title">שאר החוקיות</div>
 
       <div className="hub" style={{ padding: "0 16px" }}>
@@ -151,7 +96,8 @@ export default function SettingsScreen({ settings }: { settings: SettingsRow }) 
           <span>
             <span className="label">מאגר הידע</span>
             <span className="desc" style={{ display: "block" }}>
-              תשובות השירות שהוא שולח, מילה במילה
+              תשובות שירות שמורות. הבוט כרגע לא שולח אותן — בוט
+              הדיוור שואל שאלה אחת וקורא את התשובה, וזה הכל
             </span>
           </span>
           <span className="chev" aria-hidden="true">‹</span>

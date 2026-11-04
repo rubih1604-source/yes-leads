@@ -21,6 +21,22 @@ export async function register() {
     if (running) return;
     running = true;
 
+    /**
+     * ============================================================
+     *  כל סבב נרשם - גם כשהוא נכשל
+     * ============================================================
+     *
+     *  **הנקודה העיוורת השנייה.** השגיאה נכתבה לקונסול
+     *  בלבד. כשהמנוע קרס בכל סבב - וזה קרה בגלל תלות
+     *  מעגלית - שום הודעה מתוזמנת לא יצאה: לא הפולואפ
+     *  אחרי 6 שעות, ולא "אין מענה". ובמערכת לא היה שום
+     *  סימן שמשהו לא בסדר.
+     *
+     *  מעכשיו כל סבב נרשם במסד, ומסך "בריאות המערכת"
+     *  מראה מתי המנוע רץ לאחרונה ומה נכשל.
+     */
+    let failure: string | null = null;
+
     try {
       const summary = await runDueJobs();
       if (summary.picked > 0 || summary.taskReminders > 0) {
@@ -31,8 +47,23 @@ export async function register() {
         );
       }
     } catch (err) {
+      failure =
+        err instanceof Error
+          ? `${err.message} · ${(err.stack ?? "").slice(0, 500)}`
+          : String(err).slice(0, 500);
       console.error("[מנוע] שגיאה בהרצה:", err);
-    } finally {
+    }
+
+    try {
+      const { db } = await import("./lib/db");
+      await db.settings.updateMany({
+        data: { engineRanAt: new Date(), engineError: failure },
+      });
+    } catch {
+      // אם אי אפשר לרשום - הסבב עצמו כבר רץ, לא עוצרים בגלל זה
+    }
+
+    {
       running = false;
     }
   }

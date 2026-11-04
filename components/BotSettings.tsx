@@ -2,43 +2,32 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { StatusDef } from "@/lib/statuses";
 
 /**
- * כל השליטה בבוט במקום אחד:
- * דלוק או כבוי · מאיזו שעה עד איזו · על אילו סטטוסים.
+ * ============================================================
+ *  הבוט - מתג אחד
+ * ============================================================
+ *
+ *  **מה היה כאן, ולמה זה הוסר.**
+ *
+ *  המסך הזה החזיק שעות פעילות, בחירת סטטוסים, מצב "רק
+ *  דיוור / כל הודעה", שעות שתיקה אחרי תשובה שלך, דקות
+ *  המתנה בין תשובות וחלון "שיחה חיה". כל אחד מהם היה
+ *  חסימה אמיתית בבוט הקודם, וכל אחד מהם השתיק אותו בשקט.
+ *
+ *  הבוט הקודם נמחק מהמערכת, **ולכן כל הכפתורים האלה כבר
+ *  לא עשו כלום**. להשאיר אותם היה הדבר הגרוע מכולם: מסך
+ *  שמבטיח שליטה שאינה קיימת, ושולח אותך לכבות ולהדליק
+ *  דברים שלא משנים שום דבר כשמשהו לא עובד.
+ *
+ *  מה שנשאר הוא מה שיש: מתג אחד.
  */
 export default function BotSettings({
-  statuses,
-  enabled,
-  fromHour,
-  toHour,
-  selected,
-  pauseHours,
-  cooldownMinutes,
-  liveChatMinutes,
-  mode,
-  askAll,
+  campaignBot,
 }: {
-  statuses: StatusDef[];
-  enabled: boolean;
-  mode: string;
-  fromHour: number;
-  toHour: number;
-  selected: string[];
-  pauseHours: number;
-  cooldownMinutes: number;
-  liveChatMinutes: number;
-  /** שאלת הסינון גם לדיוור ללידים שלך */
-  askAll: boolean;
+  /** מתג בוט הדיוור - השליטה היחידה בבוט */
+  campaignBot: boolean;
 }) {
-  const [from, setFrom] = useState(String(fromHour));
-  const [to, setTo] = useState(String(toHour));
-  const [picked, setPicked] = useState<string[]>(selected);
-  const [pause, setPause] = useState(String(pauseHours));
-  const [cooldown, setCooldown] = useState(String(cooldownMinutes));
-  const [live, setLive] = useState(String(liveChatMinutes));
-  const [advanced, setAdvanced] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const router = useRouter();
@@ -55,344 +44,64 @@ export default function BotSettings({
     router.refresh();
   }
 
-  function toggle(name: string) {
-    setPicked((prev) =>
-      prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
-    );
-  }
-
   return (
     <div className="card">
       <div style={{ fontWeight: 600, fontSize: 17, marginBottom: 4 }}>
-        העוזר האוטומטי
+        בוט הדיוור
       </div>
 
-      <div style={{ fontSize: 13, color: "#475467", marginBottom: 14 }}>
-        {enabled ? (
-          /**
-           * ============================================================
-           *  האזהרה חייבת להכיר את המצב
-           * ============================================================
-           *
-           *  **מה היה שגוי.** האזהרה "לא בחרת סטטוסים, ולכן
-           *  הוא לא עונה לאף אחד" הופיעה בכל מצב. במצב
-           *  "רק דיוור" מגבלת הסטטוסים **לא חלה** - הבוט
-           *  עונה לכל מי שענה לדיוור, בכל סטטוס.
-           *
-           *  כלומר המסך אמר לרובי שהבוט מושבת בדיוק כשהוא
-           *  עובד, ושלח אותו לשנות הגדרות שלא היו צריכות
-           *  שינוי - באמצע דיוור חי.
-           */
-          mode === "broadcast" ? (
-            <>
-              עונה <strong>רק על תגובות לדיוור</strong>, בין{" "}
-              <strong>{fromHour}:00</strong> ל-<strong>{toHour}:00</strong>.
-              מגבלת הסטטוסים לא חלה במצב הזה — אין צורך לסמן כלום.
-            </>
-          ) : picked.length === 0 ? (
-            <>
-              דלוק, אבל <strong>לא בחרת סטטוסים</strong> — ולכן הוא לא עונה
-              לאף אחד. סמן למטה.
-            </>
-          ) : (
-            <>
-              עונה בין <strong>{fromHour}:00</strong> ל-
-              <strong>{toHour}:00</strong>, ורק ללידים ב-{picked.length}{" "}
-              הסטטוסים שסימנת.
-            </>
-          )
+      <div style={{ fontSize: 13, color: "#475467", marginBottom: 14, lineHeight: 1.7 }}>
+        {campaignBot ? (
+          <>
+            דלוק. <strong>כל מי שכותב מקבל תשובה</strong> — בכל שעה, בכל
+            סטטוס, גם אם יש איתו שיחה פתוחה.
+          </>
         ) : (
           <>
-            כבוי. <strong>הפעולות שלך לא מושפעות</strong> — שינוי סטטוס,
-            שליחת תבנית ודיוור עובדים בכל שעה בכל מקרה.
+            כבוי. הודעות נכנסות נשמרות ואתה מקבל התראה, אבל{" "}
+            <strong>שום דבר לא נשלח ללקוח אוטומטית</strong>.
           </>
         )}
       </div>
 
       <button
-        className={enabled ? "btn" : "btn primary"}
-        onClick={() => patch({ botEnabled: !enabled })}
+        className={campaignBot ? "btn" : "btn primary"}
+        onClick={() => patch({ campaignBot: !campaignBot })}
         disabled={busy}
       >
-        {enabled ? "כבה את הבוט" : "הדלק את הבוט"}
+        {campaignBot ? "כבה את הבוט" : "הדלק את הבוט"}
       </button>
 
-      {enabled && (
-        <>
-          {/* ---- מה הוא עושה ---- */}
-          <div style={{ fontSize: 13, fontWeight: 600, margin: "18px 2px 8px" }}>
-            מצב מבצע
-          </div>
+      <div
+        style={{
+          marginTop: 14,
+          padding: "11px 13px",
+          borderRadius: 9,
+          background: "#f8fafc",
+          fontSize: 12.5,
+          color: "#475467",
+          lineHeight: 1.8,
+        }}
+      >
+        <strong>מה הוא עושה, במלואו:</strong>
+        <br />
+        שואל את מי שכותב אם הוא כבר לקוח של yes/sting.
+        <br />
+        ענה שכן — מפנה ל*2080 ומעביר ל&quot;לקוח קיים&quot;.
+        <br />
+        ענה שלא — &quot;מעולה, אתפנה ואיצור איתכם קשר&quot;, ונכנס
+        למתעניינים.
+        <br />
+        לא ברור — שואל שוב פעם אחת, ואז מעביר אליך עם התראה.
+        <br />
+        ביקש הסרה — נכנס לרשימה השחורה ולא מקבל כלום.
+        <br />
+        <br />
+        אחרי שהתהליך נסגר מול מספר — <strong>שקט מולו 24 שעות</strong>.
+        מדליקים לפני הדיוור, מכבים אחריו.
+      </div>
 
-          <button
-            type="button"
-            className="status-option"
-            onClick={() => patch({ botAskAll: !askAll })}
-            disabled={busy}
-          >
-            <span
-              className="dot"
-              style={{ background: askAll ? "#12805c" : "#dbe3ea" }}
-            />
-            <span>
-              שאל את שאלת הסינון את כל מי שעונה לדיוור
-            </span>
-          </button>
-
-          <div
-            style={{
-              fontSize: 12.5,
-              color: "#667085",
-              margin: "6px 2px 0",
-              lineHeight: 1.65,
-            }}
-          >
-            כבוי: רק מי שהגיע מדאטה שנטענה נשאל. ליד שאתה מכיר לא
-            נשאל אם הוא לקוח של yes.
-            <br />
-            דלוק: <strong>גם הלידים שלך</strong> נשאלים. נכון לדיוור
-            מבצע — גם מי שדיברת איתו לפני חודשיים יכול להיות כבר לקוח,
-            ואז אין מה למכור לו.
-          </div>
-
-          <div style={{ fontSize: 13, fontWeight: 600, margin: "18px 2px 8px" }}>
-            על מה הוא עונה
-          </div>
-
-          <div style={{ display: "grid", gap: 8 }}>
-            {[
-              {
-                key: "broadcast",
-                title: "רק על תגובות לדיוור",
-                desc: "שואל את שאלת הסינון, קורא את התשובה, ועוצר שם. כל הודעה אחרת נשארת לך בלי שהוא נוגע בה.",
-              },
-              {
-                key: "all",
-                title: "על כל הודעה נכנסת",
-                desc: "מסווג כל הודעה, עונה, פותח משימות ומתזמן חזרות — רק בסטטוסים שסימנת.",
-              },
-            ].map((option) => {
-              const active = mode === option.key;
-
-              return (
-                <button
-                  key={option.key}
-                  type="button"
-                  onClick={() => patch({ botMode: option.key })}
-                  disabled={busy || active}
-                  style={{
-                    textAlign: "right",
-                    padding: "11px 13px",
-                    borderRadius: 9,
-                    border: active ? "2px solid #1b4d8f" : "1px solid #dbe3ea",
-                    background: active ? "#f5f9ff" : "#fff",
-                    cursor: active ? "default" : "pointer",
-                  }}
-                >
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "#101828" }}>
-                    {option.title}
-                    {active ? " ✓" : ""}
-                  </div>
-                  <div style={{ fontSize: 12.5, color: "#667085", marginTop: 3, lineHeight: 1.6 }}>
-                    {option.desc}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {mode === "broadcast" && (
-            <div
-              style={{
-                marginTop: 10,
-                padding: "10px 12px",
-                borderRadius: 9,
-                background: "#f5f9ff",
-                fontSize: 12.5,
-                color: "#475467",
-                lineHeight: 1.7,
-              }}
-            >
-              במצב הזה <strong>מגבלת הסטטוסים לא חלה</strong> — כל מי שקיבל
-              דיוור וענה יקבל את שאלת הסינון, בכל סטטוס. בקשות הסרה נרשמות
-              תמיד, בכל מצב.
-            </div>
-          )}
-
-          {/* ---- שעות ---- */}
-          <div style={{ fontSize: 13, fontWeight: 600, margin: "18px 2px 8px" }}>
-            באילו שעות הוא עונה
-          </div>
-
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <span style={{ fontSize: 13, width: 40 }}>משעה</span>
-            <input
-              className="field"
-              type="number"
-              min={0}
-              max={23}
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              style={{ marginBottom: 0, flex: 1 }}
-            />
-            <span style={{ fontSize: 13, width: 40 }}>עד</span>
-            <input
-              className="field"
-              type="number"
-              min={0}
-              max={23}
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              style={{ marginBottom: 0, flex: 1 }}
-            />
-            <button
-              className="btn primary"
-              style={{ flex: "0 0 auto", height: 50 }}
-              onClick={() =>
-                patch({ botFromHour: Number(from), botToHour: Number(to) })
-              }
-              disabled={busy}
-            >
-              שמור
-            </button>
-          </div>
-
-          <div style={{ fontSize: 12.5, color: "#98a2b3", margin: "8px 2px 0" }}>
-            מחוץ לחלון הזה הוא שותק לגמרי. ההודעות עדיין נשמרות ואתה מקבל
-            התראה.
-          </div>
-
-          {/* ---- סטטוסים ---- */}
-          <div style={{ fontSize: 13, fontWeight: 600, margin: "18px 2px 8px" }}>
-            על אילו סטטוסים הוא עונה
-            {picked.length > 0 && (
-              <span style={{ color: "#98a2b3", fontWeight: 400 }}>
-                {" "}
-                · {picked.length} נבחרו
-              </span>
-            )}
-          </div>
-
-          {statuses.map((s) => (
-            <button
-              key={s.name}
-              className="status-option"
-              data-current={picked.includes(s.name)}
-              onClick={() => toggle(s.name)}
-            >
-              <span
-                className="dot"
-                style={{
-                  background: picked.includes(s.name) ? "#12805c" : "#dbe3ea",
-                }}
-              />
-              <span>{s.name}</span>
-              <span
-                className="dot"
-                style={{
-                  background: s.color,
-                  marginInlineStart: "auto",
-                  width: 9,
-                  height: 9,
-                }}
-              />
-            </button>
-          ))}
-
-          <button
-            className="btn primary"
-            onClick={() => patch({ botStatuses: picked })}
-            disabled={busy}
-          >
-            שמור סטטוסים
-          </button>
-
-          {/* ---- מתקדם ---- */}
-          <button
-            className="btn"
-            style={{ marginTop: 12 }}
-            onClick={() => setAdvanced(!advanced)}
-          >
-            {advanced ? "הסתר הגדרות מתקדמות" : "הגדרות מתקדמות"}
-          </button>
-
-          {advanced && (
-            <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 13, marginBottom: 6 }}>
-                כמה שעות הבוט שותק אחרי שאתה עונה ללקוח
-              </div>
-              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                <input
-                  className="field"
-                  type="number"
-                  min={0}
-                  value={pause}
-                  onChange={(e) => setPause(e.target.value)}
-                  style={{ marginBottom: 0, flex: 1 }}
-                />
-                <button
-                  className="btn"
-                  style={{ flex: "0 0 auto", height: 50 }}
-                  onClick={() => patch({ botPauseHours: Number(pause) })}
-                  disabled={busy}
-                >
-                  שמור
-                </button>
-              </div>
-
-              <div style={{ fontSize: 13, marginBottom: 6 }}>
-                דקות המתנה בין תשובות לאותו לקוח
-              </div>
-              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                <input
-                  className="field"
-                  type="number"
-                  min={0}
-                  value={cooldown}
-                  onChange={(e) => setCooldown(e.target.value)}
-                  style={{ marginBottom: 0, flex: 1 }}
-                />
-                <button
-                  className="btn"
-                  style={{ flex: "0 0 auto", height: 50 }}
-                  onClick={() =>
-                    patch({ replyCooldownMinutes: Number(cooldown) })
-                  }
-                  disabled={busy}
-                >
-                  שמור
-                </button>
-              </div>
-
-              <div style={{ fontSize: 13, marginBottom: 6 }}>
-                חלון זיהוי שיחה חיה, בדקות
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input
-                  className="field"
-                  type="number"
-                  min={0}
-                  value={live}
-                  onChange={(e) => setLive(e.target.value)}
-                  style={{ marginBottom: 0, flex: 1 }}
-                />
-                <button
-                  className="btn"
-                  style={{ flex: "0 0 auto", height: 50 }}
-                  onClick={() => patch({ liveChatMinutes: Number(live) })}
-                  disabled={busy}
-                >
-                  שמור
-                </button>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {message && (
-        <div style={{ marginTop: 10, fontSize: 14 }}>{message}</div>
-      )}
+      {message && <div style={{ marginTop: 10, fontSize: 14 }}>{message}</div>}
     </div>
   );
 }

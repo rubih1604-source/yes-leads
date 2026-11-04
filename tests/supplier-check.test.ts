@@ -173,7 +173,7 @@ for (const t of MUST_SKIP) {
   });
 }
 
-const botSource = io.readFileSync("lib/bot.ts", "utf8");
+const botSource = io.readFileSync("lib/campaign-bot.ts", "utf8");
 
 test("הבוט מדלג רק על הצהרה מפורשת", () => {
   assert.ok(botSource.includes("statesExistingCustomer(params.text)"));
@@ -181,7 +181,7 @@ test("הבוט מדלג רק על הצהרה מפורשת", () => {
 
 test("הבוט כבר לא מדלג על סמך תשובה רחבה", () => {
   assert.ok(
-    !/volunteered\s*=\s*decision\.askSupplier[\s\S]{0,60}readSupplierAnswer/.test(
+    !/volunteered\s*=[\s\S]{0,60}readSupplierAnswer/.test(
       botSource
     ),
     '"כן" חזר לדלג על השאלה - לקוח מעוניין יישלח לשירות'
@@ -311,14 +311,14 @@ test("התקרה היא שתי שאלות ולא יותר", () => {
 });
 
 test("הבוט שואל שוב ועוצר בתקרה", () => {
-  const bot = io.readFileSync("lib/bot.ts", "utf8");
+  const bot = botSource;
 
   assert.ok(
     bot.includes("SUPPLIER_QUESTION_AGAIN"),
     "תגובה לא ברורה עדיין נענית בשתיקה"
   );
   assert.ok(
-    bot.includes("asks < MAX_SUPPLIER_ASKS"),
+    bot.includes("asks.length < MAX_SUPPLIER_ASKS"),
     "אין תקרה - הלקוח יקבל את השאלה בלולאה"
   );
   assert.ok(
@@ -328,13 +328,8 @@ test("הבוט שואל שוב ועוצר בתקרה", () => {
 });
 
 test("השאלה החוזרת נספרת, אחרת התקרה חסרת משמעות", () => {
-  const bot = io.readFileSync("lib/bot.ts", "utf8");
-  const block = bot.slice(
-    bot.indexOf("SUPPLIER_QUESTION_AGAIN,\n          });"),
-    bot.indexOf("supplier:asked-again")
-  );
   assert.ok(
-    bot.includes("again: true") && bot.includes("type: ASKED_EVENT"),
+    botSource.includes("again: true") && botSource.includes("ASKED_EVENT"),
     "השאלה החוזרת לא נרשמת"
   );
 });
@@ -354,18 +349,21 @@ test("תשובה ברורה אחרי השאלה החוזרת עדיין מטופ
 
 /* ---------- שהתיקון לא ידלוף למקומות אחרים ---------- */
 
-test("השאלה החוזרת רק בתוך חלון של תגובה לדיוור", () => {
+test("השאלה החוזרת לא יכולה לצאת לנצח", () => {
   /**
-   * **הדליפה שנתפסה לפני ההעלאה.** הענף הזה רץ לפני
-   * בדיקת מצב הבוט. בלי התנאי, ליד שנשאל פעם את שאלת
-   * הסינון היה מקבל אותה שוב על כל הודעה לא ברורה -
-   * גם חודש אחרי, וגם במצב "כל הודעה", במקום לקבל
-   * טיפול רגיל.
+   * **מה שמנע את הלולאה קודם, ומה שמונע אותה עכשיו.**
+   *
+   * בבוט הקודם הגנה על זה בדיקה של "האם זו תגובה
+   * לדיוור", שהייתה מורכבת ונשברה. בבוט הנקי המחסום
+   * פשוט: השאלות נספרות מאז סגירת התהליך האחרונה, ויש
+   * תקרה - ואחרי התקרה התהליך **נסגר**, כך שנכנס השקט
+   * של 24 שעות ואין לופ.
    */
-  const bot = io.readFileSync("lib/bot.ts", "utf8");
+  assert.ok(botSource.includes("const since = lastDone?.createdAt"));
+  assert.ok(botSource.includes("asks.length < MAX_SUPPLIER_ASKS"));
   assert.ok(
-    bot.includes("if (!answer && decision.isBroadcastReply)"),
-    "השאלה החוזרת יכולה לצאת מחוץ להקשר של דיוור"
+    botSource.includes('finish(lead.id, "לא ברור")'),
+    "אחרי התקרה התהליך לא נסגר - הבוט יחזור על עצמו"
   );
 });
 
@@ -374,13 +372,13 @@ test("ההתראה נפתחת פעם אחת בלבד", () => {
    * בלי זה, כל הודעה נוספת מאותו אדם פותחת התראה
    * חדשה, ורשימת ההתראות הופכת לרעש.
    */
-  const bot = io.readFileSync("lib/bot.ts", "utf8");
-  assert.ok(bot.includes("NEEDS_YOU_EVENT"), "אין סימון שההתראה כבר נפתחה");
+  assert.ok(botSource.includes("NEEDS_YOU_EVENT"), "אין סימון שההתראה כבר נפתחה");
   assert.ok(
-    bot.indexOf("NEEDS_YOU_EVENT") < bot.indexOf('title: "ענה ולא ברור'),
+    botSource.indexOf("NEEDS_YOU_EVENT") <
+      botSource.indexOf('title: "ענה ולא ברור'),
     "הבדיקה נעשית אחרי שההתראה כבר נוצרה"
   );
-  assert.ok(bot.includes("if (!already)"), "ההתראה נוצרת בלי תנאי");
+  assert.ok(botSource.includes("if (!already)"), "ההתראה נוצרת בלי תנאי");
 });
 
 test("הסימון נפרד מסימון השאלה", () => {
@@ -395,6 +393,112 @@ test("מצב המבצע לא משנה את נוסח התשובות", () => {
   assert.equal(replyForAnswer("yes"), REPLY_IF_CUSTOMER);
   assert.equal(replyForAnswer("no"), REPLY_IF_NOT_CUSTOMER);
   assert.equal(replyForAnswer(null), null);
+});
+
+/* ============================================================
+ *  בוט הדיוור עומד בפני עצמו
+ * ============================================================
+ *
+ *  **למה זה הדבר הכי חשוב כאן.** הבוט עושה דבר אחד -
+ *  שואל שאלה אחת וקורא את התשובה. הוא רץ בתוך קובץ של
+ *  אלף שורות שתלוי בסיווג, בחוקים, במאגר ידע ובמייל,
+ *  וכשאחד מהם נפל - הבוט נפל איתו.
+ */
+
+const CAMPAIGN = "lib/campaign-bot.ts";
+
+test("בוט הדיוור לא נשען על השכבות הכבדות", () => {
+  const src = io.readFileSync(CAMPAIGN, "utf8");
+
+  for (const heavy of [
+    './classify"',
+    './answer"',
+    './email"',
+    './callback-time"',
+    './runner"',
+  ]) {
+    assert.ok(
+      !src.includes(`from ${heavy}`),
+      `בוט הדיוור תלוי ב-${heavy} - זו בדיוק התלות שהפילה אותו`
+    );
+  }
+});
+
+test("מנוע החוקים נטען רק כשצריך, ואחרי שהתשובה כבר יצאה", () => {
+  /**
+   * התלות המעגלית הייתה דרך מנוע החוקים. ייבוא דינמי
+   * כאן אומר שגם אם הוא ייפול, הלקוח כבר קיבל תשובה.
+   */
+  const src = io.readFileSync(CAMPAIGN, "utf8");
+
+  assert.ok(
+    !/^\s*import\s[^;]*from\s+"\.\/rules"/m.test(src),
+    "מנוע החוקים מיובא בראש הקובץ"
+  );
+  assert.ok(src.includes('await import("./rules")'));
+  assert.ok(
+    src.indexOf("await send(lead, replyForAnswer") <
+      src.indexOf("setExistingCustomer"),
+    "הסטטוס משתנה לפני שהתשובה נשלחה"
+  );
+});
+
+test("בקשת הסרה מטופלת לפני כל דבר אחר", () => {
+  const src = io.readFileSync(CAMPAIGN, "utf8");
+  /**
+   * השער המשותף הוסר לגמרי מבוט הדיוור. מה שנשאר לבדוק
+   * הוא שבקשת ההסרה קודמת לשקט של 24 השעות - אחרת מי
+   * שבתוך השקט יבקש הסרה ולא ייחסם.
+   */
+  assert.ok(
+    src.indexOf("detectUnsubscribe(params.text)") <
+      src.indexOf("hours < QUIET_HOURS"),
+    "בקשת הסרה נבדקת אחרי השקט"
+  );
+});
+
+test("כל מסלול מחזיר סיבה", () => {
+  /** בלי סיבה אי אפשר לדעת למה לא יצא כלום */
+  const src = io.readFileSync(CAMPAIGN, "utf8");
+  const returns = src.match(/return \{\s*\n?\s*action:/g) ?? [];
+  const reasons = src.match(/reason:/g) ?? [];
+  assert.ok(returns.length >= 6, `רק ${returns.length} מסלולים`);
+  assert.ok(reasons.length >= returns.length, "יש מסלול בלי סיבה");
+});
+
+test("בוט הדיוור הוא הבוט היחיד בקליטה", () => {
+  const hook = io.readFileSync("app/api/webhooks/texter/route.ts", "utf8");
+
+  assert.ok(hook.includes("handleCampaignReply"), "הבוט לא מחובר לקליטה");
+  assert.ok(
+    hook.includes("settings.campaignBot"),
+    "הקליטה לא נשלטת על ידי מתג בוט הדיוור"
+  );
+
+  /**
+   * **הבוט הקודם נמחק מהמערכת.** הבדיקה הזו היא השומר:
+   * אם מישהו יחזיר אותו, היא תיפול. הוא החזיק עותק שני
+   * של תהליך הסינון ושער עם שבע חסימות, ושניהם השתיקו
+   * אותו בשקט.
+   */
+  for (const gone of [
+    "handleInboundMessage",
+    "pauseBotAfterHumanReply",
+    "@/lib/bot",
+  ]) {
+    assert.ok(!hook.includes(gone), `הבוט הקודם חזר לקליטה: ${gone}`);
+  }
+});
+
+test("הבוט הקודם לא קיים בקוד", () => {
+  for (const gone of [
+    "lib/bot.ts",
+    "lib/bot-gate.ts",
+    "lib/classify.ts",
+    "lib/callback-time.ts",
+  ]) {
+    assert.ok(!io.existsSync(gone), `${gone} חזר למערכת`);
+  }
 });
 
 console.log(`✓ supplier-check (סימולציות): ${passed} בדיקות עברו`);

@@ -342,6 +342,10 @@ async function handle(request: Request) {
             channelId: inChannel?.id ?? null,
             isSale: channel.isSale,
             price: entryPrice,
+            /** השדות שההגעה הזו נשאה - ראה ההערה בסכימה */
+            extra: Object.keys(extra).length
+              ? (extra as Prisma.InputJsonObject)
+              : undefined,
             at: new Date(),
           },
         })
@@ -608,6 +612,14 @@ async function handle(request: Request) {
               channelId: inChannel?.id ?? null,
               isSale: channel.isSale,
               price: entryPrice,
+              /**
+               * **השדות של ההגעה הזו, ולא תערובת.** זה
+               * הצד השני של התיקון: בלי זה הכרטיס מציג
+               * את הקמפיין והמודעה של ההגעה הקודמת.
+               */
+              extra: Object.keys(extra).length
+                ? (extra as Prisma.InputJsonObject)
+                : undefined,
               at: new Date(),
             },
           })
@@ -635,6 +647,71 @@ async function handle(request: Request) {
           payload: { webhookLogId: log.id },
         },
       });
+
+      /**
+       * ============================================================
+       *  הגעה חוזרת היא הגעה, וחייבת להתריע
+       * ============================================================
+       *
+       *  **זו הסיבה שלא קיבלת התראה על לידים.**
+       *
+       *  ההתראה נשלחה רק בענף של מספר שלא היה במערכת
+       *  מעולם. מי שכבר היה אצלך - דיברת איתו פעם, או
+       *  שהוא מילא טופס לפני חודש - מילא עכשיו טופס שוב,
+       *  נרשמה לו כניסה חדשה, הוא צף לראש הרשימה... **ולא
+       *  יצאה עליו שום התראה.** הוא פשוט הופיע שם בשקט,
+       *  ואם לא הסתכלת באותו רגע, לא ידעת.
+       *
+       *  שתי הגדרות חשובות:
+       *
+       *  · אותה הגשה שהגיעה משתי הדלתות (ליד מנגר והחיבור
+       *    הישיר) **אינה** הגעה שנייה - אחרת כל ליד היה
+       *    מתריע פעמיים.
+       *  · עדכון סטטוס מליד מנגר אינו הגעה בכלל.
+       *
+       *  כלומר: מתריעים בדיוק על מה שנרשם ככניסה חדשה.
+       */
+      /**
+       * ============================================================
+       *  הגעה חוזרת מקבלת את אותן אוטומציות
+       * ============================================================
+       *
+       *  **החסם השני, ואולי הגרוע מהשניים.**
+       *
+       *  `scheduleForStatus` נקרא **רק** בענף של מספר
+       *  שלא היה במערכת מעולם. כלומר: אדם שמילא את הטופס
+       *  שלך בפעם השנייה לא קיבל שום הודעה פותחת, שום
+       *  רצף, שום אוטומציה. הוא נכנס לרשימה בשקט מוחלט
+       *  ונשאר שם עד שהסתכלת.
+       *
+       *  הכלל שלך: הגעה חוזרת היא ליד חדש לכל דבר, עם
+       *  תווית "כפול". אותן אוטומציות בדיוק, אותו מסלול.
+       *
+       *  שתי הגדרות נשמרות, ושתיהן קיימות גם בענף של ליד
+       *  חדש: ערוץ המכירה לא מקבל אוטומציות לעולם, ואותה
+       *  הגשה שהגיעה משתי הדלתות אינה הגעה שנייה.
+       */
+      if (!sameSubmission && !channel.isSale) {
+        await scheduleForStatus(
+          existing.id,
+          incomingStatus ?? existing.status
+        ).catch(() => 0);
+      }
+
+      if (!sameSubmission && !channel.isSale) {
+        void notifyNewLead({
+          leadId: existing.id,
+          firstName: mapped.firstName ?? existing.firstName,
+          lastName: mapped.lastName ?? existing.lastName,
+          phone,
+          status: isSaleNow ? existing.status : incomingStatus ?? existing.status,
+          extra,
+          channelName: inChannel?.name ?? null,
+          isSale: channel.isSale,
+          returning: true,
+          at: new Date(),
+        });
+      }
     }
 
     await db.webhookLog.update({

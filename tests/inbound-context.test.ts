@@ -209,163 +209,52 @@ test("סדר ההודעות ברשימה לא משנה את ההכרעה", () =>
   assert.equal(a.askSupplier, true);
 });
 
-/* ---------- ההכרעה אחת, ואף אחד לא עוקף אותה ---------- */
+/* ---------- ההכרעה נשארה, הבוט שהשתמש בה נמחק ---------- */
 
-const bot = io.readFileSync("lib/bot.ts", "utf8");
+/**
+ * ============================================================
+ *  מה נבדק כאן קודם
+ * ============================================================
+ *
+ *  כאן ישבו שלושה חלקים שלמים: שהבוט מריץ את decideInbound
+ *  ולא מכריע בעצמו, שהוא קורא ל-settleSupplier פעמיים
+ *  בלבד, ושלשער יש מצב נפרד לתגובת דיוור שבו מגבלת
+ *  הסטטוסים לא חלה.
+ *
+ *  כל אלה תיארו את הבוט הקודם, **והוא נמחק** - יחד עם
+ *  השער, הסיווג, המצבים ומגבלת הסטטוסים. בוט הדיוור לא
+ *  משתמש ב-decideInbound בכלל: הוא עונה לכל מי שכותב.
+ *
+ *  **מה שנשאר תקף** הוא decideInbound עצמה, שעדיין
+ *  מכריעה מי ענה לדיוור - בשביל מסך המתעניינים. כל
+ *  הבדיקות שלה למעלה ולמטה נשארו כפי שהן.
+ */
 
-test("הבוט מבצע את ההכרעה ולא מכריע בעצמו", () => {
-  assert.ok(bot.includes("decideInbound"));
-  assert.ok(
-    bot.includes("decision.askSupplier"),
-    "הבוט בודק תנאי משלו במקום את ההכרעה"
-  );
-});
-
-test("הבוט כבר לא בודק לבד אם זו תגובה לדיוור", () => {
-  assert.ok(
-    !/if \(replyAfterBroadcast\(/.test(bot),
-    "נשארה הכרעה שנייה בבוט - היא תתפצל מההכרעה המרכזית"
-  );
-});
-
-const runner = io.readFileSync("lib/runner.ts", "utf8");
-const send = io.readFileSync("app/api/broadcast/[id]/send/route.ts", "utf8");
-
-test("דיוור מרשימת לידים ומבצע מסומן כ-leads", () => {
-  assert.ok(runner.includes("KIND_LEADS"));
-  assert.ok(!runner.includes("KIND_DATA"), "דיוור ללידים סומן כדאטה");
-});
-
-test("דיוור מרשימה שנטענה מסומן כ-data", () => {
-  assert.ok(send.includes("KIND_DATA"));
-  assert.ok(!send.includes("KIND_LEADS"));
-});
-
-const check = io.readFileSync(
-  "app/api/diagnostics/bot-check/route.ts",
-  "utf8"
-);
-
-test("האבחון מריץ את אותה הכרעה", () => {
-  assert.ok(check.includes("decideInbound"));
-});
-
-
-/* ---------- ענה מעצמו, בלי שנשאל ---------- */
-
-test("הצהרה מפורשת מדלגת על השאלה, והבדיקה קודמת לשליחה", () => {
-  assert.ok(
-    bot.includes("statesExistingCustomer(params.text)"),
-    '"יש לי כבר יס" עדיין מקבל בחזרה "האם אתם לקוחות של yes?"'
-  );
-
-  const declared = bot.indexOf("statesExistingCustomer(params.text)");
-
+test("בוט הדיוור לא מכריע לפי הקשר הדיוור", () => {
   /**
-   * הפסיק חשוב: בלעדיו ההתאמה תופסת גם את
-   * SUPPLIER_QUESTION_AGAIN, שהיא השאלה החוזרת ויושבת
-   * קודם בקובץ - והבדיקה הייתה משווה לשליחה הלא נכונה.
+   * זו הייתה החסימה שאף אחד לא ראה: הבוט שתק כי ההכרעה
+   * אמרה "זו לא תגובה לדיוור", על מישהו שכתב לנו מילה
+   * אחת בוואטסאפ.
    */
-  const ask = bot.indexOf("text: SUPPLIER_QUESTION,");
-  assert.ok(declared > -1 && ask > -1);
-  assert.ok(declared < ask, "השאלה נשלחת לפני שבודקים אם כבר הצהיר");
-});
+  const campaign = io.readFileSync("lib/campaign-bot.ts", "utf8");
 
-test("שני המסלולים משתמשים באותו מימוש", () => {
-  const calls = bot.match(/settleSupplier\(\{/g) ?? [];
-  assert.equal(calls.length, 2, "יש מסלול תשובה שלא עובר דרך המימוש המשותף");
-});
-
-test("המימוש המשותף משנה סטטוס רק על 'כן'", () => {
-  const fn = bot.slice(
-    bot.indexOf("async function settleSupplier"),
-    bot.indexOf("export async function handleInboundMessage")
-  );
-  const yes = fn.indexOf('params.answer === "yes"');
-  const status = fn.indexOf('toStatus: "לקוח קיים"');
-  assert.ok(yes > -1 && yes < status, "סטטוס משתנה גם על 'לא'");
-});
-
-test("המימוש המשותף לא נוגע במי שלא הוכרע", () => {
-  const fn = bot.slice(
-    bot.indexOf("async function settleSupplier"),
-    bot.indexOf("export async function handleInboundMessage")
-  );
-  assert.ok(fn.includes("if (!reply) return null"), "תשובה לא ברורה מטופלת בכל זאת");
-});
-
-test("ההיסטוריה שנשלפת לבוט כוללת את סוג הדיוור", () => {
-  assert.ok(
-    bot.includes("broadcastKind: true"),
-    "ההכרעה תרוץ בלי לדעת מאיזה דיוור הוא הגיע"
-  );
-});
-
-
-/* ---------- מגבלת הסטטוסים לא חוסמת תגובה לדיוור ---------- */
-
-const gate = io.readFileSync("lib/bot-gate.ts", "utf8");
-
-test("לשער יש מצב נפרד לתגובת דיוור", () => {
-  assert.ok(gate.includes("GateScope"));
-  assert.ok(gate.includes('scope: GateScope = "general"'));
-});
-
-test("מגבלת הסטטוסים חלה רק על הודעה רגילה", () => {
-  assert.ok(
-    gate.includes('scope === "general"'),
-    "נמען דיוור עם סטטוס שלא בחרת ייחסם ולא יקבל את השאלה"
-  );
-  const guard = gate.indexOf('scope === "general"');
-  const check = gate.indexOf("settings.botStatuses.includes");
-  assert.ok(guard > -1 && guard < check);
-});
-
-test("שאר ההגנות נשארות בשני המצבים", () => {
-  const statusGuard = gate.indexOf('scope === "general"');
-
-  for (const must of [
-    "settings.botEnabled",
-    "withinBotHours",
-    "lead.botMuted",
-    'lead.origin === "sale"',
+  for (const gone of [
+    "decideInbound",
+    "isBroadcastReply",
+    "broadcastKind",
+    "lastListSendFor",
   ]) {
-    const at = gate.indexOf(must);
-    assert.ok(at > -1, `נעלמה הגנה: ${must}`);
-    assert.ok(at < statusGuard, `${must} ירד מתחת למגבלת הסטטוסים`);
+    assert.ok(
+      !campaign.includes(gone),
+      `בוט הדיוור תלוי שוב בהקשר הדיוור: ${gone}`
+    );
   }
 });
 
-test("ההכרעה נעשית לפני השער, אחרת אי אפשר לבחור מצב", () => {
-  const decide = bot.indexOf("const decision = decideInbound({");
-  const gateCall = bot.indexOf("await shouldBotReply(lead.id, scope)");
-
-  assert.ok(decide > -1 && gateCall > -1, "השער כבר לא מקבל מצב");
-  assert.ok(decide < gateCall, "השער רץ לפני שידוע מה ההודעה");
-});
-
-test("תשובה לשאלה שכבר נשאלה גם היא בשער של הדיוור", () => {
-  assert.ok(
-    bot.includes("decision.isBroadcastReply || askedEvent"),
-    "מי שנשאל אתמול ועונה היום ייחסם בסטטוס"
-  );
-});
-
-test("אין שתי שליפות היסטוריה ושתי הכרעות בבוט", () => {
-  assert.equal(
-    (bot.match(/decideInbound\(\{/g) ?? []).length,
-    1,
-    "חזרה הכרעה שנייה - היא תתפצל מהראשונה"
-  );
-  assert.equal(
-    (bot.match(/const history/g) ?? []).length,
-    1,
-    "ההיסטוריה נשלפת פעמיים"
-  );
-});
-
-test("האבחון מודד את אותו שער באותו מצב", () => {
-  assert.ok(check.includes('shouldBotReply(lead.id, "broadcast")'));
+test("מסך המתעניינים הוא מי שמשתמש בהכרעה", () => {
+  const screen = io.readFileSync("app/broadcast-replies/page.tsx", "utf8");
+  assert.ok(screen.includes("decideInbound"), "המסך לא מריץ את ההכרעה");
+  assert.ok(screen.includes("decision.window"), "המסך לא קורא את החלון");
 });
 
 
@@ -473,20 +362,31 @@ test("רק רשימה שבאמת נשלחה נחשבת", () => {
   );
 });
 
-test("הבוט באמת שואל את הרשימה", () => {
-  assert.ok(bot.includes("lastListSendFor(lead.phone)"));
-  const look = bot.indexOf("lastListSendFor(lead.phone)");
-  const decide = bot.indexOf("const decision = decideInbound({");
-  assert.ok(look < decide, "ההכרעה רצה לפני שידוע אם הוא ברשימה");
+test("מסך המתעניינים שואל את הרשימה שנטענה", () => {
+  /**
+   * **למה זה עדיין חשוב, ולמה זה עבר לכאן.**
+   *
+   * הרשימה שנטענה היא מקור האמת השני: מי שקיבל דיוור
+   * מרשימה שהעלית לא בהכרח מופיע כהודעה יוצאת אצלנו.
+   * קודם הבוט היה זה שצריך לדעת את זה, כדי להחליט אם
+   * לשאול. בוט הדיוור לא צריך - הוא שואל את כל מי
+   * שכותב.
+   *
+   * מי שכן צריך את זה הוא מסך המתעניינים, שמראה לך מי
+   * ענה לדיוור.
+   */
+  const screen = io.readFileSync("app/broadcast-replies/page.tsx", "utf8");
+  assert.ok(screen.includes("lastListSendForMany"));
+  assert.ok(
+    screen.includes("listSendAt: listSends.get(lead.phone)"),
+    "ההכרעה רצה בלי לדעת מי קיבל דיוור מרשימה"
+  );
 });
 
-test("כישלון בחיפוש לא שובר את הבוט", () => {
-  assert.ok(bot.includes("lastListSendFor(lead.phone).catch(() => null)"));
-});
-
-test("האבחון בודק את אותו מקור", () => {
-  assert.ok(check.includes("lastListSendFor"));
-  assert.ok(check.includes("ברשימת_דיוור_שנשלחה"));
+test("כישלון בחיפוש לא שובר את המסך", () => {
+  const screen = io.readFileSync("app/broadcast-replies/page.tsx", "utf8");
+  assert.ok(screen.includes("lastListSendForMany"));
+  assert.ok(screen.includes(".catch("), "כישלון בשליפה יפיל את המסך");
 });
 
 /* ============================================================
@@ -749,31 +649,24 @@ test("מצב מבצע לא הופך הודעה סתמית לתגובת דיוו�
   assert.equal(d.askSupplier, false);
 });
 
-test("הבוט והאבחון מריצים את אותו מתג", () => {
+test("המתג 'שאל את כולם' הוסר מהמערכת", () => {
   /**
-   * אבחון שלא מקבל את המתג היה עונה אחרת מהבוט - וזה
-   * בדיוק סוג הפער שאי אפשר לראות.
+   * **למה הוא הוסר.** הוא קבע **את מי** לשאול: רק מי
+   * שהגיע מדאטה שנטענה, או את כולם. בוט הדיוור שואל את
+   * כל מי שכותב, תמיד - ולכן המתג הזה כבר לא שולט בשום
+   * דבר, והשארתו במסך הייתה הבטחה ריקה.
    */
-  const bot = io.readFileSync("lib/bot.ts", "utf8");
-  const diag = io.readFileSync(
-    "app/api/diagnostics/bot-check/route.ts",
-    "utf8"
-  );
-
-  assert.ok(bot.includes("askEveryone: settings.botAskAll"));
-  assert.ok(diag.includes("askEveryone: settings.botAskAll"));
-});
-
-test("המתג מגיע מההגדרות עד המסך", () => {
-  const settings = io.readFileSync("lib/settings.ts", "utf8");
-  const api = io.readFileSync("app/api/settings/route.ts", "utf8");
-  const screen = io.readFileSync("components/BotSettings.tsx", "utf8");
-  const page = io.readFileSync("app/settings/page.tsx", "utf8");
-
-  assert.ok(settings.includes("botAskAll"), "לא נקרא מהמסד");
-  assert.ok(api.includes("botAskAll"), "אי אפשר לשמור");
-  assert.ok(screen.includes("botAskAll"), "אין כפתור");
-  assert.ok(page.includes("askAll={settings.botAskAll"), "הערך לא מועבר למסך");
+  for (const file of [
+    "lib/settings.ts",
+    "app/api/settings/route.ts",
+    "components/BotSettings.tsx",
+    "app/settings/page.tsx",
+  ]) {
+    assert.ok(
+      !io.readFileSync(file, "utf8").includes("botAskAll"),
+      `המתג שלא עושה כלום נשאר ב-${file}`
+    );
+  }
 });
 
 /* ============================================================
@@ -888,17 +781,18 @@ test("מעולם לא נשאל - נשאל", () => {
   assert.equal(d.askSupplier, true);
 });
 
-test("ספירת השאלות החוזרות מוגבלת לדיוור הנוכחי", () => {
+test("ספירת השאלות מוגבלת לתהליך הנוכחי", () => {
   /**
    * אחרת מי שמיצה את המכסה באוקטובר לא יקבל כלום
-   * לעולם.
+   * לעולם. בבוט הנקי נקודת האפס היא **סגירת התהליך
+   * האחרונה**, ולא תאריך הדיוור.
    */
-  const bot = io.readFileSync("lib/bot.ts", "utf8");
+  const bot = io.readFileSync("lib/campaign-bot.ts", "utf8");
   assert.ok(
-    bot.includes("const since = decision.window?.broadcastAt"),
+    bot.includes("const since = lastDone?.createdAt"),
     "הספירה רצה מתחילת הזמן"
   );
-  assert.ok(bot.includes("createdAt: { gte: since }"));
+  assert.ok(bot.includes("e.createdAt.getTime() > since.getTime()"));
 });
 
 /* ---------- פעולת ההשלמה ---------- */
@@ -913,9 +807,18 @@ test("ההשלמה מריצה את אותה הכרעה ושולחת באותו �
     "utf8"
   );
 
-  assert.ok(route.includes("decideInbound"), "מחליטה לבד");
-  assert.ok(route.includes("replyToLead"), "שולחת במסלול משלה");
-  assert.ok(route.includes("askEveryone: settings.botAskAll"), "מתעלמת ממצב מבצע");
+  /**
+   * **מה שהשתנה.** קודם הפעולה הריצה הכרעה משלה ושלחה
+   * בעצמה, ואחר כך רשמה את האירוע בנפרד - שני עותקים
+   * שיכולים להיפרד. עכשיו היא קוראת לפונקציה של הבוט,
+   * שגם שולחת וגם רושמת.
+   */
+  assert.ok(route.includes("askSupplierQuestion"), "שולחת במסלול משלה");
+  assert.ok(!route.includes("decideInbound"), "מחליטה לבד");
+  assert.ok(
+    !route.includes("db.leadEvent"),
+    "רושמת בנפרד מהשליחה - רישום שנכשל יגרום לשאלה כפולה"
+  );
 });
 
 test("ההשלמה מכבדת את אותם מעקות", () => {
@@ -925,15 +828,28 @@ test("ההשלמה מכבדת את אותם מעקות", () => {
   );
 
   assert.ok(route.includes("doNotContact: false"), "שולחת לרשימה השחורה");
-  assert.ok(route.includes("botMuted: false"), "שולחת למי שהבוט מושתק אצלו");
+  /**
+   * השתקה מול ליד בודד נמחקה עם הבוט הקודם. מה שמגן
+   * עכשיו הוא הרשימה השחורה - כאן, וגם בתוך
+   * askSupplierQuestion עצמה.
+   */
+  const bot = io.readFileSync("lib/campaign-bot.ts", "utf8");
+  const fn = bot.slice(bot.indexOf("export async function askSupplierQuestion"));
+  assert.ok(
+    fn.includes("lead.doNotContact"),
+    "השליחה היזומה לא בודקת את הרשימה השחורה"
+  );
 });
 
 test("ההשלמה רושמת שנשאל, כדי שלא יישאל פעמיים", () => {
-  const route = io.readFileSync(
-    "app/api/maintenance/catch-up-asks/route.ts",
-    "utf8"
+  const bot = io.readFileSync("lib/campaign-bot.ts", "utf8");
+  const fn = bot.slice(bot.indexOf("export async function askSupplierQuestion"));
+
+  assert.ok(fn.includes("ASKED_EVENT"), "לא נרשם שנשאל");
+  assert.ok(
+    fn.indexOf("await send(lead") < fn.indexOf("ASKED_EVENT"),
+    "נרשם שנשאל גם כשהשליחה נכשלה"
   );
-  assert.ok(route.includes("type: ASKED_EVENT"));
 });
 
 test("יש הצגה לפני שליחה", () => {
@@ -943,7 +859,7 @@ test("יש הצגה לפני שליחה", () => {
   );
   const get = route.slice(route.indexOf("export async function GET"), route.indexOf("export async function POST"));
 
-  assert.ok(!get.includes("replyToLead"), "'הצג' שולח הודעות");
+  assert.ok(!get.includes("askSupplierQuestion"), "'הצג' שולח הודעות");
   assert.ok(!get.includes("db.leadEvent"), "'הצג' כותב למסד");
 });
 
@@ -966,22 +882,27 @@ test("ההשלמה מוגבלת לדיוור הנוכחי ולא לחודש אח
   assert.ok(route.includes("const DEFAULT_HOURS = 12"), "ברירת המחדל רחבה מדי");
   assert.ok(route.includes("hoursFrom(request)"), "אי אפשר לכוון את החלון");
   assert.ok(
-    route.includes("repliedAt.getTime() < since.getTime()"),
+    route.includes('createdAt: { gte: since }'),
     "תגובה ישנה עדיין יכולה להיכנס לרשימה"
   );
 });
 
-test("ההיסטוריה נקראת רחב מהחלון, אחרת הדיוור נעלם", () => {
+test("מי שכבר נשאל או נסגר אחרי התגובה לא נכנס לרשימה", () => {
   /**
-   * אם קוראים רק 12 שעות, הדיוור עצמו נופל מחוץ לטווח
-   * ואי אפשר לזהות שהתגובה היא תגובה אליו - והרשימה
-   * תצא ריקה תמיד.
+   * **מה שהחליף את החלון הרחב.** קודם היה צריך לקרוא
+   * היסטוריה רחבה כדי לזהות לאיזה דיוור הוא ענה. עכשיו
+   * השאלה פשוטה: האם טופל אחרי שכתב. מי שנשאל או שנסגר
+   * מולו תהליך **אחרי** התגובה - טופל, ולא נכנס.
    */
   const route = io.readFileSync(
     "app/api/maintenance/catch-up-asks/route.ts",
     "utf8"
   );
-  assert.ok(route.includes("REPLY_WINDOW_DAYS + 5"));
+  assert.ok(
+    route.includes("last.createdAt.getTime() >= replied.createdAt.getTime()"),
+    "מי שכבר קיבל תשובה יישאל שוב"
+  );
+  assert.ok(route.includes("DONE_EVENT"), "מי שהתהליך נסגר מולו יישאל שוב");
 });
 
 /* ============================================================
@@ -1018,36 +939,47 @@ test("הזיהוי לא נשען על טקסט זהה בלבד", () => {
   assert.ok(block.includes("broadcast: true"));
 });
 
-test("יש דרך לשחרר לידים שכבר הושתקו", () => {
-  const route = io.readFileSync(
-    "app/api/maintenance/release-bot-pause/route.ts",
-    "utf8"
-  );
-
-  assert.ok(route.includes("botPausedUntil: null"), "לא משחרר כלום");
-  /** נוגע רק בהשתקה - לא בהשתקה הידנית ולא בשום שדה אחר */
-  /** ההשוואה לכתיבה בפועל, לא להזכרה בהערה */
-  assert.ok(!route.includes("botMuted:"), "נוגע בהשתקה הידנית שלך");
+test("ההשתקה האוטומטית וכל מה שסביבה הוסרו", () => {
   /**
-   * "status: 401" הוא קוד HTTP, לא סטטוס ליד. הבדיקה
-   * מכוונת לכתיבה למסד בלבד.
+   * **מה היה כאן.** בדיקה על פעולת תחזוקה ששיחררה
+   * לידים שהבוט הושתק מולם בטעות - ההשתקה שנקבעה
+   * כש"אתה בשיחה", והדיוור עצמו נקרא כתשובה שלך.
+   *
+   * הפעולה נמחקה יחד עם הסיבה לה. אין יותר השתקה
+   * אוטומטית, ולכן אין ממה לשחרר - וזה מה שנבדק כאן
+   * עכשיו: שהיא לא חזרה.
    */
-  const writes = route.slice(route.indexOf("updateMany"));
-  assert.ok(!writes.includes("status:"), "משנה סטטוסים");
+  const hook = io.readFileSync("app/api/webhooks/texter/route.ts", "utf8");
+  const campaign = io.readFileSync("lib/campaign-bot.ts", "utf8");
 
-  const get = route.slice(
-    route.indexOf("export async function GET"),
-    route.indexOf("export async function POST")
+  assert.ok(
+    !hook.includes("pauseBotAfterHumanReply"),
+    "תשובה ידנית שלך משתיקה שוב את הבוט"
   );
-  assert.ok(!get.includes("updateMany"), "'הצג' משנה נתונים");
+  assert.ok(
+    !hook.includes("botPausedUntil"),
+    "חזרה ההשתקה האוטומטית לקליטה"
+  );
+  assert.ok(
+    !campaign.includes("botPausedUntil") && !campaign.includes("botMuted"),
+    "הבוט בודק שוב השתקות"
+  );
+  assert.ok(
+    !io.existsSync("app/api/maintenance/release-bot-pause/route.ts"),
+    "חזרה פעולת השחרור - כלומר חזרה ההשתקה"
+  );
+  assert.ok(
+    !io.existsSync("app/api/leads/[id]/bot/route.ts"),
+    "חזרה השתקת הבוט מול ליד בודד"
+  );
 });
 
 /* ============================================================
- *  השער לא חונק תגובה לדיוור
+ *  מה שחנק את המבצע - ואיפה זה עכשיו
  * ============================================================
  *
- *  **שלושת החסמים שחנקו את המבצע.** כולם רצים לפני
- *  שאלת הסינון, וכולם נועדו למצב הרגיל:
+ *  **שלושת החסמים שחנקו את המבצע.** כולם רצו לפני שאלת
+ *  הסינון, וכולם נועדו למצב הרגיל:
  *
  *  1. השתקה אחרי תשובה שלך
  *  2. שתי הודעות נכנסות = "שיחה חיה"
@@ -1056,58 +988,38 @@ test("יש דרך לשחרר לידים שכבר הושתקו", () => {
  *  השלישי הוא הקטלני: שאלת הסינון היא הודעה רגילה,
  *  ולכן **התשובה לשאלה** נחסמה בגלל השאלה עצמה. התהליך
  *  בן שני השלבים לא יכול היה להסתיים בכלל.
+ *
+ *  קודם נבדק כאן שהשער מדלג עליהם בתגובה לדיוור. **השער
+ *  נמחק**, ולכן מה שנבדק עכשיו הוא שאף אחד מהם לא קיים
+ *  בשום צורה - לא בבוט ולא בקליטה.
  */
 
-test("תגובה לדיוור עוברת את השער אחרי המעקות הקשיחים", () => {
-  const gate = io.readFileSync("lib/bot-gate.ts", "utf8");
+test("אף אחד משלושת החסמים לא קיים יותר", () => {
+  const campaign = io.readFileSync("lib/campaign-bot.ts", "utf8");
+  const hook = io.readFileSync("app/api/webhooks/texter/route.ts", "utf8");
 
-  const pass = gate.indexOf('if (scope === "broadcast") {');
-  assert.ok(pass > -1, "אין מסלול מהיר לתגובת דיוור");
-
-  /** מה שחייב להישאר לפניו */
-  for (const check of [
-    "settings.botEnabled",
-    "withinBotHours",
-    'lead.origin === "sale"',
-    "lead.botMuted",
+  for (const [what, why] of [
+    ["botPausedUntil", "השתקה אחרי תשובה שלך"],
+    ["recentInbound", '"שיחה חיה" - שתי הודעות נכנסות'],
+    ["replyCooldown", "המתנה בין תשובות - חסמה את התשובה לשאלה עצמה"],
+    ["withinBotHours", "שעות פעילות"],
+    ["botStatuses", "מגבלת סטטוסים"],
+    ["shouldBotReply", "השער המשותף כולו"],
   ]) {
-    assert.ok(
-      gate.indexOf(check) < pass,
-      `${check} כבר לא חוסם תגובה לדיוור - מעקה שנפרץ`
-    );
+    assert.ok(!campaign.includes(what), `חזר החסם לבוט: ${why}`);
+    assert.ok(!hook.includes(what), `חזר החסם לקליטה: ${why}`);
   }
 
-  /** ומה שחייב להיות אחריו */
-  for (const throttle of [
-    "lead.botPausedUntil",
-    "recentInbound >= 2",
-    "replyCooldownMinutes",
-  ]) {
-    assert.ok(
-      gate.indexOf(throttle) > pass,
-      `${throttle} עדיין חונק תגובה לדיוור`
-    );
-  }
+  assert.ok(!io.existsSync("lib/bot-gate.ts"), "השער חזר לקוד");
 });
 
-test("המצב הרגיל לא השתנה", () => {
-  /**
-   * המסלול המהיר חל **רק** על תגובת דיוור. בשיחה רגילה
-   * כל ההגנות נשארות: לא נתפרץ לשיחה חיה ולא נציף.
-   */
-  const gate = io.readFileSync("lib/bot-gate.ts", "utf8");
-  assert.ok(gate.includes("lead.botPausedUntil && lead.botPausedUntil > now"));
-  assert.ok(gate.includes("if (recentInbound >= 2)"));
-  assert.ok(gate.includes("if (recentReply)"));
-});
-
-test("הרשימה השחורה נבדקת עוד לפני השער", () => {
-  /** המעקה היחיד שלא יכול להיות תלוי בשער */
-  const bot = io.readFileSync("lib/bot.ts", "utf8");
-  /** ההשוואה לקריאה עצמה, לא לשורת הייבוא בראש הקובץ */
+test("הרשימה השחורה נבדקת לפני כל חסימה אחרת", () => {
+  /** המעקה היחיד שלא יכול להיות תלוי בשום דבר */
+  const bot = io.readFileSync("lib/campaign-bot.ts", "utf8");
   assert.ok(
-    bot.indexOf("if (certain.blacklist)") < bot.indexOf("await shouldBotReply("),
-    "בקשת הסרה נבדקת אחרי השער"
+    bot.indexOf("detectUnsubscribe(params.text)") <
+      bot.indexOf("hours < QUIET_HOURS"),
+    "בקשת הסרה נבדקת אחרי השקט"
   );
 });
 

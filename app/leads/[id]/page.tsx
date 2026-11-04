@@ -107,11 +107,38 @@ export default async function LeadPage({
     `${lead.firstName ?? ""} ${lead.lastName ?? ""}`.trim() ||
     displayPhone(lead.phone);
 
-  // פרטי הקמפיין והטופס, לפי סדר חשיבות
-  const extra =
-    lead.extra && typeof lead.extra === "object" && !Array.isArray(lead.extra)
-      ? (lead.extra as Record<string, string>)
+  /**
+   * ============================================================
+   *  הנתונים של ההגעה האחרונה, לא תערובת של כולן
+   * ============================================================
+   *
+   *  **הבאג שנתפס בשטח.** השדות על הליד נשמרים במיזוג:
+   *  כל הגעה דורסת את מה שהגיע איתה ומשאירה את מה שלא.
+   *  אדם שנכנס ממבצע אוקטובר ואז ממבצע נובמבר - המודעה
+   *  והטופס של אוקטובר נשארו על הכרטיס, כי הפנייה של
+   *  נובמבר לא נשאה אותם. הכרטיס הציג שני קמפיינים
+   *  מעורבבים, ומה שנראה "של עכשיו" היה של אז.
+   *
+   *  מעכשיו כל כניסה נושאת את השדות שלה, והכרטיס מציג
+   *  את **האחרונה**. ליד ותיק שנכנס לפני התיקון לא נושא
+   *  שדות על הכניסה, ולכן יש נפילה חזרה לשדות הליד -
+   *  אחרת הכרטיס שלו היה מתרוקן.
+   */
+  function fieldsOf(value: unknown): Record<string, string> {
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, string>)
       : {};
+  }
+
+  const latestEntry = lead.entries[0];
+  const entryFields = fieldsOf(latestEntry?.extra);
+  const leadFields = fieldsOf(lead.extra);
+
+  const extra =
+    Object.keys(entryFields).length > 0 ? entryFields : leadFields;
+
+  /** האם מה שמוצג הוא של ההגעה האחרונה או של ההיסטוריה */
+  const fieldsAreFromThisArrival = Object.keys(entryFields).length > 0;
 
   /**
    * של מי הליד, וכמה כניסות יש לו **בערוץ שלו**.
@@ -227,10 +254,6 @@ export default async function LeadPage({
           templates={templates as unknown as TemplateOption[]}
           doNotContact={lead.doNotContact}
           canUndo={Boolean(lastAutoChange?.fromStatus)}
-          botMuted={lead.botMuted}
-          botPausedUntil={
-            lead.botPausedUntil ? lead.botPausedUntil.toISOString() : null
-          }
           knowledge={knowledge as KnowledgeOption[]}
           statuses={statuses}
           leadName={name}
@@ -264,6 +287,15 @@ export default async function LeadPage({
           <div className="card">
             {lead.entries.map((entry, i) => {
               const door = doorLabel(entry.via);
+
+              /**
+               * מה **הכניסה הזו** נשאה. ככה רואים שהכניסה
+               * של אוקטובר באמת של אוקטובר, ושל נובמבר של
+               * נובמבר - במקום תערובת אחת על הליד.
+               */
+              const own = fieldsOf(entry.extra);
+              const ad = own.fb_ad || own.fb_adset || "";
+              const form = own.fb_form_name || "";
 
               return (
                 <div className="stat-row" key={entry.id}>
@@ -301,6 +333,18 @@ export default async function LeadPage({
                   </span>
                   <strong style={{ fontSize: 14 }}>
                     {formatDate(entry.at)}
+                    {(ad || form) && (
+                      <span
+                        style={{
+                          display: "block",
+                          color: "#667085",
+                          fontSize: 12,
+                          fontWeight: 400,
+                        }}
+                      >
+                        {[ad, form].filter(Boolean).join(" · ")}
+                      </span>
+                    )}
                   </strong>
                 </div>
               );
@@ -314,7 +358,11 @@ export default async function LeadPage({
 
       {detailKeys.length > 0 && (
         <>
-          <div className="section-title">מאיפה הגיע</div>
+          <div className="section-title">
+            {fieldsAreFromThisArrival && lead.entries.length > 1
+              ? "מאיפה הגיע - ההגעה האחרונה"
+              : "מאיפה הגיע"}
+          </div>
           <div className="card">
             {detailKeys.map((key) => (
               <div className="stat-row" key={key}>

@@ -18,8 +18,6 @@ export default function LeadCardActions({
   templates,
   doNotContact,
   canUndo,
-  botMuted,
-  botPausedUntil,
   knowledge,
   statuses,
   leadName,
@@ -35,8 +33,6 @@ export default function LeadCardActions({
   templates: TemplateOption[];
   doNotContact: boolean;
   canUndo: boolean;
-  botMuted: boolean;
-  botPausedUntil: string | null;
   knowledge: KnowledgeOption[];
   statuses: StatusDef[];
   leadName: string;
@@ -52,20 +48,6 @@ export default function LeadCardActions({
   const [taskOpen, setTaskOpen] = useState(false);
   const [undoing, setUndoing] = useState(false);
   const router = useRouter();
-
-  async function botAction(action: "mute" | "unmute") {
-    setUndoing(true);
-    await fetch(`/api/leads/${leadId}/bot`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action }),
-    });
-    setUndoing(false);
-    router.refresh();
-  }
-
-  const pausedActive =
-    botPausedUntil !== null && new Date(botPausedUntil) > new Date();
 
   const [blacklistAsk, setBlacklistAsk] = useState(false);
   const [blacklistBusy, setBlacklistBusy] = useState(false);
@@ -169,50 +151,21 @@ export default function LeadCardActions({
         </div>
       )}
 
-      {(botMuted || pausedActive) && (
-        <div
-          className="card"
-          style={{ margin: "10px 0 0", padding: 12, background: "#fff7ed" }}
-        >
-          <div style={{ fontSize: 14, fontWeight: 600 }}>
-            {botMuted
-              ? "הבוט מושתק מול הלקוח הזה"
-              : "אתה בשיחה - הבוט שותק כרגע"}
-          </div>
-          {pausedActive && !botMuted && (
-            <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>
-              עד{" "}
-              {new Date(botPausedUntil!).toLocaleString("he-IL", {
-                timeZone: "Asia/Jerusalem",
-                day: "2-digit",
-                month: "2-digit",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </div>
-          )}
-          <button
-            className="btn"
-            style={{ height: 40, marginTop: 10 }}
-            onClick={() => botAction("unmute")}
-            disabled={undoing}
-          >
-            החזר את הבוט לפעולה
-          </button>
-        </div>
-      )}
-
-      {!botMuted && !pausedActive && (
-        <div className="actions" style={{ marginTop: 10 }}>
-          <button
-            className="btn"
-            onClick={() => botAction("mute")}
-            disabled={undoing}
-          >
-            השתק את הבוט מול הלקוח הזה
-          </button>
-        </div>
-      )}
+      {/**
+        * ============================================================
+        *  השתקת הבוט מול ליד בודד - הוסרה
+        * ============================================================
+        *
+        *  **למה.** כאן היו שני דברים: השתקה שאתה בוחר,
+        *  והשתקה אוטומטית שנקבעה כש"אתה בשיחה". השנייה
+        *  היא זו שסתמה את הבוט באמצע מבצע - הדיוור עצמו
+        *  נקרא כתשובה שלך, וכל הנמענים הושתקו בבת אחת.
+        *
+        *  שתיהן נמחקו עם הבוט הקודם. לבוט הדיוור יש מתג
+        *  אחד בהגדרות, ולאדם בודד יש הרשימה השחורה - שני
+        *  דברים שרואים ושולטים בהם, בלי מצב שלישי נסתר
+        *  שפועל מעצמו.
+        */}
 
       {canUndo && (
         <div className="actions" style={{ marginTop: 10 }}>

@@ -34,6 +34,12 @@ export default async function MorePage() {
           desc: "מה להקים בטקסטר, עם השם המדויק והטקסט להעתקה",
         },
         {
+          href: "/health",
+          glyph: "♥",
+          label: "בריאות המערכת",
+          desc: "האם המנוע רץ, יש משימות תקועות, והאם הבוט קרס",
+        },
+        {
           href: "/diagnostics",
           glyph: "⌕",
           label: "אבחון",

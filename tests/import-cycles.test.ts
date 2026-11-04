@@ -157,7 +157,7 @@ test("הסריקה באמת מוצאת קבצים", () => {
   /** בדיקה שעוברת על רשימה ריקה לא בודקת כלום */
   const count = Object.keys(statics).length;
   assert.ok(count > 50, `נסרקו רק ${count} קבצים - הסריקה לא עובדת`);
-  assert.ok(statics["lib/bot.ts"], "lib/bot.ts לא נסרק");
+  assert.ok(statics["lib/rules.ts"], "lib/rules.ts לא נסרק");
 });
 
 test("המנוע לא מייבא את החוקים בראש הקובץ", () => {

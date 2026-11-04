@@ -3,8 +3,6 @@ import { db } from "@/lib/db";
 import { normalizePhone, displayPhone } from "@/lib/phone";
 import { mapInboundMessage } from "@/lib/texter-mapping";
 import { cancelPendingJobs } from "@/lib/rules";
-import { handleInboundMessage } from "@/lib/bot";
-import { pauseBotAfterHumanReply } from "@/lib/bot-gate";
 import { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -90,8 +88,12 @@ async function handle(request: Request) {
     /**
      * הודעה יוצאת. שתי אפשרויות:
      * 1. המערכת שלחה אותה - כבר רשומה אצלנו, אין מה לעשות
-     * 2. **אתה שלחת אותה ידנית** - זה אומר שנכנסת לשיחה,
-     *    ואז הבוט משתתק מול הלקוח הזה.
+     * 2. **אתה שלחת אותה ידנית** - נרשמת כדי שתופיע בשיחה.
+     *
+     * **היא כבר לא משתיקה את הבוט.** ההשתקה הזו היא מה
+     * שסתם את הבוט באמצע מבצע: הדיוור עצמו נקרא כתשובה
+     * ידנית שלך. בוט הדיוור שואל שאלה אחת וקורא את
+     * התשובה - אין סיבה שכתיבה שלך תמנע ממנו את זה.
      */
     if (mapped.isOutgoing) {
       if (phone) {
@@ -166,20 +168,18 @@ async function handle(request: Request) {
               },
             });
 
-            const until = await pauseBotAfterHumanReply(lead.id);
-
             await db.leadEvent.create({
               data: {
                 leadId: lead.id,
                 type: "human_reply",
                 actor: "user",
-                payload: { pausedUntil: until.toISOString() },
+                payload: { text: (mapped.text ?? "").slice(0, 200) },
               },
             });
 
             await db.webhookLog.update({
               where: { id: log.id },
-              data: { processed: true, error: "תשובה ידנית שלך - הבוט הושתק" },
+              data: { processed: true, error: "תשובה ידנית שלך - נרשמה" },
             });
 
             return NextResponse.json({ ok: true, humanReply: true });
@@ -292,14 +292,54 @@ async function handle(request: Request) {
       data: { processed: true },
     });
 
-    // הבוט מסווג ופועל. רץ אחרי שהכל נשמר, כדי שכישלון שלו
-    // לא ימנע מההודעה להישמר ומהרצף להיעצר.
-    let botResult = null;
+    /**
+     * ============================================================
+     *  בוט אחד, ורק הוא
+     * ============================================================
+     *
+     *  **מה היה כאן קודם.** בוט בן אלף שורות שסיווג כל
+     *  הודעה, חיפש במאגר ידע, פירש מתי להתקשר, שינה
+     *  סטטוסים והריץ מנוע חוקים - והכל מאחורי שער עם שבע
+     *  חסימות. הוא גם החזיק **עותק שני** של תהליך הסינון,
+     *  כך שאותה שאלה נשלחה משני מקומות שונים בקוד.
+     *
+     *  הוא נמחק מהמערכת. מה שנשאר הוא בוט הדיוור: שאלה
+     *  אחת, קריאת התשובה, וזה הכל.
+     *
+     *  **המתג כבוי = אף בוט לא נוגע בהודעה.** ההודעה
+     *  נשמרת, הרצף נעצר, ההתראה "לקוח ענה" נוצרת - ושום
+     *  דבר לא נשלח ללקוח. בלי הפתעות.
+     */
+    let botAction: string | null = null;
+    let botReason: string | null = null;
+
     try {
-      botResult = await handleInboundMessage({
-        leadId: lead.id,
-        text: mapped.text ?? "",
-      });
+      const { getSettings } = await import("@/lib/settings");
+      const settings = await getSettings();
+
+      if (settings.campaignBot) {
+        const { handleCampaignReply } = await import("@/lib/campaign-bot");
+        const result = await handleCampaignReply({
+          leadId: lead.id,
+          text: mapped.text ?? "",
+        });
+
+        botAction = result.action;
+        botReason = result.reason;
+
+        await db.leadEvent
+          .create({
+            data: {
+              leadId: lead.id,
+              type: "campaign_bot",
+              actor: "bot",
+              payload: { action: result.action, reason: result.reason },
+            },
+          })
+          .catch(() => null);
+      } else {
+        botReason = "מתג בוט הדיוור כבוי";
+      }
     } catch (err) {
       /**
        * ============================================================
@@ -357,8 +397,8 @@ async function handle(request: Request) {
     return NextResponse.json({
       ok: true,
       cancelledJobs: cancelled,
-      intent: botResult?.classification.intent ?? null,
-      actions: botResult?.actions ?? [],
+      campaign: botAction,
+      reason: botReason,
     });
   } catch (err) {
     await db.webhookLog.update({
