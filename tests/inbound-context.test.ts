@@ -238,17 +238,31 @@ test("בוט הדיוור לא מכריע לפי הקשר הדיוור", () => {
    */
   const campaign = io.readFileSync("lib/campaign-bot.ts", "utf8");
 
-  for (const gone of [
-    "decideInbound",
-    "isBroadcastReply",
-    "broadcastKind",
-    "lastListSendFor",
-  ]) {
+  /**
+   * ============================================================
+   *  מה אסור, ומה דווקא כן
+   * ============================================================
+   *
+   *  **אסור:** מנוע ההכרעה. decideInbound שוקל מקור,
+   *  סוג דיוור, חלון תגובה ומתגים - שכבות שנשברו וחסמו
+   *  100% מהנמענים. הבוט לא נוגע בו.
+   *
+   *  **מותר, ואף נחוץ:** שליפה פשוטה של "מתי יצא אליו
+   *  דיוור מרשימה שהעלית". זו שאילתה אחת לשדה אחד, לא
+   *  הכרעה - והיא המקור היחיד שמזהה נמען שלא נרשמה
+   *  עליו שום הודעה יוצאת. בלעדיה הוא היה נחסם.
+   */
+  for (const gone of ["decideInbound", "isBroadcastReply", "broadcastKind"]) {
     assert.ok(
       !campaign.includes(gone),
       `בוט הדיוור תלוי שוב בהקשר הדיוור: ${gone}`
     );
   }
+
+  assert.ok(
+    campaign.includes("lastListSendFor"),
+    "הבוט לא בודק את הרשימה שנטענה - נמען בלי הודעה רשומה ייחסם"
+  );
 });
 
 test("מסך המתעניינים הוא מי שמשתמש בהכרעה", () => {
@@ -964,14 +978,21 @@ test("ההשתקה האוטומטית וכל מה שסביבה הוסרו", () =
     !campaign.includes("botPausedUntil") && !campaign.includes("botMuted"),
     "הבוט בודק שוב השתקות"
   );
-  assert.ok(
-    !io.existsSync("app/api/maintenance/release-bot-pause/route.ts"),
-    "חזרה פעולת השחרור - כלומר חזרה ההשתקה"
-  );
-  assert.ok(
-    !io.existsSync("app/api/leads/[id]/bot/route.ts"),
-    "חזרה השתקת הבוט מול ליד בודד"
-  );
+  /**
+   * הנתיבים נדרסו בקבצים ריקים ולא נמחקו, כי ZIP לא
+   * יכול למחוק. מה שנבדק: הם לא עושים כלום חוץ מלהחזיר
+   * "הוסר".
+   */
+  for (const route of [
+    "app/api/maintenance/release-bot-pause/route.ts",
+    "app/api/leads/[id]/bot/route.ts",
+  ]) {
+    if (!io.existsSync(route)) continue;
+
+    const src = io.readFileSync(route, "utf8");
+    assert.ok(src.includes("410"), `${route} חזר לפעולה`);
+    assert.ok(!src.includes("db."), `${route} עדיין כותב למסד`);
+  }
 });
 
 /* ============================================================
@@ -1010,7 +1031,10 @@ test("אף אחד משלושת החסמים לא קיים יותר", () => {
     assert.ok(!hook.includes(what), `חזר החסם לקליטה: ${why}`);
   }
 
-  assert.ok(!io.existsSync("lib/bot-gate.ts"), "השער חזר לקוד");
+  if (io.existsSync("lib/bot-gate.ts")) {
+    const src = io.readFileSync("lib/bot-gate.ts", "utf8");
+    assert.ok(src.includes("קובץ שנותר למחיקה"), "השער חזר לקוד");
+  }
 });
 
 test("הרשימה השחורה נבדקת לפני כל חסימה אחרת", () => {

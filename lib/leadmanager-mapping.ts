@@ -110,6 +110,8 @@ export const FIELD_LABELS: Record<string, string> = {
   fb_page: "עמוד פייסבוק",
   fb_platform: "פלטפורמה",
   fb_leadid: "מזהה ליד בפייסבוק",
+  fb_names_missing: "למה חסרים השמות",
+  fb_names_error: "מה פייסבוק החזירה",
   fb_campaign_id: "מזהה קמפיין",
   fb_ad_id: "מזהה מודעה",
   fb_adset_id: "מזהה קבוצת מודעות",
@@ -133,6 +135,16 @@ export const FIELD_ORDER = [
   "fb_ad",
   "fb_adset",
   "fb_adgroup",
+  /**
+   * **המזהים מוצגים גם הם.** כשחשבון המודעות לא משויך
+   * לטוקן, פייסבוק לא מחזירה את השמות - אבל כן את
+   * המזהים. קודם הם נשמרו ולא הוצגו בשום מקום, וזה גרם
+   * לזה להיראות כאילו לא נשמר שום שיוך.
+   */
+  "fb_campaign_id",
+  "fb_adset_id",
+  "fb_ad_id",
+  "fb_names_missing",
   "fb_form",
   "fb_page",
   "fb_platform",

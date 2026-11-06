@@ -33,6 +33,12 @@ type Health = {
     דלוק: boolean;
     קרס_ביממה: number;
   };
+  התראות: {
+    מפתחות_מוגדרים: boolean;
+    מכשירים_רשומים: number;
+    מכשירים_עם_שגיאה: number;
+    לידים_בלי_התראה_ביממה: number;
+  };
   תנועה_ביממה: {
     הודעות_נכנסות: number;
     לידים_שנכנסו: number;
@@ -202,6 +208,32 @@ export default function SystemHealth() {
         >
           {data.הערה}
         </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 10 }}>
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>
+          התראות — האם אתה בכלל מקבל
+        </div>
+        <Row
+          label="מפתחות מוגדרים בשרת"
+          value={data.התראות.מפתחות_מוגדרים ? "כן" : "לא"}
+          bad={!data.התראות.מפתחות_מוגדרים}
+        />
+        <Row
+          label="מכשירים רשומים"
+          value={String(data.התראות.מכשירים_רשומים)}
+          bad={data.התראות.מכשירים_רשומים === 0}
+        />
+        <Row
+          label="מכשירים עם שגיאה"
+          value={String(data.התראות.מכשירים_עם_שגיאה)}
+          bad={data.התראות.מכשירים_עם_שגיאה > 0}
+        />
+        <Row
+          label="לידים בלי התראה ביממה"
+          value={String(data.התראות.לידים_בלי_התראה_ביממה)}
+          bad={data.התראות.לידים_בלי_התראה_ביממה > 0}
+        />
       </div>
 
       <div className="card" style={{ marginBottom: 10 }}>

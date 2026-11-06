@@ -6,10 +6,16 @@
  *  **מה הוא עושה, במלואו:**
  *
  *    1. ביקש הסרה       → רשימה שחורה, ולא עונים לו כלום
- *    2. סיים תהליך לאחרונה → שותק 24 שעות מולו
- *    3. אמר שהוא לקוח    → *2080 + סטטוס "לקוח קיים"
- *    4. כבר נשאל         → קורא את התשובה ועונה לפיה
- *    5. לא נשאל          → שואל
+ *    2. לא קיבל את הדיוור → שותק לגמרי
+ *    3. סיים תהליך לאחרונה → שותק 24 שעות מולו
+ *    4. נשאל מתי נוח לו  → קורא את השעה ופותח תזכורת
+ *    5. אמר שהוא לקוח    → *2080 + סטטוס "לקוח קיים"
+ *    6. כבר נשאל         → קורא את התשובה ועונה לפיה
+ *    7. לא נשאל          → שואל
+ *
+ *  **שני שלבים, לא אחד.** "לא, אני לא לקוח" הוא חצי
+ *  התהליך: אחריו נשאלת השעה, והתשובה הופכת לתזכורת עם
+ *  השם והמספר. התהליך נסגר רק כשיש תזכורת.
  *
  *  **ומה שהוא לא עושה - וזה העיקר.**
  *
@@ -24,9 +30,15 @@
  *    · שעות פעילות             - מי שענה ב-23:30 לא קיבל
  *    · מגבלת סטטוסים
  *
- *  כאן אין אף אחת מהן. **התנאים היחידים הם שלושה:**
- *  המתג דלוק, הוא לא ברשימה השחורה, ולא סגרנו איתו
- *  תהליך ב-24 השעות האחרונות.
+ *  כאן אין אף אחת מהן. **התנאים הם ארבעה, וכולם
+ *  גלויים:** המתג דלוק, הוא לא ברשימה השחורה, **הדיוור
+ *  הגיע אליו**, ולא סגרנו איתו תהליך ב-24 השעות
+ *  האחרונות.
+ *
+ *  התנאי השלישי נוסף אחרי שהבוט ענה ללקוחות פרטיים
+ *  ולחברים - אנשים שקיבלו שאלה על מבצע שלא שמעו עליו.
+ *  הוא נמדד מול הטקסט של הדיוור שבהגדרות, ולא מול
+ *  ניחוש על "מי נראה כמו נמען".
  *
  *  **שים לב: אין שעות.** מי שכותב ב-3 לפנות בוקר יקבל
  *  תשובה. המתג הוא השליטה שלך - מדליקים לדיוור, מכבים
@@ -49,16 +61,28 @@ import {
   replyForAnswer,
   DONE_EVENT,
   QUIET_HOURS,
+  TIME_ASKED_EVENT,
+  ASK_TIME_AGAIN,
+  MAX_TIME_ASKS,
 } from "./supplier-check";
+import { parseWhen, freeSlot } from "./when";
+import { displayPhone } from "./phone";
+import {
+  receivedCampaign,
+  CAMPAIGN_WINDOW_DAYS,
+} from "./campaign-audience";
 
 export type CampaignAction =
   | "off"
   | "blacklisted"
+  | "not-recipient"
   | "quiet"
   | "asked"
   | "asked-again"
   | "answered-yes"
   | "answered-no"
+  | "reminder-set"
+  | "asked-time-again"
   | "needs-you"
   | "send-failed";
 
@@ -136,17 +160,142 @@ async function send(
  * שנשאל כאן ייקרא נכון כשיענה, ולא יישאל פעמיים.
  */
 export async function askSupplierQuestion(leadId: string): Promise<boolean> {
+  const now = new Date();
+  const windowStart = new Date(
+    now.getTime() - CAMPAIGN_WINDOW_DAYS * 24 * 60 * 60 * 1000
+  );
+
   const lead = await db.lead.findUnique({
     where: { id: leadId },
-    select: { id: true, phone: true, chatId: true, doNotContact: true },
+    select: {
+      id: true,
+      phone: true,
+      chatId: true,
+      doNotContact: true,
+      messages: {
+        where: { direction: "out", createdAt: { gte: windowStart } },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+        select: { bodyText: true, broadcast: true, createdAt: true },
+      },
+    },
   });
 
   if (!lead || lead.doNotContact) return false;
+
+  /**
+   * **גם הפעולה הידנית מוגבלת לנמענים.**
+   *
+   * בלי זה נשאר דלת אחורית: הפעולה בוחרת "כל מי שהגיב
+   * ב-12 השעות האחרונות", וזה כולל לקוחות פרטיים. אותו
+   * כלל, בשני המסלולים - אחרת תוקן רק אחד מהם.
+   */
+  const { getSettings: readSettings } = await import("./settings");
+  const settings = await readSettings();
+
+  const audience = receivedCampaign({
+    campaignText: settings.campaignText,
+    outgoing: lead.messages,
+    listSendAt: await listSendFor(lead.phone),
+    now,
+  });
+
+  if (!audience.yes) return false;
 
   const sent = await send(lead, SUPPLIER_QUESTION);
   if (sent) await mark(lead.id, ASKED_EVENT, { again: false, catchUp: true });
 
   return sent;
+}
+
+/**
+ * מתי יצא אליו דיוור מרשימה שהעלית.
+ *
+ * **המקור השני, וזה שהציל את הזיהוי.** אדם שקיבל דיוור
+ * מרשימה שנטענה - לפעמים לא נרשמה עליו שום הודעה יוצאת
+ * אצלנו, ולכן אין מה להתאים לפי טקסט. הרשימה עצמה יודעת
+ * שהוא נמען.
+ *
+ * כישלון בשליפה לא יכול לחסום את הבוט, ולכן הוא נבלע
+ * ומוחזר null: הזיהוי ימשיך לפי הטקסט.
+ */
+async function listSendFor(phone: string): Promise<Date | null> {
+  try {
+    const { lastListSendFor } = await import("./broadcast-membership");
+    return await lastListSendFor(phone);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ============================================================
+ *  התזכורת לחזור ללקוח
+ * ============================================================
+ *
+ *  **מה היא כוללת.** השם, המספר, ומה הלקוח אמר בדיוק -
+ *  כדי שכשהתזכורת קופצת בנייד אתה יודע למי להתקשר ולמה,
+ *  בלי להיכנס לשום מסך.
+ *
+ *  **ולמה הפריסה.** אם חמישה לקוחות אמרו "מחר בבוקר",
+ *  כולם נופלים על 9:00 - חמש תזכורות באותה דקה, ואין שום
+ *  סיכוי לטפל בהן. הם נפרסים 9:00, 9:05, 9:10, לפי הסדר
+ *  שבו הם ענו.
+ *
+ *  התזכורת עצמה יוצאת מהמנוע שמריץ תזכורות משימה, ולכן
+ *  היא מגיעה לנייד כמו כל תזכורת אחרת - בלי מנגנון שני.
+ */
+async function openReminder(params: {
+  leadId: string;
+  name: string;
+  phone: string;
+  desired: Date;
+  label: string;
+  said: string;
+}): Promise<Date> {
+  /**
+   * כל התזכורות שכבר נקבעו סביב הזמן המבוקש. חלון של
+   * שעתיים מכסה בשפע פריסה של 5 דקות, גם אם 20 אנשים
+   * אמרו את אותו דבר.
+   */
+  const around = await db.task
+    .findMany({
+      where: {
+        done: false,
+        dueAt: {
+          gte: new Date(params.desired.getTime() - 2 * 60 * 60 * 1000),
+          lte: new Date(params.desired.getTime() + 2 * 60 * 60 * 1000),
+        },
+      },
+      select: { dueAt: true },
+    })
+    .catch(() => []);
+
+  const taken = around
+    .map((t) => t.dueAt)
+    .filter((d): d is Date => d !== null);
+
+  const at = freeSlot(params.desired, taken);
+
+  await db.task
+    .create({
+      data: {
+        leadId: params.leadId,
+        title: `לחזור ל${params.name}`,
+        body: `${displayPhone(params.phone)} · ביקש ${params.label}\nכתב: "${params.said.slice(0, 200)}"`,
+        dueAt: at,
+        sourceQuestion: params.said.slice(0, 200),
+      },
+    })
+    .catch(() => null);
+
+  await mark(params.leadId, "callback_scheduled", {
+    at: at.toISOString(),
+    label: params.label,
+    said: params.said.slice(0, 200),
+  });
+
+  return at;
 }
 
 async function mark(leadId: string, type: string, payload: object) {
@@ -181,6 +330,10 @@ export async function handleCampaignReply(params: {
     return { action: "off", reason: "מתג בוט הדיוור כבוי" };
   }
 
+  const windowStart = new Date(
+    now.getTime() - CAMPAIGN_WINDOW_DAYS * 24 * 60 * 60 * 1000
+  );
+
   const lead = await db.lead.findUnique({
     where: { id: params.leadId },
     select: {
@@ -188,8 +341,22 @@ export async function handleCampaignReply(params: {
       phone: true,
       chatId: true,
       doNotContact: true,
+      firstName: true,
+      lastName: true,
+      /**
+       * ההודעות שיצאו אליו, לזיהוי "קיבל את הדיוור".
+       * נשלפות בחלון בלבד - אין צורך בהיסטוריה מלאה.
+       */
+      messages: {
+        where: { direction: "out", createdAt: { gte: windowStart } },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+        select: { bodyText: true, broadcast: true, createdAt: true },
+      },
       events: {
-        where: { type: { in: [ASKED_EVENT, DONE_EVENT] } },
+        where: {
+          type: { in: [ASKED_EVENT, DONE_EVENT, TIME_ASKED_EVENT] },
+        },
         orderBy: { createdAt: "desc" },
         take: 20,
         select: { type: true, createdAt: true },
@@ -216,7 +383,36 @@ export async function handleCampaignReply(params: {
     return { action: "blacklisted", reason: "כבר ברשימה השחורה" };
   }
 
-  /* ---------- 2. שקט של 24 שעות אחרי תהליך שנסגר ---------- */
+  /**
+   * ============================================================
+   *  2. רק מי שקיבל את הדיוור
+   * ============================================================
+   *
+   *  **למה זה כאן, ולמה אחרי בקשת ההסרה.**
+   *
+   *  בלי התנאי הזה הבוט ענה לכל מי שכתב - לקוחות פרטיים,
+   *  חברים, ואנשים שדיברת איתם לפני חודשיים קיבלו שאלה
+   *  על מבצע שלא שמעו עליו.
+   *
+   *  **בקשת הסרה קודמת לו בכוונה.** מי שמבקש להפסיק
+   *  נחסם, גם אם מעולם לא קיבל דיוור. זכות ההסרה לא
+   *  תלויה בשום תנאי.
+   *
+   *  שדה ריק = הבוט שותק לכולם. זו בחירה מכוונת: עדיף
+   *  שלא יענה לאף אחד מאשר שיענה לכל אדם שכותב.
+   */
+  const audience = receivedCampaign({
+    campaignText: settings.campaignText,
+    outgoing: lead.messages,
+    listSendAt: await listSendFor(lead.phone),
+    now,
+  });
+
+  if (!audience.yes) {
+    return { action: "not-recipient", reason: audience.why };
+  }
+
+  /* ---------- 3. שקט של 24 שעות אחרי תהליך שנסגר ---------- */
   const lastDone = lead.events.find((e) => e.type === DONE_EVENT);
 
   if (lastDone) {
@@ -244,7 +440,83 @@ export async function handleCampaignReply(params: {
       (!since || e.createdAt.getTime() > since.getTime())
   );
 
-  /* ---------- 3. אמר מעצמו שהוא לקוח ---------- */
+  const timeAsks = lead.events.filter(
+    (e) =>
+      e.type === TIME_ASKED_EVENT &&
+      (!since || e.createdAt.getTime() > since.getTime())
+  );
+
+  /**
+   * ============================================================
+   *  4. חיכינו לשעה - וזו התשובה
+   * ============================================================
+   *
+   *  הלקוח כבר אמר שהוא לא לקוח קיים, וקיבל "מתי נוח
+   *  לכם?". מה שהוא כותב עכשיו הוא השעה.
+   *
+   *  **זה קודם לכל השאר** - אחרת "מחר בבוקר" היה נקרא
+   *  כתשובה לא ברורה לשאלת הסינון, והבוט היה שואל אותה
+   *  שוב.
+   */
+  if (timeAsks.length > 0) {
+    const when = parseWhen(params.text, now);
+
+    if (when.kind === "at") {
+      const at = await openReminder({
+        leadId: lead.id,
+        name:
+          [lead.firstName, lead.lastName].filter(Boolean).join(" ").trim() ||
+          lead.phone,
+        phone: lead.phone,
+        desired: when.at,
+        label: when.label,
+        said: params.text,
+      });
+
+      await finish(lead.id, "נקבעה חזרה");
+
+      return {
+        action: "reminder-set",
+        reason: `הלקוח ביקש ${when.label} - נפתחה תזכורת ל-${at.toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" })}`,
+      };
+    }
+
+    /* לא הצלחנו להבין שעה - מבקשים לדייק, פעם אחת */
+    if (timeAsks.length < MAX_TIME_ASKS) {
+      const sent = await send(lead, ASK_TIME_AGAIN);
+      if (sent) await mark(lead.id, TIME_ASKED_EVENT, { again: true });
+
+      return sent
+        ? { action: "asked-time-again", reason: "לא הובנה שעה - התבקש לדייק" }
+        : { action: "send-failed", reason: "בקשת הדיוק לא נשלחה" };
+    }
+
+    /**
+     * ביקשנו פעמיים ואין שעה. עוצרים ומעבירים אליך -
+     * הוא מתעניין, והוא לא יכול ליפול בין הכיסאות.
+     */
+    await db.alert
+      .create({
+        data: {
+          leadId: lead.id,
+          title: "מתעניין - לא הצלחתי לקבוע שעה",
+          body: `${
+            [lead.firstName, lead.lastName].filter(Boolean).join(" ").trim() ||
+            lead.phone
+          }: "${params.text.slice(0, 150)}"`,
+        },
+      })
+      .catch(() => null);
+
+    await finish(lead.id, "מתעניין - בלי שעה");
+
+    return {
+      action: "needs-you",
+      reason: "מתעניין, אבל לא הצלחתי להבין מתי נוח לו",
+    };
+  }
+
+  /* ---------- 5. אמר מעצמו שהוא לקוח ---------- */
   if (statesExistingCustomer(params.text)) {
     const sent = await send(lead, replyForAnswer("yes")!);
     await setExistingCustomer(lead.id, "אמר מעצמו שהוא כבר לקוח");
@@ -255,7 +527,7 @@ export async function handleCampaignReply(params: {
       : { action: "send-failed", reason: "התשובה ללקוח קיים לא נשלחה" };
   }
 
-  /* ---------- 4. כבר נשאל - זו התשובה ---------- */
+  /* ---------- 6. כבר נשאל - זו התשובה ---------- */
   if (asks.length > 0) {
     const answer = readSupplierAnswer(params.text);
 
@@ -270,11 +542,24 @@ export async function handleCampaignReply(params: {
     }
 
     if (answer === "no") {
+      /**
+       * ============================================================
+       *  "לא" פותח את השלב השני, ולא סוגר את התהליך
+       * ============================================================
+       *
+       *  התשובה שיוצאת כאן היא "מעולה, אתפנה ואיצור איתכם
+       *  קשר. מתי נוח לכם?" - כלומר שאלה שמחכה לתשובה.
+       *
+       *  **אם היינו סוגרים כאן, השקט של 24 השעות היה בולע
+       *  בדיוק את התשובה הזו.** הלקוח היה כותב "מחר
+       *  בבוקר", הבוט היה שותק, ואף תזכורת לא הייתה
+       *  נפתחת. לכן התהליך נשאר פתוח עד שיש שעה.
+       */
       const sent = await send(lead, replyForAnswer("no")!);
-      await finish(lead.id, "מתעניין");
+      if (sent) await mark(lead.id, TIME_ASKED_EVENT, { first: true });
 
       return sent
-        ? { action: "answered-no", reason: "ענה שאינו לקוח - מתעניין" }
+        ? { action: "answered-no", reason: "ענה שאינו לקוח - נשאל מתי נוח לו" }
         : { action: "send-failed", reason: "התשובה לא נשלחה" };
     }
 
@@ -313,7 +598,7 @@ export async function handleCampaignReply(params: {
     return { action: "needs-you", reason: "ענה פעמיים ולא ברור" };
   }
 
-  /* ---------- 5. לא נשאל - שואלים ---------- */
+  /* ---------- 7. לא נשאל - שואלים ---------- */
   const sent = await send(lead, SUPPLIER_QUESTION);
   if (sent) await mark(lead.id, ASKED_EVENT, { again: false });
 

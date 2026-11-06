@@ -253,12 +253,22 @@ export async function sendPush(message: PushMessage): Promise<number> {
   });
 
   let sent = 0;
+  const now = new Date();
 
   for (const sub of subs) {
+    /** מה קרה למכשיר הזה - נרשם תמיד, גם בהצלחה */
+    let error: string | null = null;
+    let ok = false;
+
     try {
       const body = await encrypt(payload, sub.p256dh, sub.auth);
       const token = await vapidToken(sub.endpoint);
 
+      /**
+       * **פסק זמן.** בלעדיו שרת דחיפה שלא עונה תוקע את
+       * כל הלופ, ובסביבה שמריצה פונקציות עם מגבלת זמן
+       * זה אומר שגם המכשירים הבאים לא מקבלים כלום.
+       */
       const response = await fetch(sub.endpoint, {
         method: "POST",
         headers: {
@@ -269,20 +279,55 @@ export async function sendPush(message: PushMessage): Promise<number> {
           Urgency: message.urgent ? "high" : "normal",
         },
         body: toBuffer(body),
+        signal: AbortSignal.timeout(10_000),
       });
 
       if (response.ok) {
+        ok = true;
         sent++;
       } else if (response.status === 404 || response.status === 410) {
+        /**
+         * המנוי פג. מוחקים אותו - אבל **לא בשקט**: אם זה
+         * המכשיר היחיד, מעכשיו לא יגיעו התראות בכלל, וזה
+         * חייב לצוף בבריאות המערכת.
+         */
         await db.pushSubscription
           .delete({ where: { id: sub.id } })
           .catch(() => null);
+
+        await db.webhookLog
+          .create({
+            data: {
+              source: "push",
+              rawPayload: {
+                event: "subscription_expired",
+                label: sub.label ?? "",
+                status: response.status,
+              },
+              error: `מנוי ההתראות של "${sub.label ?? "מכשיר"}" פג תוקף ונמחק. צריך להפעיל התראות מחדש מהמכשיר.`,
+            },
+          })
+          .catch(() => null);
+
+        continue;
       } else {
-        console.error("[push] נדחה:", response.status, await response.text());
+        error = `${response.status} ${(await response.text().catch(() => "")).slice(0, 200)}`;
       }
     } catch (err) {
-      console.error("[push] שליחה נכשלה:", err);
+      error =
+        err instanceof Error ? err.message.slice(0, 200) : "שליחה נכשלה";
     }
+
+    await db.pushSubscription
+      .update({
+        where: { id: sub.id },
+        data: {
+          lastTriedAt: now,
+          lastOkAt: ok ? now : undefined,
+          lastError: ok ? null : error,
+        },
+      })
+      .catch(() => null);
   }
 
   return sent;

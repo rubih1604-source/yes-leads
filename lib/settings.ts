@@ -12,6 +12,8 @@ export type AppSettings = {
   botMode: string;
   /** מתג בוט הדיוור - עצמאי משאר ההגדרות */
   campaignBot: boolean;
+  /** הטקסט של הדיוור. רק מי שקיבל אותו מקבל תשובה */
+  campaignText: string;
   /** מתי המנוע רץ לאחרונה, ומה נכשל */
   engineRanAt: Date | null;
   engineError: string | null;
@@ -57,6 +59,7 @@ const DEFAULTS: AppSettings = {
   botEnabled: true,
   botMode: "all",
   campaignBot: false,
+  campaignText: "",
   engineRanAt: null,
   engineError: null,
   botOnlyOutsideHours: false,
@@ -103,6 +106,7 @@ export async function getSettings(): Promise<AppSettings> {
       botEnabled: row.botEnabled,
       botMode: row.botMode === "broadcast" ? "broadcast" : "all",
       campaignBot: row.campaignBot,
+      campaignText: row.campaignText ?? "",
       engineRanAt: row.engineRanAt,
       engineError: row.engineError,
       botOnlyOutsideHours: row.botOnlyOutsideHours,

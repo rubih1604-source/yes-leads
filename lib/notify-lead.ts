@@ -34,8 +34,12 @@ import {
 export type NotifyResult = {
   /** התראה בתוך המערכת - הפעמון */
   alert: boolean;
+  /** התראה לנייד */
+  push: boolean;
   /** מייל */
   email: boolean;
+  /** למה הנייד לא קיבל, אם לא קיבל */
+  pushReason: string | null;
   /** למה המייל לא יצא, אם לא יצא */
   emailReason: string | null;
 };
@@ -51,7 +55,20 @@ export async function notifyNewLead(
     manual?: boolean;
   }
 ): Promise<NotifyResult> {
-  const out: NotifyResult = { alert: false, email: false, emailReason: null };
+  const out: NotifyResult = {
+    alert: false,
+    push: false,
+    email: false,
+    pushReason: null,
+    emailReason: null,
+  };
+
+  const name = [input.firstName, input.lastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  const who = name || input.phone;
 
   /* ---------- 1. הפעמון. תמיד, ולפני הכל ---------- */
   try {
@@ -60,12 +77,6 @@ export async function notifyNewLead(
      * להתריע לך עליו, בדיוק כמו שהאוטומציות לא רצות עליו.
      */
     if (input.isSale !== true && !input.manual && input.leadId) {
-      const name = [input.firstName, input.lastName]
-        .filter(Boolean)
-        .join(" ")
-        .trim();
-
-      const who = name || input.phone;
       const from = input.channelName ? ` · ${input.channelName}` : "";
 
       await db.alert.create({
@@ -82,7 +93,50 @@ export async function notifyNewLead(
     /** הפעמון נכשל - ממשיכים למייל בכל מקרה */
   }
 
-  /* ---------- 2. המייל ---------- */
+  /* ---------- 2. הנייד ---------- */
+  /**
+   * ============================================================
+   *  התראת נייד על ליד שנכנס
+   * ============================================================
+   *
+   *  **מה שלא היה קיים כאן בכלל.**
+   *
+   *  `sendPush` נקרא ממקום אחד בכל המערכת - תזכורות
+   *  משימה. ליד שנכנס שלח מייל ובלבד, ולכן זה נראה כמו
+   *  "התראות נייד פעם עובדות ופעם לא": מה שהתריע היה
+   *  תזכורות, ומה שלא התריע היו לידים.
+   *
+   *  **זה הערוץ האמין ביותר** - קופץ על המסך הנעול תוך
+   *  שניות, בלי לפתוח מייל ובלי להיכנס למערכת. לכן הוא
+   *  לא תלוי במתג המייל ולא בסינון שלו.
+   */
+  try {
+    if (input.isSale !== true && !input.manual) {
+      const { sendPush, pushConfigured } = await import("./push");
+
+      if (!pushConfigured()) {
+        out.pushReason = "מפתחות ההתראות לא מוגדרים בשרת";
+      } else {
+        const sent = await sendPush({
+          title: input.returning ? "ליד נכנס שוב" : "ליד חדש",
+          body: `${who}${input.channelName ? ` · ${input.channelName}` : ""}`,
+          url: input.leadId ? `/leads/${input.leadId}` : "/leads",
+          tag: input.leadId ? `lead-${input.leadId}` : undefined,
+        });
+
+        out.push = sent > 0;
+        if (sent === 0) {
+          out.pushReason =
+            "אין מכשיר רשום להתראות, או שהשליחה נכשלה - בדוק בהגדרות → התראות בנייד";
+        }
+      }
+    }
+  } catch (err) {
+    out.pushReason =
+      err instanceof Error ? err.message.slice(0, 200) : "שגיאה בהתראת נייד";
+  }
+
+  /* ---------- 3. המייל ---------- */
   try {
     const { getSettings } = await import("./settings");
     const settings = await getSettings();
@@ -121,15 +175,31 @@ export async function notifyNewLead(
       err instanceof Error ? err.message.slice(0, 200) : "שגיאה במייל";
   }
 
-  /* ---------- 3. כשל משאיר עקבות ---------- */
-  if (out.emailReason && input.leadId) {
+  /* ---------- 4. מה קרה בכל ערוץ - תמיד נרשם ---------- */
+  /**
+   * **נרשם גם בהצלחה, לא רק בכשל.**
+   *
+   * "לא קיבלתי התראה על הליד הזה" הייתה שאלה בלי תשובה:
+   * לא היה שום רישום של מה נשלח ומה לא. עכשיו לכל ליד
+   * יש שורה שאומרת בדיוק מה יצא לפעמון, לנייד ולמייל -
+   * ומה הסיבה לכל ערוץ שלא יצא.
+   */
+  if (input.leadId) {
     await db.leadEvent
       .create({
         data: {
           leadId: input.leadId,
-          type: "notify_failed",
+          type:
+            out.alert || out.push || out.email ? "notify" : "notify_failed",
           actor: "system",
-          payload: { reason: out.emailReason, alert: out.alert },
+          payload: {
+            פעמון: out.alert,
+            נייד: out.push,
+            מייל: out.email,
+            סיבת_נייד: out.pushReason,
+            סיבת_מייל: out.emailReason,
+            חוזר: input.returning === true,
+          },
         },
       })
       .catch(() => null);

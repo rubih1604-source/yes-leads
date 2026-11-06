@@ -51,6 +51,46 @@ function str(extra: Record<string, unknown> | null | undefined, key: string) {
   return value.trim();
 }
 
+/**
+ * ============================================================
+ *  כשחסר השם, מציגים את המזהה
+ * ============================================================
+ *
+ *  **מה שקרה בשטח.** ליד מחשבון מודעות אחד הגיע עם קמפיין,
+ *  סט ומודעה; ליד מחשבון אחר - אותו עמוד ואותו טופס בדיוק -
+ *  הגיע בלי כלום, ובמייל פשוט לא הופיעו השורות האלה.
+ *
+ *  הסיבה היא הרשאה: השמות הם שדות של **חשבון המודעות**,
+ *  והטוקן שלנו הוא טוקן עמוד. **המזהים כן הגיעו ונשמרו** -
+ *  הם פשוט לא הוצגו בשום מקום, וזה גרם לזה להיראות כאילו
+ *  לא נשמר כלום.
+ *
+ *  מזהה הוא פחות נוח משם, אבל הוא מזהה את הקמפיין בוודאות
+ *  ואפשר לחפש אותו במנהל המודעות.
+ */
+function nameOrId(
+  extra: Record<string, unknown> | null | undefined,
+  nameKey: string,
+  idKey: string
+): string {
+  const name = str(extra, nameKey);
+  if (name) return name;
+
+  const id = str(extra, idKey);
+  return id ? `מזהה ${id}` : "";
+}
+
+/** הערכים המוצגים, אחרי הנפילה משם למזהה */
+export function displayValue(
+  extra: Record<string, unknown> | null | undefined,
+  key: string
+): string {
+  if (key === "fb_campaign") return nameOrId(extra, "fb_campaign", "fb_campaign_id");
+  if (key === "fb_adset") return nameOrId(extra, "fb_adset", "fb_adset_id");
+  if (key === "fb_ad") return nameOrId(extra, "fb_ad", "fb_ad_id");
+  return str(extra, key);
+}
+
 function esc(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -127,7 +167,7 @@ export function textFor(input: LeadEmailInput): string {
   ];
 
   for (const row of ROWS) {
-    const value = str(input.extra, row.key);
+    const value = displayValue(input.extra, row.key);
     if (value) lines.push(`${row.label}: ${value}`);
   }
 
@@ -138,6 +178,9 @@ export function textFor(input: LeadEmailInput): string {
   if (input.appUrl) {
     lines.push("", `כרטיס הליד: ${input.appUrl}/leads/${input.leadId}`);
   }
+
+  const missing = str(input.extra, "fb_names_missing");
+  if (missing) lines.push("", missing);
 
   return lines.join("\n");
 }
@@ -163,7 +206,7 @@ export function htmlFor(input: LeadEmailInput): string {
   });
 
   const rows = ROWS.map((row) => {
-    const value = str(input.extra, row.key);
+    const value = displayValue(input.extra, row.key);
     if (!value) return "";
 
     return `<tr>
@@ -177,6 +220,18 @@ export function htmlFor(input: LeadEmailInput): string {
   })
     .filter(Boolean)
     .join("");
+
+  /**
+   * ההסבר למה חסרים השמות. מופיע רק כשבאמת חסרים, ואומר
+   * מה לעשות - במקום להשאיר אותך עם מייל חסר בלי סיבה.
+   */
+  const missingNote = str(input.extra, "fb_names_missing")
+    ? `<p style="margin:14px 0 0;padding:10px 12px;background:#fffaeb;border-radius:8px;color:#b54708;font-size:12.5px;line-height:1.7">
+         ${esc(str(input.extra, "fb_names_missing"))}
+         <br />
+         כדי לקבל גם את השמות: Meta Business Settings → משתמש מערכת → הוספת נכסים → חשבון המודעות החדש, עם הרשאת קריאה.
+       </p>`
+    : "";
 
   const link = input.appUrl
     ? `<p style="margin:18px 0 0">
@@ -224,6 +279,8 @@ export function htmlFor(input: LeadEmailInput): string {
       <table style="width:100%;border-collapse:collapse;margin-top:16px;border-top:1px solid #eef2f7">
         ${rows}
       </table>
+
+      ${missingNote}
 
       ${link}
     </div>

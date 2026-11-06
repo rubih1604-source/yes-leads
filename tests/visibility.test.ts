@@ -596,8 +596,12 @@ test("המסך אומר בדיוק מה המתג עושה", () => {
   const screen = io.readFileSync("components/BotSettings.tsx", "utf8");
 
   assert.ok(
-    screen.includes("כל מי שכותב מקבל תשובה"),
+    screen.includes("כל מי שקיבל את הדיוור ומגיב מקבל תשובה"),
     "המסך לא אומר מה קורה כשהמתג דלוק"
+  );
+  assert.ok(
+    screen.includes("מי שלא קיבל את"),
+    "המסך לא אומר מה קורה למי שלא קיבל את הדיוור"
   );
   assert.ok(
     screen.includes("שום דבר לא נשלח ללקוח אוטומטית"),

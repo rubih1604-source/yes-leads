@@ -11,13 +11,41 @@ export async function GET() {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const count = await db.pushSubscription.count().catch(() => 0);
+  /**
+   * **מצב כל מכשיר בנפרד.**
+   *
+   * "ההתראות פעם עובדות ופעם לא" הייתה שאלה בלי תשובה:
+   * המסך הציג מספר מכשירים ולא יותר. כשל נכתב לקונסול
+   * של רנדר ונעלם, ומנוי שפג נמחק בשקט - כלומר אפשר היה
+   * לא לקבל התראות שבועיים בלי שום סימן.
+   */
+  const rows = await db.pushSubscription
+    .findMany({
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        label: true,
+        createdAt: true,
+        lastTriedAt: true,
+        lastOkAt: true,
+        lastError: true,
+      },
+    })
+    .catch(() => []);
 
   return NextResponse.json({
     ok: true,
     configured: pushConfigured(),
     publicKey: process.env.VAPID_PUBLIC_KEY?.trim() ?? null,
-    devices: count,
+    devices: rows.length,
+    מכשירים: rows.map((row) => ({
+      שם: row.label ?? "מכשיר",
+      נרשם: row.createdAt,
+      נוסה_לאחרונה: row.lastTriedAt,
+      עבד_לאחרונה: row.lastOkAt,
+      שגיאה: row.lastError,
+      תקין: Boolean(row.lastOkAt) && !row.lastError,
+    })),
   });
 }
 

@@ -7,9 +7,16 @@ import {
   ASKED_EVENT,
   DONE_EVENT,
   QUIET_HOURS,
+  TIME_ASKED_EVENT,
   readSupplierAnswer,
   statesExistingCustomer,
 } from "@/lib/supplier-check";
+import { parseWhen } from "@/lib/when";
+import {
+  receivedCampaign,
+  CAMPAIGN_WINDOW_DAYS,
+} from "@/lib/campaign-audience";
+import { lastListSendFor } from "@/lib/broadcast-membership";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +85,16 @@ export async function GET(request: Request) {
       },
       events: {
         where: {
-          type: { in: [ASKED_EVENT, DONE_EVENT, "campaign_bot", "bot_failed"] },
+          type: {
+            in: [
+              ASKED_EVENT,
+              DONE_EVENT,
+              TIME_ASKED_EVENT,
+              "callback_scheduled",
+              "campaign_bot",
+              "bot_failed",
+            ],
+          },
         },
         orderBy: { createdAt: "desc" },
         take: 30,
@@ -102,6 +118,23 @@ export async function GET(request: Request) {
   const lastOut = outgoing.at(-1);
   const inbound = lead.messages.filter((m) => m.direction === "in");
   const lastInbound = inbound.at(-1);
+
+  /**
+   * **האם הדיוור הגיע אליו - אותה פונקציה שהבוט מריץ.**
+   *
+   * לא העתק ולא קירוב: אם האבחון יענה אחרת מהבוט, הוא
+   * גרוע מחסר.
+   */
+  const audience = receivedCampaign({
+    campaignText: settings.campaignText,
+    outgoing: outgoing.map((m) => ({
+      bodyText: m.bodyText,
+      broadcast: m.broadcast,
+      createdAt: m.createdAt,
+    })),
+    listSendAt: await lastListSendFor(lead.phone).catch(() => null),
+    now,
+  });
 
   const lastDone = lead.events.find((e) => e.type === DONE_EVENT);
   const crashed = lead.events.find((e) => e.type === "bot_failed");
@@ -139,17 +172,29 @@ export async function GET(request: Request) {
    */
   const lastText = lastInbound?.bodyText ?? "";
 
+  const timeAsks = lead.events.filter(
+    (e) =>
+      e.type === TIME_ASKED_EVENT &&
+      (!since || e.createdAt.getTime() > since.getTime())
+  );
+
+  const parsedTime = lastText ? parseWhen(lastText, now) : { kind: "unclear" as const };
+
   const reading = !lastText
     ? "אין הודעה"
-    : statesExistingCustomer(lastText)
-      ? "הצהיר שהוא לקוח קיים"
-      : asks.length > 0
-        ? {
-            yes: "ענה שהוא לקוח קיים",
-            no: "ענה שאינו לקוח - מתעניין",
-            unclear: "התשובה לא הכריעה",
-          }[readSupplierAnswer(lastText)]
-        : "הודעה ראשונה - אמור לקבל את שאלת הסינון";
+    : timeAsks.length > 0
+      ? parsedTime.kind === "at"
+        ? `נשאל מתי נוח לו, וזוהתה שעה: ${parsedTime.label} (${timeIL(parsedTime.at)})`
+        : "נשאל מתי נוח לו, ולא זוהתה שעה בתשובה"
+      : statesExistingCustomer(lastText)
+        ? "הצהיר שהוא לקוח קיים"
+        : asks.length > 0
+          ? {
+              yes: "ענה שהוא לקוח קיים",
+              no: "ענה שאינו לקוח - מתעניין",
+              unclear: "התשובה לא הכריעה",
+            }[readSupplierAnswer(lastText)]
+          : "הודעה ראשונה - אמור לקבל את שאלת הסינון";
 
   /** הסיבה הראשונה שעוצרת, לפי סדר ההחלטות של הבוט */
   let verdict: string;
@@ -165,6 +210,8 @@ export async function GET(request: Request) {
   } else if (!lastInbound) {
     verdict =
       "הוא לא כתב כלום. הבוט עונה למי שכותב, ולא יוזם - גם אם הדיוור יצא אליו.";
+  } else if (!audience.yes) {
+    verdict = `הדיוור לא זוהה אצלו, ולכן הבוט שותק מולו בכוונה: ${audience.why}. אם הוא כן נמען - בדוק שטקסט הדיוור בהגדרות הוא בדיוק מה ששלחת.`;
   } else if (inQuiet) {
     verdict = `התהליך מולו נסגר ב-${timeIL(lastDone!.createdAt)}, והבוט שותק מולו עוד ${Math.ceil(quietHoursLeft)} שעות. זה בכוונה: אחרי שידוע אם הוא לקוח או לא, אין מה לשאול שוב.`;
   } else if (asks.length > 0) {
@@ -182,9 +229,11 @@ export async function GET(request: Request) {
       בעלות: lead.origin,
       ברשימה_שחורה: lead.doNotContact,
     },
-    שלושת_התנאים: {
+    התנאים: {
       המתג_דלוק: settings.campaignBot,
       לא_ברשימה_שחורה: !lead.doNotContact,
+      קיבל_את_הדיוור: audience.yes,
+      איך_זוהה: audience.why,
       לא_בשקט_של_24_שעות: !inQuiet,
     },
     התהליך: {
@@ -194,6 +243,17 @@ export async function GET(request: Request) {
       שאלת_הסינון_נשלחה: asks.length
         ? `${asks.length} פעמים · אחרונה ב-${timeIL(asks.at(-1)!.createdAt)}`
         : "לא",
+      נשאל_מתי_נוח_לו: timeAsks.length
+        ? `${timeAsks.length} פעמים · אחרונה ב-${timeIL(timeAsks.at(-1)!.createdAt)}`
+        : "לא",
+      תזכורת_שנפתחה: (() => {
+        const row = lead.events.find((e) => e.type === "callback_scheduled");
+        if (!row) return "לא";
+        const p = (row.payload ?? {}) as { at?: string; label?: string };
+        return p.at
+          ? `${timeIL(new Date(p.at))} · ביקש ${p.label ?? ""}`
+          : "לא";
+      })(),
       התהליך_נסגר: lastDone
         ? `${timeIL(lastDone.createdAt)} · ${
             ((lastDone.payload ?? {}) as { outcome?: string }).outcome ?? ""

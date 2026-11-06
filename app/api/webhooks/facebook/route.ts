@@ -132,6 +132,21 @@ const ID_FIELDS = [
   "is_organic",
 ];
 
+/** ההודעה מתוך תשובת שגיאה של Graph, בלי ה-JSON סביבה */
+function graphMessage(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as {
+      error?: { message?: string; code?: number };
+    };
+    const message = parsed.error?.message?.trim();
+    if (message) return message.slice(0, 300);
+  } catch {
+    /** לא JSON - מחזירים את הגוף כמו שהוא */
+  }
+
+  return body.slice(0, 300);
+}
+
 async function graphLead(
   leadId: string,
   token: string,
@@ -151,9 +166,31 @@ async function graphLead(
   };
 }
 
+/**
+ * ============================================================
+ *  למה השמות חסרים, ולא רק שהם חסרים
+ * ============================================================
+ *
+ *  **מה שנתפס בשטח.** ליד מחשבון מודעות אחד הגיע עם
+ *  קמפיין, קבוצת מודעות ומודעה; ליד מחשבון אחר - אותו
+ *  עמוד ואותו טופס בדיוק - הגיע בלי כלום.
+ *
+ *  הסיבה: שמות הקמפיין, הסט והמודעה הם שדות של **חשבון
+ *  המודעות**, לא של העמוד. הטוקן שלנו הוא טוקן עמוד, והוא
+ *  מורשה לקרוא אותם רק בחשבונות מודעות שמשויכים אליו.
+ *  המזהים, לעומתם, חוזרים תמיד.
+ *
+ *  לכן הנפילה ל-ID_FIELDS עובדת - הליד נכנס עם המזהים -
+ *  אבל **הסיבה נבלעה**, ולא הייתה שום דרך לדעת שמדובר
+ *  בהרשאה ולא בתקלה. מעכשיו היא נשמרת עם הליד.
+ */
+let lastNamesError = "";
+
 async function fetchLead(leadId: string): Promise<GraphLead | null> {
   const token = process.env.FB_PAGE_TOKEN?.trim();
   if (!token) return null;
+
+  lastNamesError = "";
 
   let res = await graphLead(leadId, token, FULL_FIELDS);
 
@@ -162,6 +199,9 @@ async function fetchLead(leadId: string): Promise<GraphLead | null> {
    * כדי שהליד ייכנס גם אם חלק מהמידע השיווקי לא זמין.
    */
   if (!res.ok && res.status === 400) {
+    /** הסיבה שפייסבוק החזירה, מילה במילה */
+    lastNamesError = graphMessage(res.body);
+
     /**
      * קודם מנסים את שכבת הביניים - המזהים בלי השמות.
      *
@@ -214,6 +254,19 @@ function toIntakePayload(lead: GraphLead): Record<string, string> {
   if (lead.ad_id) out.fb_ad_id = lead.ad_id;
   if (lead.adset_id) out.fb_adset_id = lead.adset_id;
   if (lead.is_organic) out.fb_organic = "כן";
+
+  /**
+   * **השמות חסרים ויש מזהים - זו הרשאה, ולא תקלה.**
+   *
+   * נשמר עם הליד כדי שגם בעוד חודש יהיה אפשר לראות למה
+   * דווקא הליד הזה הגיע בלי שיוך, במקום לנחש.
+   */
+  if (!lead.campaign_name && (lead.campaign_id || lead.ad_id)) {
+    out.fb_names_missing =
+      "חשבון המודעות של הקמפיין הזה לא משויך לטוקן של העמוד, ולכן פייסבוק לא מחזירה את שמות הקמפיין, הסט והמודעה. המזהים כן נשמרו.";
+
+    if (lastNamesError) out.fb_names_error = lastNamesError;
+  }
 
   out.fb_leadid = lead.id;
 

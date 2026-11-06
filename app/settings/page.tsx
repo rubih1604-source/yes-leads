@@ -81,7 +81,10 @@ export default async function SettingsPage() {
       />
 
       <div className="section-title">העוזר</div>
-      <BotSettings campaignBot={settings.campaignBot} />
+      <BotSettings
+        campaignBot={settings.campaignBot}
+        campaignText={settings.campaignText}
+      />
 
       <SettingsScreen settings={settings as SettingsRow} />
       <div className="section-title">רשימת חזרה</div>

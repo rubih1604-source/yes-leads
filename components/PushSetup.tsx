@@ -32,6 +32,13 @@ export default function PushSetup() {
     configured: boolean;
     publicKey: string | null;
     devices: number;
+    מכשירים?: Array<{
+      שם: string;
+      נוסה_לאחרונה: string | null;
+      עבד_לאחרונה: string | null;
+      שגיאה: string | null;
+      תקין: boolean;
+    }>;
   } | null>(null);
   const [standalone, setStandalone] = useState(true);
   const [supported, setSupported] = useState(true);
@@ -177,6 +184,82 @@ export default function PushSetup() {
         {permission === "granted" && " · ההרשאה ניתנה"}
         {permission === "denied" && " · ההרשאה נחסמה בהגדרות המכשיר"}
       </div>
+
+      {/**
+        * ============================================================
+        *  מצב כל מכשיר - בלי זה אין דרך לדעת
+        * ============================================================
+        *
+        *  "ההתראות פעם עובדות ופעם לא" הייתה שאלה בלי
+        *  תשובה. כשל נכתב לקונסול של רנדר ונעלם, ומנוי
+        *  שפג תוקפו נמחק בשקט - אפשר היה לא לקבל התראות
+        *  שבועיים בלי שום סימן.
+        */}
+      {state?.devices === 0 && state.configured && (
+        <div
+          style={{
+            padding: "11px 13px",
+            borderRadius: 9,
+            background: "#fef3f2",
+            border: "1px solid #fecdca",
+            color: "#b42318",
+            fontSize: 13,
+            lineHeight: 1.75,
+            marginBottom: 12,
+          }}
+        >
+          <strong>אין אף מכשיר רשום — לא תקבל שום התראה לנייד.</strong>
+          <br />
+          אם קיבלת התראות בעבר, המנוי פג תוקפו ונמחק. זה קורה באייפון
+          כשלא פותחים את האפליקציה כמה שבועות. לחץ &quot;הפעל התראות
+          במכשיר הזה&quot; למטה.
+        </div>
+      )}
+
+      {(state?.מכשירים ?? []).length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          {(state?.מכשירים ?? []).map((device, i) => (
+            <div
+              key={i}
+              style={{
+                padding: "9px 11px",
+                borderRadius: 8,
+                background: device.שגיאה ? "#fef3f2" : "#f8fafc",
+                fontSize: 12.5,
+                lineHeight: 1.7,
+                marginBottom: 6,
+              }}
+            >
+              <strong>{device.שם}</strong>
+              <br />
+              {device.עבד_לאחרונה ? (
+                <span style={{ color: "#15803d" }}>
+                  עבד לאחרונה:{" "}
+                  {new Date(device.עבד_לאחרונה).toLocaleString("he-IL", {
+                    timeZone: "Asia/Jerusalem",
+                    day: "2-digit",
+                    month: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+              ) : (
+                <span style={{ color: "#98a2b3" }}>
+                  עוד לא נשלחה אליו אף התראה
+                </span>
+              )}
+              {device.שגיאה && (
+                <>
+                  <br />
+                  <span style={{ color: "#b42318", direction: "ltr", display: "inline-block" }}>
+                    {device.שגיאה}
+                  </span>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="actions">
         <button

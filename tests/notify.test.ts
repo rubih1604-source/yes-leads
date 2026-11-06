@@ -82,9 +82,90 @@ test("הפעמון לא תלוי במתג המייל ולא בסינון שלו"
  *  2. כשל משאיר עקבות
  * ============================================================ */
 
-test("כשל במייל נרשם על הליד", () => {
-  assert.ok(notify.includes('type: "notify_failed"'), "הכשל נבלע");
-  assert.ok(notify.includes("emailReason"), "אין סיבה לכשל");
+test("מה שנשלח ומה שלא - נרשם על הליד תמיד", () => {
+  /**
+   * נרשם גם בהצלחה ולא רק בכשל: "לא קיבלתי התראה על
+   * הליד הזה" הייתה שאלה בלי תשובה, כי לא היה שום רישום
+   * של מה יצא לכל ערוץ.
+   */
+  assert.ok(notify.includes('"notify_failed"'), "כשל מלא לא נרשם");
+  assert.ok(notify.includes('"notify"'), "הצלחה לא נרשמת");
+  assert.ok(notify.includes("סיבת_נייד"), "אין סיבה לכשל בנייד");
+  assert.ok(notify.includes("סיבת_מייל"), "אין סיבה לכשל במייל");
+  assert.ok(notify.includes("פעמון:"), "לא נרשם מה קרה לפעמון");
+});
+
+/* ============================================================
+ *  התראת נייד - הערוץ שלא היה קיים
+ * ============================================================ */
+
+test("ליד שנכנס שולח התראה לנייד", () => {
+  /**
+   * **הכשל:** sendPush נקרא ממקום אחד בכל המערכת -
+   * תזכורות משימה. ליד שנכנס שלח מייל ובלבד, ולכן זה
+   * נראה כמו "התראות נייד פעם עובדות ופעם לא".
+   */
+  assert.ok(notify.includes("sendPush({"), "ליד חדש לא שולח התראה לנייד");
+  assert.ok(notify.includes("pushConfigured()"), "לא נבדק אם ההתראות מוגדרות");
+});
+
+test("ההתראה לנייד לא תלויה במתג המייל", () => {
+  const push = notify.indexOf("sendPush({");
+
+  for (const gate of ["settings.notifyEmail", "shouldEmail("]) {
+    assert.ok(notify.indexOf(gate) > push, `${gate} חוסם גם את הנייד`);
+  }
+});
+
+test("ההתראה לנייד נושאת שם, ערוץ וקישור לליד", () => {
+  const block = notify.slice(notify.indexOf("sendPush({"), notify.indexOf("sendPush({") + 500);
+  assert.ok(block.includes("who"), "אין שם בהתראה");
+  assert.ok(block.includes("channelName"), "אין ערוץ");
+  assert.ok(block.includes("/leads/"), "לחיצה לא מובילה לליד");
+});
+
+test("כשל בנייד לא מונע את המייל", () => {
+  /** שני try נפרדים - שלושה ערוצים, ואף אחד לא בולע את השני */
+  const tries = notify.match(/try \{/g) ?? [];
+  assert.ok(tries.length >= 3, `רק ${tries.length} try - ערוץ אחד בולע אחר`);
+});
+
+test("ליד של אלעד וליד שהזנת ידנית לא שולחים לנייד", () => {
+  const block = notify.slice(notify.indexOf("/* ---------- 2. הנייד"), notify.indexOf("/* ---------- 3. המייל"));
+  assert.ok(block.includes("input.isSale !== true"), "ליד מכירה מתריע בנייד");
+  assert.ok(block.includes("!input.manual"), "ליד שהזנת ידנית מצלצל לך");
+});
+
+test("מנוי התראות שפג תוקפו לא נמחק בשקט", () => {
+  /**
+   * **זה מה שהפך את זה ל'פעם כן פעם לא'.** מנוי פג
+   * נמחק בלי שום סימן, ומאז לא הגיעו התראות - בלי שאף
+   * אחד ידע.
+   */
+  const push = io.readFileSync("lib/push.ts", "utf8");
+
+  assert.ok(push.includes("subscription_expired"), "המחיקה נשארת שקופה");
+  assert.ok(
+    push.includes("צריך להפעיל התראות מחדש"),
+    "אין הסבר מה לעשות אחרי שהמנוי פג"
+  );
+});
+
+test("כל שליחה לנייד נרשמת על המכשיר", () => {
+  const push = io.readFileSync("lib/push.ts", "utf8");
+
+  assert.ok(push.includes("lastTriedAt"), "לא נרשם מתי נוסה");
+  assert.ok(push.includes("lastOkAt"), "לא נרשם מתי הצליח");
+  assert.ok(push.includes("lastError"), "השגיאה נשארת בקונסול");
+  assert.ok(
+    !push.includes('console.error("[push] נדחה'),
+    "השגיאה עדיין נכתבת רק לקונסול"
+  );
+});
+
+test("שרת דחיפה תקוע לא חוסם את שאר המכשירים", () => {
+  const push = io.readFileSync("lib/push.ts", "utf8");
+  assert.ok(push.includes("AbortSignal.timeout"), "אין פסק זמן לשליחה");
 });
 
 test("אין catch ריק שבולע הכל", () => {
@@ -298,6 +379,127 @@ test("הליד עצמו עדיין מחזיק את השדות - קוד אחר ק
     hook.includes("...(typeof existing.extra === \"object\" && existing.extra"),
     "המיזוג על הליד הוסר - קוד אחר שקורא אותו יישבר"
   );
+});
+
+
+/* ============================================================
+ *  8. שמות קמפיין שחסרים כשחשבון המודעות לא משויך
+ * ============================================================
+ *
+ *  **מה שנתפס בשטח.** ליד מחשבון מודעות אחד הגיע עם
+ *  קמפיין, סט ומודעה; ליד מחשבון אחר - אותו עמוד ואותו
+ *  טופס בדיוק - הגיע בלי כלום.
+ *
+ *  הסיבה אינה באג: שמות הקמפיין, הסט והמודעה הם שדות של
+ *  **חשבון המודעות**, והטוקן שלנו הוא טוקן עמוד. המזהים
+ *  חוזרים תמיד; השמות - רק מחשבון משויך.
+ *
+ *  **מה כן היה שבור:** המזהים נשמרו ולא הוצגו בשום מקום,
+ *  והסיבה נבלעה. כלומר הליד נראה כאילו נכנס בלי שום שיוך
+ *  ובלי שום הסבר.
+ */
+
+const email = io.readFileSync("lib/lead-email.ts", "utf8");
+const fbHook = io.readFileSync("app/api/webhooks/facebook/route.ts", "utf8");
+const mapping = io.readFileSync("lib/leadmanager-mapping.ts", "utf8");
+
+test("כשאין שם קמפיין מוצג המזהה במקומו", () => {
+  assert.ok(email.includes("function nameOrId"), "אין נפילה משם למזהה");
+  assert.ok(email.includes("displayValue("), "המייל לא משתמש בנפילה");
+
+  for (const pair of [
+    ['"fb_campaign", "fb_campaign_id"'],
+    ['"fb_adset", "fb_adset_id"'],
+    ['"fb_ad", "fb_ad_id"'],
+  ]) {
+    assert.ok(email.includes(pair[0]), `חסרה נפילה עבור ${pair[0]}`);
+  }
+});
+
+test("המייל מסביר למה חסרים השמות", () => {
+  assert.ok(email.includes("fb_names_missing"), "המייל לא מסביר כלום");
+  assert.ok(
+    email.includes("Business Settings"),
+    "אין הנחיה מה לעשות כדי לקבל את השמות"
+  );
+});
+
+test("הסיבה נשמרת עם הליד ולא נבלעת", () => {
+  assert.ok(fbHook.includes("fb_names_missing"), "הסיבה נבלעת");
+  assert.ok(fbHook.includes("graphMessage("), "מה שפייסבוק החזירה לא נשמר");
+  assert.ok(
+    fbHook.includes("lastNamesError"),
+    "השגיאה של הבקשה המלאה לא נתפסת"
+  );
+});
+
+test("הסיבה נרשמת רק כשבאמת חסרים שמות ויש מזהים", () => {
+  /**
+   * אחרת כל ליד אורגני, שאין לו קמפיין מלכתחילה, היה
+   * מקבל הסבר על הרשאות שאין לו שום קשר אליו.
+   */
+  assert.ok(
+    fbHook.includes("!lead.campaign_name && (lead.campaign_id || lead.ad_id)"),
+    "ההסבר מתווסף גם לליד שאין לו קמפיין בכלל"
+  );
+});
+
+test("המזהים וההסבר מוצגים גם בכרטיס הליד", () => {
+  for (const key of [
+    "fb_campaign_id",
+    "fb_adset_id",
+    "fb_ad_id",
+    "fb_names_missing",
+  ]) {
+    assert.ok(
+      mapping.includes(`"${key}"`) || mapping.includes(`${key}:`),
+      `${key} לא מוצג בכרטיס`
+    );
+  }
+  assert.ok(mapping.includes('fb_names_missing: "למה חסרים השמות"'));
+});
+
+test("יש דרך להשלים שמות ללידים שכבר נכנסו", () => {
+  /**
+   * אחרי ששיוך חשבון המודעות מתוקן, פייסבוק מחזירה שמות
+   * רק ללידים **חדשים**. בלי פעולה כזו, כל מי שנכנס עד
+   * היום נשאר בלי שיוך לנצח.
+   */
+  const route = io.readFileSync(
+    "app/api/maintenance/fill-campaign-names/route.ts",
+    "utf8"
+  );
+  const screen = io.readFileSync("components/MaintenanceScreen.tsx", "utf8");
+
+  assert.ok(route.includes("campaign_name,adset_name,ad_name"));
+  assert.ok(route.includes("fb_campaign = got.campaign_name"));
+  assert.ok(screen.includes("fill-campaign-names"), "הפעולה לא מופיעה במסך");
+});
+
+test("ההשלמה לא דורסת שדות אחרים של הליד", () => {
+  const route = io.readFileSync(
+    "app/api/maintenance/fill-campaign-names/route.ts",
+    "utf8"
+  );
+  assert.ok(
+    route.includes("const merged: Fields = { ...fields }"),
+    "השדות הקיימים נדרסים"
+  );
+  assert.ok(
+    route.includes("delete merged.fb_names_missing"),
+    "ההסבר נשאר אחרי שהשמות הושלמו"
+  );
+});
+
+test("'הצג' בהשלמה לא משנה כלום", () => {
+  const route = io.readFileSync(
+    "app/api/maintenance/fill-campaign-names/route.ts",
+    "utf8"
+  );
+  const get = route.slice(route.indexOf("export async function GET"), route.indexOf("export async function POST"));
+
+  assert.ok(!get.includes("db.lead.update"), "'הצג' כותב למסד");
+  assert.ok(!get.includes("fetch("), "'הצג' פונה לפייסבוק");
 });
 
 console.log(`✓ notify: ${passed} בדיקות עברו`);

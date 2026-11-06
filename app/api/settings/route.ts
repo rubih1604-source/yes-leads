@@ -24,6 +24,14 @@ export async function PATCH(request: Request) {
     data.campaignBot = body.campaignBot;
   }
 
+  /**
+   * הטקסט של הדיוור. מרווחים בלבד נשמרים כריק, כדי
+   * ש"ניקוי השדה" יהיה באמת ריק ולא ייראה כמוגדר.
+   */
+  if (typeof body.campaignText === "string") {
+    data.campaignText = body.campaignText.trim().slice(0, 4000) || null;
+  }
+
   if (body.botMode === "all" || body.botMode === "broadcast") {
     data.botMode = body.botMode;
   }

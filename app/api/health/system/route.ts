@@ -67,6 +67,25 @@ export async function GET() {
         .catch(() => -1),
     ]);
 
+  /**
+   * ============================================================
+   *  ההתראות - הערוץ שנכשל בשקט
+   * ============================================================
+   *
+   *  "לא קיבלתי התראה על ליד" ו"ההתראות בנייד פעם עובדות
+   *  ופעם לא" היו שאלות בלי תשובה: כשל נכתב לקונסול של
+   *  רנדר ונעלם, ומנוי שפג תוקפו נמחק בשקט.
+   */
+  const [devices, brokenDevices, notifyFailed] = await Promise.all([
+    db.pushSubscription.count().catch(() => -1),
+    db.pushSubscription
+      .count({ where: { lastError: { not: null } } })
+      .catch(() => -1),
+    db.leadEvent
+      .count({ where: { type: "notify_failed", createdAt: { gte: dayAgo } } })
+      .catch(() => -1),
+  ]);
+
   const ranAgo = minutesAgo(settings.engineRanAt);
 
   /**
@@ -107,12 +126,54 @@ export async function GET() {
    * המתג כבוי הוא מצב תקין ומכוון - אחרי דיוור מכבים
    * אותו. זו תזכורת, לא תקלה, ולכן היא לא נספרת כבעיה.
    */
-  const botNote = settings.campaignBot
-    ? "בוט הדיוור דלוק - כל מי שכותב מקבל תשובה."
-    : "בוט הדיוור כבוי - הודעות נשמרות ואתה מקבל התראה, אבל שום דבר לא נשלח ללקוח.";
+  /**
+   * **מתג דלוק בלי טקסט דיוור = בוט ששותק לכולם.** זה לא
+   * מצב תקין אלא תקלה שנראית כמו בוט שבור, ולכן היא
+   * נספרת כבעיה ולא כהערה.
+   */
+  const { anchorsOf } = await import("@/lib/campaign-audience");
+  const campaignReady =
+    settings.campaignText.trim().length > 0 &&
+    anchorsOf(settings.campaignText).length > 0;
+
+  if (settings.campaignBot && !campaignReady) {
+    problems.push(
+      settings.campaignText.trim().length === 0
+        ? "בוט הדיוור דלוק אבל לא הוכנס טקסט דיוור - הוא לא יענה לאף אחד. הגדרות → בוט הדיוור."
+        : "טקסט הדיוור קצר מדי לזיהוי - הבוט לא יענה לאף אחד. הדבק את ההודעה המלאה ששלחת."
+    );
+  }
+
+  const botNote = !settings.campaignBot
+    ? "בוט הדיוור כבוי - הודעות נשמרות ואתה מקבל התראה, אבל שום דבר לא נשלח ללקוח."
+    : campaignReady
+      ? "בוט הדיוור דלוק - מי שקיבל את הדיוור ומגיב מקבל תשובה. מי שלא קיבל, לא."
+      : "בוט הדיוור דלוק אבל חסר לו טקסט דיוור תקין - ראה בעיות למעלה.";
 
   if (failedJobs > 0) {
     problems.push(`${failedJobs} משימות נכשלו ביממה האחרונה.`);
+  }
+
+  const { pushConfigured } = await import("@/lib/push");
+
+  if (!pushConfigured()) {
+    problems.push(
+      "מפתחות ההתראות לא מוגדרים בשרת - לא תגיע אף התראה לנייד. צריך VAPID_PUBLIC_KEY ו-VAPID_PRIVATE_KEY ברנדר."
+    );
+  } else if (devices === 0) {
+    problems.push(
+      "אין אף מכשיר רשום להתראות - לא תגיע אף התראה לנייד. הגדרות → התראות בנייד → הפעל התראות במכשיר הזה."
+    );
+  } else if (brokenDevices > 0) {
+    problems.push(
+      `${brokenDevices} מתוך ${devices} מכשירים נכשלו בשליחה האחרונה. הגדרות → התראות בנייד מראה את השגיאה.`
+    );
+  }
+
+  if (notifyFailed > 0) {
+    problems.push(
+      `${notifyFailed} לידים נכנסו ביממה האחרונה בלי שיצאה עליהם שום התראה. כרטיס הליד מראה למה.`
+    );
   }
 
   if (intake === 0) {
@@ -142,6 +203,12 @@ export async function GET() {
     בוט_הדיוור: {
       דלוק: settings.campaignBot,
       קרס_ביממה: botCrashes,
+    },
+    התראות: {
+      מפתחות_מוגדרים: Boolean(process.env.VAPID_PUBLIC_KEY?.trim()),
+      מכשירים_רשומים: devices,
+      מכשירים_עם_שגיאה: brokenDevices,
+      לידים_בלי_התראה_ביממה: notifyFailed,
     },
     תנועה_ביממה: {
       הודעות_נכנסות: inbound,
