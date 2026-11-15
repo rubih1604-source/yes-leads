@@ -31,15 +31,16 @@ function test(name: string, fn: () => void) {
 /* ---------- הכלל עצמו ---------- */
 
 test("ברירת המחדל מסננת מכירה החוצה", () => {
-  const rule = JSON.stringify(leadsWhere(false));
-  assert.ok(rule.includes("sale"));
+  const rule = leadsWhere(false) as Record<string, unknown>;
+  assert.equal(rule.channel, "mine", "הרשימה שלך לא מוגבלת לערוץ שלך");
 });
 
 test("'כולל מכירה' באמת מפסיק לסנן אותה", () => {
-  const rule = JSON.stringify(leadsWhere(true));
-  assert.ok(
-    !rule.includes('"sale"'),
-    "הסימון לא עושה כלום - לידים שעברו לאלעד עדיין נעלמים"
+  const rule = leadsWhere(true) as Record<string, unknown>;
+  assert.equal(
+    rule.channel,
+    undefined,
+    "הסימון לא עושה כלום - לידים של המכירה עדיין נעלמים"
   );
 });
 

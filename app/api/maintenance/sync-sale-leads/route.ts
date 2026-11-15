@@ -195,13 +195,13 @@ export async function POST() {
       .findUnique({ where: { id: change.leadId }, select: { origin: true } })
       .catch(() => null);
 
+    /**
+     * שכתוב הבעלות הוסר. ראה ההסבר המלא ב-fix-origins:
+     * הבעלות היא מפתח של השורה ונקבעת בהגעה. מה שהכלי
+     * הזה עושה ונשאר נכון הוא **סימון הכניסות**, וזה מה
+     * שנספר ומשולם.
+     */
     if (current && current.origin !== change.steps.origin) {
-      await db.lead
-        .update({
-          where: { id: change.leadId },
-          data: { origin: change.steps.origin },
-        })
-        .catch(() => null);
       moved++;
     }
 

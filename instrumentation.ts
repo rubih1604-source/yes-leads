@@ -56,8 +56,52 @@ export async function register() {
 
     try {
       const { db } = await import("./lib/db");
+
+      /**
+       * ============================================================
+       *  כמה זמן באמת עבר מהסבב הקודם
+       * ============================================================
+       *
+       *  **מה שזה עונה עליו.** "הגדרתי שישלח אחרי דקה,
+       *  וזה הגיע אחרי 7-8 דקות."
+       *
+       *  הטיימר אמור לרוץ כל 60 שניות. אם המרווח בפועל
+       *  הוא 400 שניות, הטיימר נרדם - וזה קורה כשהשרת
+       *  נכנס לשינה בין בקשות. זו מסקנה אחרת לגמרי מ"משהו
+       *  בקוד דוחה את המשימה", והיא דורשת תיקון אחר:
+       *  מתזמן חיצוני שמעיר את השרת.
+       *
+       *  בלי המדידה הזו אי אפשר להבדיל בין השניים.
+       */
+      const now = new Date();
+      const previous = await db.settings
+        .findFirst({ select: { engineRanAt: true, engineWorstGap: true, engineWorstAt: true } })
+        .catch(() => null);
+
+      const gap = previous?.engineRanAt
+        ? Math.round((now.getTime() - previous.engineRanAt.getTime()) / 1000)
+        : null;
+
+      /** המדד הגרוע מתאפס כל יממה, שלא ייתקע על מקרה חד פעמי */
+      const worstIsOld =
+        !previous?.engineWorstAt ||
+        now.getTime() - previous.engineWorstAt.getTime() > 24 * 60 * 60 * 1000;
+
+      const worst =
+        gap !== null &&
+        (worstIsOld || gap > (previous?.engineWorstGap ?? 0))
+          ? gap
+          : (previous?.engineWorstGap ?? null);
+
       await db.settings.updateMany({
-        data: { engineRanAt: new Date(), engineError: failure },
+        data: {
+          engineRanAt: now,
+          engineError: failure,
+          engineGapSeconds: gap,
+          engineWorstGap: worst,
+          engineWorstAt:
+            gap !== null && worst === gap ? now : previous?.engineWorstAt,
+        },
       });
     } catch {
       // אם אי אפשר לרשום - הסבב עצמו כבר רץ, לא עוצרים בגלל זה

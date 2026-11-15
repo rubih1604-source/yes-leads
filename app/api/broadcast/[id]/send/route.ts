@@ -5,6 +5,7 @@ import { sendTemplate } from "@/lib/texter";
 import { blacklistedDigits, splitByBlacklist } from "@/lib/blacklist";
 import { ensureLeadForContact } from "@/lib/broadcast-lead";
 import { KIND_DATA } from "@/lib/inbound-context";
+import { judgeSend } from "@/lib/send-result";
 
 export const dynamic = "force-dynamic";
 
@@ -141,6 +142,16 @@ export async function POST(
     });
 
     /**
+     * **ההכרעה אינה קוד ה-HTTP.** טקסטר מחזירה 200 גם
+     * כשהיא דוחה את ההודעה; השדה success בגוף הוא מה
+     * שמכריע, והוא לא נקרא קודם - ולכן המסך הראה "נשלח
+     * ל-117" כשחלקם לא קיבלו כלום.
+     *
+     * מוכרע פעם אחת לכל נמען, ונקרא בכל שלושת המקומות.
+     */
+    const verdict = judgeSend(result);
+
+    /**
      * הרישום נעשה **בכל מקרה**, גם בכישלון.
      *
      * נמען שנכשל לא יישלח אליו שוב אוטומטית: עדיף לראות
@@ -153,8 +164,13 @@ export async function POST(
           sendId: send.id,
           contactId: contact.id,
           phone: contact.phone,
-          ok: result.ok === true,
-          error: result.ok ? null : result.error ?? "שגיאה",
+          /**
+           * **לא קוד ה-HTTP.** דיוור שטקסטר דחתה בגוף
+           * התשובה נספר כאן כהצלחה, והמסך הראה "נשלח
+           * ל-117" כשחלקם לא קיבלו כלום.
+           */
+          ok: verdict.state === "accepted",
+          error: verdict.reason,
         },
       })
       .catch(() => null);
@@ -193,14 +209,14 @@ export async function POST(
             broadcastKind: KIND_DATA,
             templateName: send.templateName,
             bodyText: `דיוור: ${list.name}`,
-            status: result.ok ? "sent" : "failed",
-            error: result.ok ? null : result.error ?? "שגיאה",
+            status: verdict.state,
+            error: verdict.reason,
           },
         })
         .catch(() => null);
     }
 
-    if (result.ok) {
+    if (verdict.state === "accepted") {
       sent++;
     } else {
       failed++;

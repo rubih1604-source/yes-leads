@@ -4,6 +4,11 @@ import { db } from "@/lib/db";
 import { withCanonicalFields } from "@/lib/field-aliases";
 import { POST as intakeLead } from "../leadmanager/route";
 import { supplierKeyForForm } from "@/lib/lead-forms";
+import {
+  facebookSources,
+  verifyTokenMatches,
+  withEachToken,
+} from "@/lib/facebook-sources";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +29,11 @@ export const dynamic = "force-dynamic";
  *    FB_VERIFY_TOKEN  - מחרוזת שמטא בודקת כשמגדירים את הכתובת
  *    FB_APP_SECRET    - לאימות שההודעה באמת מפייסבוק
  *    FB_PAGE_TOKEN    - טוקן עם leads_retrieval לשליפת הפרטים
+ *
+ *  **חשבון פייסבוק נוסף, בלי שום קשר לראשון**, מוגדר
+ *  באותם שמות עם סיומת _2 (ואילך). ראה lib/facebook-sources:
+ *  החתימה נבדקת מול כל הסודות, והליד נשלף עם כל טוקן עד
+ *  שאחד מצליח - ולכן אין צורך לשייך עמודים לאפליקציות.
  */
 
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -38,9 +48,12 @@ export async function GET(request: Request) {
   const token = url.searchParams.get("hub.verify_token");
   const challenge = url.searchParams.get("hub.challenge");
 
-  const expected = process.env.FB_VERIFY_TOKEN?.trim();
-
-  if (mode === "subscribe" && expected && token === expected && challenge) {
+  /**
+   * **כל מקור ומחרוזת האימות שלו.** חשבון פייסבוק נוסף -
+   * אפליקציה משלו, מחרוזת משלו. בלי זה אי אפשר היה להגדיר
+   * את הוובוק באפליקציה השנייה בכלל.
+   */
+  if (mode === "subscribe" && token && verifyTokenMatches(token) && challenge) {
     return new Response(challenge, {
       status: 200,
       headers: { "Content-Type": "text/plain" },
@@ -52,15 +65,32 @@ export async function GET(request: Request) {
 
 /** מוודא שההודעה נחתמה בסוד של האפליקציה - כלומר באמת מפייסבוק */
 function signatureValid(body: string, header: string | null): boolean {
-  const secret = process.env.FB_APP_SECRET?.trim();
-  if (!secret) return true; // לא הוגדר סוד - לא בודקים
+  const secrets = facebookSources()
+    .map((s) => s.appSecret)
+    .filter(Boolean);
+
+  if (secrets.length === 0) return true; // לא הוגדר סוד - לא בודקים
   if (!header?.startsWith("sha256=")) return false;
 
-  const expected = createHmac("sha256", secret).update(body).digest("hex");
   const provided = header.slice("sha256=".length);
 
-  if (expected.length !== provided.length) return false;
-  return timingSafeEqual(Buffer.from(expected), Buffer.from(provided));
+  /**
+   * **מספיק שאחד הסודות תואם.** כל אפליקציה חותמת בסוד
+   * שלה, ולכן התראה מהחשבון החדש לא תיחתם בסוד של הישן.
+   * בדיקה מול כולם היא מה שמאפשר שני חשבונות נפרדים
+   * לגמרי בלי שום הגדרה נוספת.
+   */
+  for (const secret of secrets) {
+    const expected = createHmac("sha256", secret).update(body).digest("hex");
+
+    if (expected.length !== provided.length) continue;
+
+    if (timingSafeEqual(Buffer.from(expected), Buffer.from(provided))) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 type GraphLead = {
@@ -187,9 +217,22 @@ async function graphLead(
 let lastNamesError = "";
 
 async function fetchLead(leadId: string): Promise<GraphLead | null> {
-  const token = process.env.FB_PAGE_TOKEN?.trim();
-  if (!token) return null;
+  /**
+   * **מנסים כל טוקן.** עמוד של החשבון החדש לא ייענה
+   * לטוקן של הישן, ולהיפך - ולכן אין צורך לדעת מראש
+   * איזה עמוד שייך לאיזו אפליקציה.
+   */
+  const { result } = await withEachToken(async (token) =>
+    fetchLeadWith(leadId, token)
+  );
 
+  return result;
+}
+
+async function fetchLeadWith(
+  leadId: string,
+  token: string
+): Promise<GraphLead | null> {
   lastNamesError = "";
 
   let res = await graphLead(leadId, token, FULL_FIELDS);
@@ -331,7 +374,9 @@ export async function POST(request: Request) {
           where: { id: log.id },
           data: {
             error:
-              "החתימה לא תאמה - בדוק ש-FB_APP_SECRET ברנדר זהה לסוד של האפליקציה בפייסבוק",
+              facebookSources().length > 1
+                ? "החתימה לא תאמה לאף אחד מהסודות המוגדרים. אם זו אפליקציה חדשה - צריך להוסיף את הסוד שלה כ-FB_APP_SECRET_2."
+                : "החתימה לא תאמה - בדוק ש-FB_APP_SECRET ברנדר זהה לסוד של האפליקציה בפייסבוק",
           },
         })
         .catch(() => null);
@@ -371,6 +416,9 @@ export async function POST(request: Request) {
   const intakeToken = process.env.LEADMANAGER_WEBHOOK_TOKEN?.trim() ?? "";
   const base = process.env.APP_URL?.trim() || "https://localhost";
 
+  /** כמה לידים נדחו - נכנס לסיכום ולשורת היומן */
+  let failed = 0;
+
   for (const { id: leadId, formId } of leadIds) {
     try {
       const lead = await fetchLead(leadId);
@@ -380,8 +428,14 @@ export async function POST(request: Request) {
           .create({
             data: {
               source: "facebook",
-              rawPayload: { leadgen_id: leadId, _error: "חסר FB_PAGE_TOKEN" },
-              error: "חסר FB_PAGE_TOKEN - אי אפשר לשלוף את הליד",
+              rawPayload: {
+                leadgen_id: leadId,
+                _error: "אף טוקן עמוד לא הצליח לשלוף את הליד",
+              },
+              error:
+                facebookSources().length === 0
+                  ? "לא הוגדר FB_PAGE_TOKEN - אי אפשר לשלוף את הליד"
+                  : `אף אחד מ-${facebookSources().length} טוקני העמוד לא הצליח לשלוף את הליד. אם זה חשבון פייסבוק חדש - צריך להוסיף לו FB_PAGE_TOKEN_2 ו-FB_APP_SECRET_2.`,
             },
           })
           .catch(() => null);
@@ -429,21 +483,100 @@ export async function POST(request: Request) {
           .catch(() => null);
       }
 
-      // אותו מסלול קליטה בדיוק כמו ליד מנגר
-      await intakeLead(
+      /**
+       * ============================================================
+       *  הקליטה נבדקת. ליד לא נעלם בשקט.
+       * ============================================================
+       *
+       *  **הכשל שעלה לו בכסף.** התשובה של הקליטה לא נבדקה
+       *  בכלל: קראנו לה, והמשכנו לסמן את השורה ביומן
+       *  כ"עובד בהצלחה" - גם כשהליד **לא נוצר**.
+       *
+       *  שלוש דרכים שבהן הקליטה דוחה ליד, וכולן היו
+       *  נראות ירוקות מבחוץ:
+       *    · טוקן לא תואם → 401, כל ליד מפייסבוק נדחה
+       *    · אין טלפון תקין בטופס
+       *    · שגיאה באמצע העיבוד
+       *
+       *  ליד מהקמפיין שלא הגיע למערכת התגלה רק בהשוואה
+       *  ידנית מול פייסבוק, ימים אחרי. מעכשיו הוא מתפוצץ
+       *  בפנים: התראה, שורה אדומה ביומן, ושמירה של כל
+       *  הפרטים כדי שאפשר יהיה לשחזר אותו.
+       */
+      const intake = await intakeLead(
         new Request(`${base}/api/webhooks/leadmanager?token=${encodeURIComponent(intakeToken)}`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(details),
         })
       );
+
+      const outcome = (await intake
+        .json()
+        .catch(() => ({}))) as { warning?: string; error?: string };
+
+      const rejected =
+        !intake.ok || Boolean(outcome.warning) || Boolean(outcome.error);
+
+      if (rejected) {
+        const why =
+          outcome.error ??
+          (outcome.warning === "no phone"
+            ? "לא נמצא מספר טלפון תקין בטופס"
+            : outcome.warning === "processing failed"
+              ? "שגיאה בעיבוד הליד"
+              : `הקליטה החזירה ${intake.status}`);
+
+        const who =
+          [details.first_name, details.last_name].filter(Boolean).join(" ") ||
+          details.phone ||
+          details.email ||
+          `ליד ${leadId}`;
+
+        await db.alert
+          .create({
+            data: {
+              title: "ליד מפייסבוק לא נקלט!",
+              body: `${who} · ${why} · מזהה בפייסבוק ${leadId}. הפרטים המלאים ביומן הקליטה.`,
+            },
+          })
+          .catch(() => null);
+
+        await db.webhookLog
+          .create({
+            data: {
+              source: "facebook",
+              rawPayload: {
+                leadgen_id: leadId,
+                פרטים: details,
+                _error: why,
+              } as never,
+              error: `הליד לא נקלט: ${why}`,
+            },
+          })
+          .catch(() => null);
+
+        failed++;
+      }
     } catch (err) {
+      failed++;
+
       await db.webhookLog
         .create({
           data: {
             source: "facebook",
             rawPayload: { leadgen_id: leadId },
             error: err instanceof Error ? err.message.slice(0, 500) : "שגיאה",
+          },
+        })
+        .catch(() => null);
+
+      /** גם קריסה היא ליד שאבד, וצריך לדעת עליה מיד */
+      await db.alert
+        .create({
+          data: {
+            title: "ליד מפייסבוק לא נקלט!",
+            body: `מזהה ${leadId} · ${err instanceof Error ? err.message.slice(0, 200) : "שגיאה"}`,
           },
         })
         .catch(() => null);
@@ -463,7 +596,9 @@ export async function POST(request: Request) {
           error:
             leadIds.length === 0
               ? "הפנייה הגיעה אבל לא היה בה ליד (לא אירוע leadgen)"
-              : null,
+              : failed > 0
+                ? `${failed} מתוך ${leadIds.length} לידים לא נקלטו`
+                : null,
         },
       })
       .catch(() => null);
@@ -473,5 +608,9 @@ export async function POST(request: Request) {
    * תמיד 200. אם נחזיר שגיאה, פייסבוק ינסה שוב ושוב ובסוף
    * ינתק את המנוי. שגיאות נרשמות ביומן הקליטה.
    */
-  return NextResponse.json({ ok: true, received: leadIds.length });
+  return NextResponse.json({
+    ok: true,
+    received: leadIds.length,
+    failed,
+  });
 }

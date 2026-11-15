@@ -42,7 +42,13 @@ export default async function SettingsPage() {
   // כמה לידים נראים ככפילות ועדיין לא סומנו
   const dupCandidates = await db.lead
     .findMany({
-      where: { origin: "leadmanager", duplicateOf: null },
+      /**
+       * בלי סינון duplicateOf.
+       *
+       * ליד שסומן בעבר ככפול לפי שם נעלם מהספירה הזו, ולכן
+       * המספר שראית היה קטן מהאמת ולא היה שום רמז לכך.
+       */
+      where: { origin: "leadmanager" },
       orderBy: { intakeAt: "asc" },
       select: { firstName: true, lastName: true },
     })

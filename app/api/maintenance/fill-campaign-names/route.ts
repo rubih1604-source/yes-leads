@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isLoggedIn } from "@/lib/auth";
 import { Prisma } from "@prisma/client";
+import { pageTokens } from "@/lib/facebook-sources";
 
 export const dynamic = "force-dynamic";
 
@@ -81,7 +82,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const token = process.env.FB_PAGE_TOKEN?.trim();
+  const token = pageTokens()[0] ?? "";
 
   if (!token) {
     return NextResponse.json(

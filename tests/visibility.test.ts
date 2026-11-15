@@ -110,7 +110,10 @@ test("שני ערוצים - שניהם מוזכרים, בלי כפילות", () 
 test("הכלל מסנן לפי הבעלות הנוכחית ולא לפי היסטוריה", () => {
   const rule = JSON.stringify(MY_LEADS_WHERE);
   assert.ok(rule.includes("whatsapp"), "נעלם התנאי של וואטסאפ");
-  assert.ok(rule.includes('"sale"'), "ליד שהועבר לאלעד יחזור לרשימה שלך");
+  assert.ok(
+    rule.includes('"channel":"mine"'),
+    "הרשימה שלך לא מוגבלת לערוץ שלך - ליד של המכירה יופיע אצלך"
+  );
   assert.ok(
     !rule.includes("entries"),
     "הסינון חזר לשאול על היסטוריית הכניסות"

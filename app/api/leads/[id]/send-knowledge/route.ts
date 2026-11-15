@@ -6,6 +6,7 @@ import {
   extractChatId,
   sendSessionMessage,
 } from "@/lib/texter";
+import { judgeSend } from "@/lib/send-result";
 
 export const dynamic = "force-dynamic";
 
@@ -60,28 +61,33 @@ export async function POST(
 
   const result = await sendSessionMessage({ chatId, text: item.answer });
 
+  /**
+   * **ההכרעה אינה קוד ה-HTTP.** טקסטר מחזירה 200 גם
+   * כשהיא דוחה את ההודעה; השדה success בגוף הוא מה
+   * שמכריע, והוא לא נקרא קודם.
+   */
+  const verdict = judgeSend(result);
+
   await db.message.create({
     data: {
       leadId: lead.id,
       direction: "out",
       bodyText: item.answer,
-      status: result.ok ? "sent" : "failed",
-      error: result.ok
-        ? null
-        : `${result.error ?? "שגיאה"} · ${JSON.stringify(result.raw).slice(0, 250)}`,
+      status: verdict.state,
+      error: verdict.reason,
     },
   });
 
   await db.leadEvent.create({
     data: {
       leadId: lead.id,
-      type: result.ok ? "bot_answered" : "message_failed",
+      type: verdict.state === "accepted" ? "bot_answered" : "message_failed",
       actor: "user",
       payload: { topic: item.topic, manual: true },
     },
   });
 
-  if (!result.ok) {
+  if (verdict.state !== "accepted") {
     return NextResponse.json(
       {
         error:

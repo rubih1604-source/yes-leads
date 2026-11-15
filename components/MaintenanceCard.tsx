@@ -29,15 +29,6 @@ export default function MaintenanceCard({
     router.refresh();
   }
 
-  async function markDuplicates() {
-    setBusy(true);
-    const res = await fetch("/api/maintenance/duplicates", { method: "POST" });
-    const data = await res.json().catch(() => ({}));
-    setMessage(res.ok ? `${data.marked} לידים סומנו ככפולים` : "הפעולה נכשלה");
-    setBusy(false);
-    router.refresh();
-  }
-
   // הכרטיס תמיד מוצג - יש בו גם תיקון תאריכים
 
   return (
@@ -63,20 +54,14 @@ export default function MaintenanceCard({
         </button>
       )}
 
-      {duplicates > 0 && (
-        <>
-          <div style={{ fontWeight: 600, margin: "18px 0 4px" }}>
-            לידים כפולים
-          </div>
-          <div style={{ fontSize: 13, color: "#475467", marginBottom: 12 }}>
-            <strong>{duplicates}</strong> לידים נראים כמו כפילות של ליד קיים
-            (אותו שם מלא). הם יסומנו בתגית &quot;כפול&quot; ברשימה — לא יימחקו.
-          </div>
-          <button className="btn" onClick={markDuplicates} disabled={busy}>
-            {busy ? "מסמן..." : `סמן ${duplicates} ככפולים`}
-          </button>
-        </>
-      )}
+      {/*
+        הכפתור "סמן ככפולים" הוסר.
+
+        הוא השווה שמות מלאים, ולכן שני אנשים שונים עם אותו
+        שם סומנו ככפילות - והשני נעלם מהספירות. ליד מזוהה
+        לפי טלפון, והתווית "כפול" נגזרת ממספר הכניסות של
+        אותו ליד עצמו.
+      */}
 
       <div
         style={{

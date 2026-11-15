@@ -11,6 +11,8 @@ import { viewWhere, describeView, type ViewDef } from "@/lib/lead-views";
 import RevenueBar from "@/components/RevenueBar";
 import ViewPicker from "@/components/ViewPicker";
 import AddLeadForm from "@/components/AddLeadForm";
+import SaleHoldBar from "@/components/SaleHoldBar";
+import { holdState } from "@/lib/sale-hold";
 
 export const dynamic = "force-dynamic";
 
@@ -19,17 +21,25 @@ export default async function HomePage({
 }: {
   searchParams?: { view?: string };
 }) {
-  const [statuses, subStatuses, revenue, templates, settings] = await Promise.all([
-    getStatuses(),
-    getSubStatusMap(),
-    getRevenue("month"),
-    db.template.findMany({
-      where: { approved: true },
-      orderBy: { name: "asc" },
-      select: { name: true, displayName: true },
-    }),
-    getSettings(),
-  ]);
+  const [statuses, subStatuses, revenue, templates, settings, hold] =
+    await Promise.all([
+      getStatuses(),
+      getSubStatusMap(),
+      getRevenue("month"),
+      db.template.findMany({
+        where: { approved: true },
+        orderBy: { name: "asc" },
+        select: { name: true, displayName: true },
+      }),
+      getSettings(),
+      /** מצב עצירת ההעברות - נקרא פעם אחת עם כל השאר */
+      holdState().catch(() => ({
+        on: false,
+        since: null,
+        waiting: 0,
+        leads: 0,
+      })),
+    ]);
 
   /**
    * תצוגות שמורות.
@@ -228,6 +238,26 @@ export default async function HomePage({
     <div className="app">
       <AutoRefresh seconds={15} />
       <RevenueBar data={revenue} />
+
+      {/*
+        עצירת העברות לקונה - לידים של שבת.
+        כבוי: שורה שקטה. דלוק: כרטיס אדום עם מספר הממתינים.
+      */}
+      <SaleHoldBar
+        on={hold.on}
+        waiting={hold.waiting}
+        leads={hold.leads}
+        since={
+          hold.since
+            ? hold.since.toLocaleString("he-IL", {
+                timeZone: "Asia/Jerusalem",
+                weekday: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : null
+        }
+      />
 
       {/* ליד ידני לרשימה האישית - בלי בחירת ערוץ */}
       <AddLeadForm mode="mine" channels={[]} />

@@ -138,9 +138,8 @@ export async function transferOnStatus(
    * אצלך - הוא רק נשלח גם למערכת אחרת.
    */
   if (isSale) {
-    await db.lead
-      .update({ where: { id: leadId }, data: { origin: "sale" } })
-      .catch(() => null);
+    const { toSaleChannel } = await import("./move-channel");
+    await toSaleChannel(leadId);
 
     await db.scheduledJob
       .updateMany({

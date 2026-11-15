@@ -190,14 +190,13 @@ async function build(): Promise<{
     const owner = ownerFromEntries(lead.entries, saleChannelIds);
     const shouldBe = originFor(lead.origin, owner);
 
+    /**
+     * שכתוב הבעלות הוסר מכאן. הבעלות היא מפתח של השורה
+     * ונקבעת בהגעה - ראה ההסבר המלא ב-fix-origins. הכלי
+     * ממשיך לעשות את מה שבאמת שלו: לסמן כניסות.
+     */
     if (lead.origin !== shouldBe && lead.origin !== "whatsapp") {
-      apply.push(() =>
-        db.lead
-          .update({ where: { id: lead.id }, data: { origin: shouldBe } })
-          .catch(() => null)
-      );
       plan.ownershipFixed++;
-      touched = true;
     }
 
     if (touched) plan.leads++;

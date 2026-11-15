@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isLoggedIn } from "@/lib/auth";
-import { SALE_ORIGIN } from "@/lib/sales-campaigns";
+import { toSaleChannel } from "@/lib/move-channel";
 
 export const dynamic = "force-dynamic";
 
@@ -74,9 +74,7 @@ export async function POST(request: Request) {
       })
       .catch(() => null);
 
-    await db.lead
-      .update({ where: { id: lead.id }, data: { origin: SALE_ORIGIN } })
-      .catch(() => null);
+    await toSaleChannel(lead.id);
 
     /**
      * ליד שמועבר למכירה לא צריך יותר רצפים.

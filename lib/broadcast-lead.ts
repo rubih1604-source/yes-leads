@@ -1,5 +1,5 @@
 import { normalizePhone } from "./phone";
-import { BROADCAST_ORIGIN } from "./channel";
+import { BROADCAST_ORIGIN, MINE_CHANNEL } from "./channel";
 
 /**
  * ============================================================
@@ -44,8 +44,13 @@ export async function ensureLeadForContact(
   const phone = normalizePhone(contact.phone);
   if (!phone) return null;
 
+  const { mineKey } = await import("./lead-by-phone");
+
   const existing = await db.lead
-    .findUnique({ where: { phone }, select: { id: true, firstName: true } })
+    .findUnique({
+      where: mineKey(phone),
+      select: { id: true, firstName: true },
+    })
     .catch(() => null);
 
   if (existing) {
@@ -74,6 +79,7 @@ export async function ensureLeadForContact(
         phone,
         firstName: contact.firstName?.trim() || null,
         origin: BROADCAST_ORIGIN,
+        channel: MINE_CHANNEL,
 
         /**
          * סטטוס נפרד, כדי שלא יתערבב עם "חדש" שהוא ליד

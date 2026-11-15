@@ -21,10 +21,12 @@ import { assignmentForForm } from "@/lib/lead-forms";
 import { channelForLead } from "@/lib/channels";
 import {
   channelForIncoming,
+  channelKey,
   isSameSubmission,
   isStatusUpdate,
   SAME_SUBMISSION_MINUTES_NO_ID,
 } from "@/lib/channel";
+import { phoneChannel } from "@/lib/lead-by-phone";
 
 export const dynamic = "force-dynamic";
 
@@ -118,15 +120,50 @@ async function handle(request: Request) {
     const phone = normalizePhone(mapped.phone);
 
     if (!phone) {
+      const empty = Object.keys(fromQuery).length === 0 && !fromBody;
+
+      const why = empty
+        ? "הבקשה הגיעה ריקה - לא נשלחו שדות כלל"
+        : "לא נמצא מספר טלפון תקין";
+
       await db.webhookLog.update({
         where: { id: log.id },
-        data: {
-          error:
-            Object.keys(fromQuery).length === 0 && !fromBody
-              ? "הבקשה הגיעה ריקה - לא נשלחו שדות כלל"
-              : "לא נמצא מספר טלפון תקין",
-        },
+        data: { error: why },
       });
+
+      /**
+       * ============================================================
+       *  ליד בלי טלפון הוא ליד שאבד
+       * ============================================================
+       *
+       *  **למה זו התראה ולא רק שורה ביומן.** אי אפשר
+       *  ליצור ליד בלי טלפון - הטלפון הוא המפתח. אבל
+       *  הפנייה כן הגיעה, ויש בה שם ומייל, ולכן **אפשר
+       *  להציל אותה** - אם יודעים עליה בזמן.
+       *
+       *  קודם זה היה שורה ביומן שאף אחד לא קורא, והליד
+       *  התגלה רק בהשוואה ידנית מול פייסבוק ימים אחרי.
+       */
+      if (!empty) {
+        /** המייל אינו חלק מהמיפוי הבסיסי, ולכן נשלף מהשדות */
+        const fields = extractExtraFields(raw);
+        const mail = typeof fields.email === "string" ? fields.email : "";
+
+        const who =
+          [mapped.firstName, mapped.lastName].filter(Boolean).join(" ").trim() ||
+          mail ||
+          "ליד ללא שם";
+
+        await db.alert
+          .create({
+            data: {
+              title: "ליד הגיע בלי טלפון - לא נקלט!",
+              body: `${who}${mail ? ` · ${mail}` : ""} · ${why}. הפרטים המלאים ביומן הקליטה - אפשר להזין אותו ידנית.`,
+            },
+          })
+          .catch(() => null);
+      }
+
       return NextResponse.json({ ok: true, warning: "no phone" });
     }
 
@@ -154,8 +191,6 @@ async function handle(request: Request) {
      * מקבצים ששמן שונה בכל פעם.
      */
     const alreadyCustomer = isExistingCustomer(extra);
-
-    const existing = await db.lead.findUnique({ where: { phone } });
 
     /**
      * לאיזו מערכת הכניסה הזו שייכת - שלך או של המכירה.
@@ -253,6 +288,51 @@ async function handle(request: Request) {
         : await channelForIncoming(ids);
 
     /**
+     * ============================================================
+     *  הסיבה לשיוך נשמרת, תמיד
+     * ============================================================
+     *
+     *  שלושה מנגנונים יכולים לתפוס כניסה, והראשון שתופס
+     *  מנצח. עד כאן אף אחד לא רשם מי תפס - ולכן ליד שנכנס
+     *  מהטופס שלך והופיע כשל הקונה היה חידה בלתי פתירה.
+     *
+     *  כולל המקרה שאף אחד לא תפס: "נשאר אצלך" הוא גם
+     *  החלטה, וגם היא צריכה להיות כתובה.
+     */
+    const matchedOn =
+      channel.matchedOn ??
+      (channel.isSale
+        ? "קמפיין מכירה - לפי מזהה"
+        : "ללא התאמה - נשאר אצלך");
+
+    /**
+     * ============================================================
+     *  מחפשים ליד קיים **בתוך הערוץ שהכניסה הזו שייכת לו**
+     * ============================================================
+     *
+     *  **כאן היה הכשל שחזר שוב ושוב, בכל צורה אחרת.**
+     *
+     *  קודם השורה הזו הייתה בראש הפונקציה, לפני שבכלל ידענו
+     *  מאיזה קמפיין הליד הגיע, והיא שאלה שאלה אחת: "יש ליד
+     *  עם הטלפון הזה?" - בלי ערוץ, כי במסד הטלפון היה ייחודי
+     *  ולא היה ערוץ לשאול עליו.
+     *
+     *  התוצאה בשטח: אדם נכנס בבוקר מקמפיין של המכירה, ועשר
+     *  דקות אחר כך מילא את המודעה שלך. הכניסה השנייה מצאה
+     *  את השורה של המכירה, עדכנה אותה, ו**הליד שלך מעולם
+     *  לא נוצר**. קמפיין שילם, הליד לא הופיע.
+     *
+     *  עכשיו השאלה מלאה: "יש ליד עם הטלפון הזה **בערוץ
+     *  הזה**?". אין - נולד ליד חדש, גם אם לאותו אדם כבר יש
+     *  שורה בערוץ השני. שתי מערכות, אפס נגיעה.
+     */
+    const leadChannel = channelKey(channel.isSale);
+
+    const existing = await db.lead
+      .findUnique({ where: phoneChannel(phone, leadChannel) })
+      .catch(() => null);
+
+    /**
      * מאיזו דלת הליד נכנס.
      *
      * החיבור הישיר לפייסבוק מסמן את עצמו ב-_source, ולכן
@@ -298,6 +378,16 @@ async function handle(request: Request) {
            * לקוחות שלו קיבלו ממך הודעות.
            */
           origin: channel.isSale ? "sale" : "leadmanager",
+
+          /**
+           * הערוץ נחתם בלידה, והוא חלק מהמפתח של השורה.
+           *
+           * זה מה שמאפשר לאותו אדם להיות ליד של המכירה וליד
+           * שלך במקביל, בלי שאחד יבלע את השני. origin נשאר
+           * צמוד אליו כדי שכל הדוחות והמסכים הוותיקים
+           * ימשיכו לקרוא את אותו דבר.
+           */
+          channel: leadChannel,
           extra: Object.keys(extra).length
             ? (extra as Prisma.InputJsonObject)
             : undefined,
@@ -341,6 +431,7 @@ async function handle(request: Request) {
             via,
             channelId: inChannel?.id ?? null,
             isSale: channel.isSale,
+            matchedOn,
             price: entryPrice,
             /** השדות שההגעה הזו נשאה - ראה ההערה בסכימה */
             extra: Object.keys(extra).length
@@ -490,6 +581,7 @@ async function handle(request: Request) {
           incomingFbId,
           knownFbId: previousExtra.fb_leadid ?? null,
           channel: channel.channel,
+          via,
           entries: recentEntries,
         });
 
@@ -521,6 +613,27 @@ async function handle(request: Request) {
        *  נשמרת ככניסות ונספרת בדוחות, אבל היא כבר לא בולעת
        *  את ההגעה הנוכחית.
        */
+      /**
+       * ============================================================
+       *  אין יותר "העברת בעלות". הבעלות היא המפתח
+       * ============================================================
+       *
+       *  **מה שהיה כאן, ולמה זה נמחק.**
+       *
+       *  כאן ישבה ההכרעה "של מי הליד עכשיו", והיא כתבה
+       *  מחדש את הבעלות בכל הגעה. זו הייתה התשובה הלא
+       *  נכונה לשאלה הנכונה: ניסינו להחליט למי שייכת שורה
+       *  **אחת** ששני העולמות חלקו - במקום פשוט לתת לכל
+       *  עולם שורה משלו.
+       *
+       *  השורה הזו כבר שייכת לערוץ שלה, כי לפי הערוץ
+       *  מצאנו אותה. אין מה להכריע ואין מה להעביר.
+       *
+       *  מה שכן נשאר: ליד שנולד כנמען דיוור או כשיחת
+       *  וואטסאפ והיום נכנס מקמפיין אמיתי - הופך לליד
+       *  מלא. זו העלאה בדרגה, לא העברה בין עולמות, והיא
+       *  בדיוק מה שביקשת: כל כניסה נכנסת כליד.
+       */
       const ownerOrigin = isSaleNow ? "sale" : "leadmanager";
 
       await db.lead.update({
@@ -535,7 +648,7 @@ async function handle(request: Request) {
            * דורסת סטטוס שאתה קבעת - זה מה שגרם לליד
            * שעבדת עליו אתמול להשתנות מעצמו.
            */
-          status: isSaleNow ? existing.status : incomingStatus ?? existing.status,
+          status: incomingStatus ?? existing.status,
 
           /**
            * הליד נכנס שוב עכשיו - ולכן הוא צף לראש הרשימה
@@ -552,7 +665,7 @@ async function handle(request: Request) {
            * משתי דלתות, והגעה שהיא של אלעד - כניסה אצלו
            * לא מזיזה כלום אצלך.
            */
-          intakeAt: arrivalIntakeAt({ sameSubmission, isSale: isSaleNow }),
+          intakeAt: arrivalIntakeAt({ sameSubmission }),
 
           origin: ownerOrigin,
           extra: Object.keys(extra).length
@@ -611,6 +724,7 @@ async function handle(request: Request) {
               via,
               channelId: inChannel?.id ?? null,
               isSale: channel.isSale,
+              matchedOn,
               price: entryPrice,
               /**
                * **השדות של ההגעה הזו, ולא תערובת.** זה
@@ -704,7 +818,7 @@ async function handle(request: Request) {
           firstName: mapped.firstName ?? existing.firstName,
           lastName: mapped.lastName ?? existing.lastName,
           phone,
-          status: isSaleNow ? existing.status : incomingStatus ?? existing.status,
+          status: incomingStatus ?? existing.status,
           extra,
           channelName: inChannel?.name ?? null,
           isSale: channel.isSale,

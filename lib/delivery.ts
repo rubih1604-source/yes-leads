@@ -19,6 +19,7 @@
  */
 
 import { db } from "./db";
+import { HELD_STATE, isHolding } from "./sale-hold";
 import {
   deliveryVerdict,
   buildPayload,
@@ -37,6 +38,21 @@ import {
  * לא שולח בפועל - רק רושם. השליחה עצמה נעשית במנוע, כדי
  * שהקליטה של הליד לא תחכה לשרת של הקונה.
  */
+/**
+ * האם העברה חדשה צריכה לחכות לשחרור.
+ *
+ * עטוף ב-try כדי שתקלה בקריאת ההגדרות **לא תעצור ליד**:
+ * ברירת המחדל בספק היא לשלוח, כמו תמיד. עדיף ליד שיצא
+ * מאשר ליד שנתקע בלי שאף אחד ידע.
+ */
+async function waitForRelease(): Promise<boolean> {
+  try {
+    return await isHolding();
+  } catch {
+    return false;
+  }
+}
+
 export async function queueDelivery(args: {
   leadId: string;
   entryId: string;
@@ -93,14 +109,30 @@ export async function queueDelivery(args: {
 
     if (queued) return true; // כבר בתור
 
+    /**
+     * ============================================================
+     *  עצירת העברות - לידים של שבת
+     * ============================================================
+     *
+     *  השליחה נרשמת בדיוק כמו תמיד, רק במצב "held". המנוע
+     *  שולח רק "pending", ולכן היא מחכה בלי שום מנגנון
+     *  נוסף ובלי שום שינוי בקליטה.
+     *
+     *  **רק ערוץ מכירה נעצר.** ערוץ שלך (למשל איזי פיזי)
+     *  הוא שליחה שלך למערכת שלך - אין סיבה לעצור אותה,
+     *  והעצירה הזו היא על העברות לקונה בלבד.
+     */
+    const hold = channel.isSale ? await waitForRelease() : false;
+
     await db.leadDelivery
       .create({
         data: {
           channelId: channel.id,
           leadId: args.leadId,
           entryId: args.entryId,
-          state: "pending",
-          nextTryAt: new Date(),
+          state: hold ? HELD_STATE : "pending",
+          nextTryAt: hold ? null : new Date(),
+          heldAt: hold ? new Date() : null,
         },
       })
       .catch(() => null);
@@ -136,14 +168,18 @@ export async function queueDelivery(args: {
   // אין כתובת או שהשליחה כבויה - אין מה לעשות
   if (!buyer?.webhookUrl?.trim() || !buyer.sendEnabled) return false;
 
+  /** קונה הוא תמיד העברה החוצה, ולכן העצירה חלה עליו */
+  const holdBuyer = await waitForRelease();
+
   await db.leadDelivery
     .create({
       data: {
         buyerId: buyer.id,
         leadId: args.leadId,
         entryId: args.entryId,
-        state: "pending",
-        nextTryAt: new Date(),
+        state: holdBuyer ? HELD_STATE : "pending",
+        nextTryAt: holdBuyer ? null : new Date(),
+        heldAt: holdBuyer ? new Date() : null,
       },
     })
     .catch(() => null); // כפילות = כבר בתור, וזה בסדר

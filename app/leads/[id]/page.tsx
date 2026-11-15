@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { statusColor } from "@/lib/statuses";
 import { displayPhone, dialPhone, waLink } from "@/lib/phone";
 import { FIELD_LABELS, FIELD_ORDER } from "@/lib/leadmanager-mapping";
+import { statusLabel, reachedCustomer } from "@/lib/send-result";
 import { getStatuses } from "@/lib/status-store";
 import { getSubStatusMap } from "@/lib/substatus";
 import { isExistingCustomer, supplierAnswer } from "@/lib/existing-customer";
@@ -16,6 +17,7 @@ import { ownerOf, entryCountIn } from "@/lib/channel";
 import LeadTasks from "@/components/LeadTasks";
 import BackLink from "@/components/BackLink";
 import AutoRefresh from "@/components/AutoRefresh";
+import ReleaseOneHold from "@/components/ReleaseOneHold";
 import type { TemplateOption } from "@/components/SendTemplateSheet";
 import type { KnowledgeOption } from "@/components/SendKnowledgeSheet";
 
@@ -330,6 +332,30 @@ export default async function LeadPage({
                         {" · מכירה"}
                       </span>
                     )}
+
+                    {/**
+                      * ============================================
+                      *  **למה** הכניסה שויכה למי ששויכה
+                      * ============================================
+                      *
+                      *  שלושה מנגנונים יכולים לתפוס כניסה,
+                      *  והראשון שתופס מנצח. בלי השורה הזו ליד
+                      *  שנכנס מהטופס שלך והופיע כשל הקונה הוא
+                      *  חידה בלתי פתירה - אין איך לדעת איזה
+                      *  כלל תפס אותו, ולכן אין מה לתקן.
+                      */}
+                    {entry.matchedOn ? (
+                      <span
+                        style={{
+                          display: "block",
+                          color: entry.isSale ? "#b54708" : "#667085",
+                          fontSize: 12,
+                          marginTop: 2,
+                        }}
+                      >
+                        שויך לפי → {entry.matchedOn}
+                      </span>
+                    ) : null}
                   </span>
                   <strong style={{ fontSize: 14 }}>
                     {formatDate(entry.at)}
@@ -414,14 +440,42 @@ export default async function LeadPage({
                 <div className="bubble-text">
                   {m.bodyText || m.templateName || "(ללא טקסט)"}
                 </div>
+                {/**
+                  * ============================================================
+                  *  מה באמת קרה להודעה
+                  * ============================================================
+                  *
+                  *  **זו השורה שהטעתה.** המערכת רשמה "נשלח"
+                  *  ברגע שטקסטר החזירה 200 - כלומר "קיבלתי
+                  *  את הבקשה" - והמסך הציג את זה כאילו
+                  *  הלקוח קיבל. נכנסת לצ'אט, ושם לא היה
+                  *  כלום.
+                  *
+                  *  עכשיו כל הודעה אומרת בדיוק את מה שידוע
+                  *  עליה: "נמסר ללקוח" רק כשוואטסאפ אישרה,
+                  *  ו"יצא לטקסטר" כשזה כל מה שאנחנו יודעים.
+                  */}
                 <div className="bubble-meta">
                   {m.direction === "in" ? "הלקוח" : "אנחנו"}
                   {m.templateName ? ` · ${m.templateName}` : ""}
                   {" · "}
                   {formatDate(m.createdAt)}
-                  {m.status === "failed" && m.error
-                    ? ` · נכשל: ${m.error}`
-                    : ""}
+                  {m.direction === "out" && (
+                    <span
+                      style={{
+                        color: reachedCustomer(m.status)
+                          ? "#15803d"
+                          : m.status === "failed"
+                            ? "#b42318"
+                            : "#b54708",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {" · "}
+                      {statusLabel(m.status)}
+                    </span>
+                  )}
+                  {m.status === "failed" && m.error ? ` · ${m.error}` : ""}
                 </div>
               </div>
             ))}
@@ -444,11 +498,20 @@ export default async function LeadPage({
           {lead.deliveries.map((d) => {
             const who = d.channelRef?.name ?? d.buyer?.name ?? "לקוח שנמחק";
 
+            /**
+             * "מוחזק" הוא מצב משלו, ולא "ממתין".
+             *
+             * ממתין = המערכת תשלח בסבב הקרוב. מוחזק =
+             * אתה עצרת, והוא יצא רק כשתשחרר. שתי מילים
+             * שונות, כי זה הבדל שחייב להיות ברור מהמסך.
+             */
             const state =
               d.state === "sent"
                 ? { text: "נשלח בהצלחה", color: "#027a48" }
                 : d.state === "failed"
                 ? { text: "נכשל", color: "#b42318" }
+                : d.state === "held"
+                ? { text: "מוחזק - ממתין לשחרור ממך", color: "#b42318" }
                 : { text: "ממתין לשליחה", color: "#b54708" };
 
             const sentFields =
@@ -488,7 +551,25 @@ export default async function LeadPage({
                         timeZone: "Asia/Jerusalem",
                       })}`}
                   {d.attempts > 1 ? ` · ${d.attempts} ניסיונות` : ""}
+                  {d.state === "held" && d.heldAt
+                    ? ` · הוחזק ב-${d.heldAt.toLocaleString("he-IL", {
+                        timeZone: "Asia/Jerusalem",
+                      })}`
+                    : ""}
+                  {d.releasedAt
+                    ? ` · שוחרר ב-${d.releasedAt.toLocaleString("he-IL", {
+                        timeZone: "Asia/Jerusalem",
+                      })}`
+                    : ""}
                 </div>
+
+                {/*
+                  שחרור של ליד בודד, בלי לכבות את העצירה
+                  הכללית - למשל ליד דחוף באמצע שבת.
+                */}
+                {d.state === "held" ? (
+                  <ReleaseOneHold leadId={lead.id} />
+                ) : null}
 
                 {d.error && (
                   <div

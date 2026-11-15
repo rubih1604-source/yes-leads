@@ -8,6 +8,9 @@ import {
   originFor,
   MANUAL_SOURCE,
 } from "@/lib/manual-lead";
+import { channelKey } from "@/lib/channel";
+import { phoneChannel } from "@/lib/lead-by-phone";
+import { toSaleChannel } from "@/lib/move-channel";
 import { queueDelivery } from "@/lib/delivery";
 import { priceForAd, readAdPrices } from "@/lib/ad-pricing";
 import { notifyNewLead } from "@/lib/notify-lead";
@@ -62,8 +65,18 @@ export async function POST(req: NextRequest) {
 
   const isSale = channel?.isSale === true;
 
+  /**
+   * ליד ידני נבדק **בתוך הערוץ שבחרת**.
+   *
+   * קודם הבדיקה הייתה על הטלפון בלבד, ולכן מספר שקיים אצל
+   * המכירה חסם יצירת ליד שלך לאותו אדם - בדיוק ההיפוך של
+   * מה שההפרדה אמורה לתת.
+   */
   const existing = await db.lead
-    .findFirst({ where: { phone: plan.phone }, select: { id: true } })
+    .findUnique({
+      where: phoneChannel(plan.phone, channelKey(isSale)),
+      select: { id: true },
+    })
     .catch(() => null);
 
   const action = duplicateAction(Boolean(existing));
@@ -79,6 +92,7 @@ export async function POST(req: NextRequest) {
         status: "חדש",
         source: MANUAL_SOURCE,
         origin: originFor(isSale),
+        channel: channelKey(isSale),
         extra: plan.extra as Prisma.InputJsonObject,
       },
     });
@@ -122,7 +136,7 @@ export async function POST(req: NextRequest) {
      *  אותו כלל בדיוק שהוובוק מריץ, מאותה פונקציה. רק
      *  התאריך זז - הסטטוס, השם וההיסטוריה לא נגעו בהם.
      */
-    await bumpArrival(db, leadId, { isSale });
+    await bumpArrival(db, leadId, {});
 
     await db.leadEvent
       .create({
@@ -177,9 +191,7 @@ export async function POST(req: NextRequest) {
    * שהוזן עכשיו לערוץ מכירה חייב לעבור בעלות גם הוא.
    */
   if (isSale) {
-    await db.lead
-      .update({ where: { id: leadId }, data: { origin: "sale" } })
-      .catch(() => null);
+    await toSaleChannel(leadId);
   }
 
   /**

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isLoggedIn } from "@/lib/auth";
+import { MINE_CHANNEL } from "@/lib/channel";
 import {
   clearSalesCampaignCache,
   normalizeName,
@@ -110,7 +111,10 @@ export async function DELETE(
     if (inSaleChannel) continue;
 
     await db.lead
-      .update({ where: { id: lead.id }, data: { origin: "leadmanager" } })
+      .update({
+        where: { id: lead.id },
+        data: { origin: "leadmanager", channel: MINE_CHANNEL },
+      })
       .catch(() => null);
     returned++;
   }

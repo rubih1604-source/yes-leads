@@ -61,14 +61,16 @@ export async function GET(request: Request) {
     );
   }
 
-  const lead = await db.lead.findUnique({
+  const lead = await db.lead.findFirst({
     where: { phone },
+    orderBy: { channel: "asc" },
     select: {
       id: true,
       phone: true,
       firstName: true,
       status: true,
       origin: true,
+      channel: true,
       doNotContact: true,
       messages: {
         orderBy: { createdAt: "asc" },

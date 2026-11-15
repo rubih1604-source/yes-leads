@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isLoggedIn } from "@/lib/auth";
+import { SALE_CHANNEL } from "@/lib/channel";
 import {
   clearSalesCampaignCache,
   normalizeName,
@@ -90,7 +91,10 @@ export async function POST(request: Request) {
       if (!findSaleCampaign(identifiersOf(extra), lookup)) continue;
 
       await db.lead
-        .update({ where: { id: lead.id }, data: { origin: SALE_ORIGIN } })
+        .update({
+          where: { id: lead.id },
+          data: { origin: SALE_ORIGIN, channel: SALE_CHANNEL },
+        })
         .catch(() => null);
       moved++;
     }

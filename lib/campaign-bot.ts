@@ -71,6 +71,7 @@ import {
   receivedCampaign,
   CAMPAIGN_WINDOW_DAYS,
 } from "./campaign-audience";
+import { judgeSend } from "./send-result";
 
 export type CampaignAction =
   | "off"
@@ -127,10 +128,19 @@ async function send(
     return false;
   }
 
-  const result = await sendSessionMessage({ chatId, text }).catch(() => ({
+  const sendResult = await sendSessionMessage({ chatId, text }).catch(() => ({
     ok: false as const,
+    status: 0,
+    raw: null,
     error: "שליחה נכשלה",
   }));
+
+  /**
+   * **ההכרעה אינה קוד ה-HTTP.** טקסטר מחזירה 200 גם
+   * כשהיא דוחה את ההודעה, והשדה success בגוף הוא מה
+   * שמכריע. קודם הוא לא נקרא, ודחייה נרשמה כהצלחה.
+   */
+  const verdict = judgeSend(sendResult);
 
   await db.message
     .create({
@@ -138,15 +148,13 @@ async function send(
         leadId: lead.id,
         direction: "out",
         bodyText: text,
-        status: result.ok ? "sent" : "failed",
-        error: result.ok
-          ? null
-          : String((result as { error?: string }).error ?? "שגיאה"),
+        status: verdict.state,
+        error: verdict.reason,
       },
     })
     .catch(() => null);
 
-  return result.ok;
+  return verdict.state === "accepted";
 }
 
 /**

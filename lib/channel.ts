@@ -64,11 +64,36 @@ export const NON_LEAD_ORIGINS = ["whatsapp", BROADCAST_ORIGIN];
 
 export type Channel = "mine" | "sale";
 
+/**
+ * ============================================================
+ *  הערוץ הוא **מפתח של השורה**, לא תכונה שלה
+ * ============================================================
+ *
+ *  **מה שזה מתקן.** עד כאן "של מי הליד" היה שדה שמשתנה:
+ *  origin נכתב מחדש בכל הגעה, בכל העברה ובכל תיקון, ושורה
+ *  אחת נדדה הלוך־חזור בין שתי המערכות. אדם שנכנס גם אצל
+ *  המכירה וגם אצלך לא יכול היה להתקיים בשני הצדדים, כי
+ *  במסד הייתה לו שורה אחת בלבד.
+ *
+ *  מהיום הערוץ הוא חלק מהמפתח: `@@unique([phone, channel])`.
+ *  שתי שורות, שני עולמות, אפס נגיעה. ההערכים האלה נכתבים
+ *  למסד ואסור לשנות אותם בלי מיגרציה.
+ */
+export const MINE_CHANNEL: Channel = "mine";
+export const SALE_CHANNEL: Channel = "sale";
+
+/** הערוץ שכניסה שייכת אליו, כמחרוזת שנשמרת על הליד */
+export function channelKey(isSale: boolean): Channel {
+  return isSale ? SALE_CHANNEL : MINE_CHANNEL;
+}
+
 /** כניסה כפי שהיא נשמרת - רק מה שצריך כדי להחליט על ערוץ */
 export type EntryLike = {
   isSale?: boolean | null;
   campaign?: string | null;
   at?: Date | string | null;
+  /** מאיזו דלת נרשמה הכניסה: leadmanager או facebook */
+  via?: string | null;
 };
 
 /**
@@ -129,7 +154,12 @@ export async function channelForIncoming(
         isSale: true,
         price: hit.price,
         campaignName: hit.name,
-        matchedOn: hit.matchedOn,
+        /**
+         * המפתח לבדו ("1203948...") לא אומר כלום על המסך.
+         * השם של הקמפיין שתפס **ולפי איזה מפתח** הוא מה
+         * שמאפשר לראות התנגשות ולתקן אותה.
+         */
+        matchedOn: `קמפיין מכירה: ${hit.name} · לפי ${hit.matchedOn}`,
       }
     : {
         channel: "mine",
@@ -343,6 +373,26 @@ export function isStatusUpdate(args: {
   return !INITIAL_STATUSES.includes(args.incomingStatus);
 }
 
+/**
+ * ============================================================
+ *  "אותה הגשה" - למה זה קיים בכלל, ומה צומצם כאן
+ * ============================================================
+ *
+ *  ליד מנגר והחיבור הישיר לפייסבוק רצים במקביל, ולכן אותה
+ *  הגשה אחת של הלקוח נשמעת **פעמיים** - פעם מכל דלת,
+ *  בהפרש של שניות. זו לא הגעה שנייה, ואסור לספור אותה.
+ *
+ *  **מה שהיה כאן ונמחק.** כשלא הגיע מזהה הגשה, כל כניסה
+ *  בעשר הדקות האחרונות נחשבה "אותה הגשה" - **בלי קשר
+ *  לדלת שממנה הגיעה**. כלומר אדם שמילא באמת פעמיים, או
+ *  שתי מודעות שונות שלך שנכנסו ברצף, נבלעו: בלי כניסה,
+ *  בלי תווית כפול, בלי הקפצה.
+ *
+ *  הכלל המדויק הוא לא "קרוב בזמן" אלא **"אותו דבר שנשמע
+ *  משתי דלתות"**. לכן בלי מזהה הגשה נדרשות שתי התאמות:
+ *  גם חלון הזמן, וגם דלת **שונה** מזו שרשומה. אותה דלת
+ *  פעמיים = שתי הגעות אמיתיות, וכך הן נספרות.
+ */
 export function isSameSubmission(args: {
   /** מזהה ההגשה של פייסבוק בכניסה הנכנסת */
   incomingFbId: string | null;
@@ -350,6 +400,8 @@ export function isSameSubmission(args: {
   knownFbId: string | null;
   /** הערוץ של הכניסה הנכנסת */
   channel: Channel;
+  /** הדלת שדרכה הגיעה הכניסה הנוכחית */
+  via?: string | null;
   /** הכניסות שכבר נרשמו לליד */
   entries: EntryLike[];
   /** עכשיו - פרמטר כדי שאפשר יהיה לבדוק את זה */
@@ -379,7 +431,26 @@ export function isSameSubmission(args: {
     if (Number.isNaN(at.getTime())) return false;
 
     const gap = now.getTime() - at.getTime();
-    return gap >= 0 && gap < window;
+    if (gap < 0 || gap >= window) return false;
+
+    /**
+     * בלי מזהה הגשה, קרבה בזמן לבדה לא מספיקה.
+     *
+     * אותה הגשה מגיעה משתי **דלתות שונות**. אותה דלת
+     * פעמיים היא שתי הגעות, וחייבת להיספר - זה בדיוק
+     * הליד שנעלם בלי שאף אחד ידע.
+     */
+    if (!args.incomingFbId) {
+      const here = args.via ?? null;
+      const there = e.via ?? null;
+
+      /** דלת לא ידועה משני הצדדים - נשארים זהירים כמו קודם */
+      if (!here || !there) return true;
+
+      return here !== there;
+    }
+
+    return true;
   });
 }
 
@@ -438,7 +509,20 @@ export const MY_LEADS_WHERE = {
    *   - אותו אדם מילא שוב את הטופס שלך -> חוזר אליך
    *   - ליד שהגיע מקמפיין של אלעד -> אצלו בלבד
    */
-  origin: { notIn: [...NON_LEAD_ORIGINS, SALE_ORIGIN] },
+  /**
+   * ============================================================
+   *  מסננים לפי הערוץ, כי הוא מפתח ולא מצב רגעי
+   * ============================================================
+   *
+   *  קודם הסינון היה על origin בלבד. origin הוא שדה שנכתב
+   *  מחדש בכל הגעה, ולכן הרשימה שלך הייתה תלויה בערך שזז -
+   *  והיה אפשר לאבד ליד בגלל כתיבה אחת שגויה במקום רחוק.
+   *
+   *  הערוץ נקבע בלידה ולא משתנה מעצמו. origin נשאר כאן רק
+   *  כדי להוציא מה שאינו ליד בכלל: וואטסאפ ונמעני דיוור.
+   */
+  channel: MINE_CHANNEL,
+  origin: { notIn: [...NON_LEAD_ORIGINS] },
 };
 
 /**
@@ -457,13 +541,20 @@ export const MY_LEADS_WHERE = {
  */
 export function leadsWhere(includeSale = false) {
   return {
-    origin: {
-      notIn: includeSale
-        ? [...NON_LEAD_ORIGINS]
-        : [...NON_LEAD_ORIGINS, SALE_ORIGIN],
-    },
+    ...(includeSale ? {} : { channel: MINE_CHANNEL }),
+    origin: { notIn: [...NON_LEAD_ORIGINS] },
   };
 }
+
+/**
+ * הרשימה של המכירה - בדיוק המשלים, ולא "כל מה שנשאר".
+ *
+ * קודם מסך המכירה שאל `origin: "sale"` וזו הייתה שאלה
+ * שנייה על אותו דבר, עם תשובה שיכלה להיפרד מהרשימה שלך.
+ */
+export const SALE_LEADS_WHERE = {
+  channel: SALE_CHANNEL,
+};
 
 export function ownerOf(origin: string): Channel {
   /**

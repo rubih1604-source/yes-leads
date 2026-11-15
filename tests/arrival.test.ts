@@ -57,15 +57,33 @@ test("אותה הגשה משתי דלתות לא מזיזה כלום", () => {
   assert.equal(bumpsToTop({ sameSubmission: true }), false);
 });
 
-test("כניסה של קונה לא מזיזה את הרשימה שלך", () => {
-  assert.equal(bumpsToTop({ isSale: true }), false);
+test("כניסה של המכירה מקפיצה את הליד **שלה**", () => {
+  /**
+   * החריג `isSale -> לא מקפיץ` נמחק, ובכוונה.
+   *
+   * הוא נולד כשלכל טלפון הייתה שורה אחת משותפת: כניסה של
+   * המכירה נחתה על השורה שלך, ולכן היה צריך לחסום אותה.
+   * מרגע שלכל ערוץ שורה משלו היא נוחתת על השורה של
+   * המכירה - ושם היא **חייבת** להקפיץ, אחרת ליד שנכנס
+   * נראה כאילו לא נכנס.
+   */
+  assert.equal(bumpsToTop({} as never), true);
+
+  const src = io.readFileSync(
+    new URL("../lib/arrival.ts", import.meta.url),
+    "utf8"
+  );
+
+  assert.ok(
+    !/facts\.isSale/.test(src),
+    "החריג שבלע הגעה של המכירה חזר"
+  );
 });
 
 test("התאריך שנכתב הוא עכשיו, ו-undefined כשלא נוגעים", () => {
   const now = new Date("2026-11-01T18:00:00Z");
 
   assert.equal(arrivalIntakeAt({}, now), now);
-  assert.equal(arrivalIntakeAt({ isSale: true }, now), undefined);
   assert.equal(arrivalIntakeAt({ sameSubmission: true }, now), undefined);
 });
 

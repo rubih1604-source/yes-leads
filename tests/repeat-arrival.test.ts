@@ -187,7 +187,7 @@ test("הגעה שאינה עדכון מעדכנת את תאריך הכניסה",
    * עותק משלו - העותק הוא מה שגרם לשתי התנהגויות.
    */
   assert.ok(
-    hook.includes("arrivalIntakeAt({ sameSubmission, isSale: isSaleNow })"),
+    hook.includes("arrivalIntakeAt({ sameSubmission })"),
     "הליד לא יצוף לראש הרשימה"
   );
 });

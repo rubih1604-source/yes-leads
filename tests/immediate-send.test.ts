@@ -64,8 +64,14 @@ test("המנוע לא יכול לרוץ פעמיים במקביל", () => {
 });
 
 test("השומר משתחרר גם כשההרצה נכשלת", () => {
+  /**
+   * החלון נגזר עד סוף הפונקציה ולא לפי מספר תווים קבוע:
+   * כל הערה שנוספת בתוכה הזיזה את הגבול והפילה את
+   * הבדיקה, על קוד שלא השתנה.
+   */
   const at = runner.indexOf("engineRunning = true");
-  const block = runner.slice(at, at + 300);
+  const next = runner.indexOf("\nexport ", at);
+  const block = runner.slice(at, next > -1 ? next : undefined);
   assert.ok(
     block.includes("finally"),
     "שגיאה אחת תנעל את המנוע לתמיד ושום אוטומציה לא תרוץ"

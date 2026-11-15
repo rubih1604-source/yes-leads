@@ -31,8 +31,22 @@ const CHECKS = [
   },
   {
     key: "bot",
-    label: "למה הבוט לא שאל",
+    label: "למה הבוט לא ענה",
     hint: "האם הוא קיבל דיוור, האם ענה, ומה עצר את הבוט",
+  },
+  {
+    /**
+     * **הבדיקה שנולדה מ"רק הסטטוס הזה לא שולח".**
+     *
+     * סטטוס עם בנק של שלוש תבניות מתחלף ביניהן בסבב.
+     * אם אחת מהן לא קיימת בטקסטר או לא מאושרת, חלק
+     * מהלידים לא מקבלים כלום - וזה נראה אקראי.
+     *
+     * כאן מקלידים שם סטטוס במקום טלפון.
+     */
+    key: "templates",
+    label: "למה סטטוס לא שולח",
+    hint: "מקלידים שם סטטוס. בודק את התבניות שלו מול טקסטר",
   },
 ] as const;
 
@@ -65,7 +79,9 @@ export default function DiagnosticsScreen() {
     const url =
       check === "bot"
         ? `/api/diagnostics/bot-check?q=${encodeURIComponent(q)}`
-        : `/api/diagnostics/trace?q=${encodeURIComponent(q)}`;
+        : check === "templates"
+          ? `/api/diagnostics/status-templates?status=${encodeURIComponent(q)}`
+          : `/api/diagnostics/trace?q=${encodeURIComponent(q)}`;
 
     try {
       const response = await fetch(url, { cache: "no-store" });
@@ -78,7 +94,11 @@ export default function DiagnosticsScreen() {
       }
 
       setAnswer(
-        check === "bot" ? fromBotCheck(data) : fromTrace(data)
+        check === "bot"
+          ? fromBotCheck(data)
+          : check === "templates"
+            ? fromTemplates(data)
+            : fromTrace(data)
       );
     } catch {
       setError("אין חיבור לשרת");
@@ -142,7 +162,7 @@ export default function DiagnosticsScreen() {
           onKeyDown={(e) => {
             if (e.key === "Enter") run();
           }}
-          placeholder="טלפון של הליד"
+          placeholder={check === "templates" ? "שם הסטטוס, למשל: נשלחה הצעת מחיר" : "טלפון של הליד"}
           inputMode="tel"
           style={{ marginBottom: 0, flex: 1, direction: "ltr", textAlign: "left" }}
         />
@@ -270,6 +290,57 @@ function fromTrace(data: any): Answer {
  * כריק, וזה נראה כמו תשובה - "לא עובר את השער" על שער
  * שלא קיים יותר.
  */
+/**
+ * ============================================================
+ *  למה סטטוס לא שולח
+ * ============================================================
+ *
+ *  מציג כל תבנית בבנק ומה מצבה בטקסטר. תבנית אחת שבורה
+ *  מתוך שלוש פירושה שליש מהלידים בלי הודעה - וזה בדיוק
+ *  מה שנראה כמו "לפעמים זה עובד".
+ */
+function fromTemplates(data: any): Answer {
+  if (data["נמצא"] === false) {
+    return {
+      title: "למה סטטוס לא שולח",
+      verdict: data["מסקנה"],
+      details: [],
+      raw: data,
+    };
+  }
+
+  const details: Answer["details"] = [];
+
+  for (const rule of data["חוקים"] ?? []) {
+    details.push({
+      label: `סטטוס ${rule["סטטוס"]} · שלב ${rule["שלב"]}`,
+      value: `${rule["פעיל"] ? "פעיל" : "כבוי"} · אחרי ${rule["אחרי_דקות"]} דקות · ${rule["כמה_תבניות"]} תבניות`,
+    });
+
+    for (const t of rule["תבניות"] ?? []) {
+      details.push({ label: `· ${t["שם"]}`, value: text(t["מצב"]) });
+    }
+  }
+
+  for (const p of data["בעיות"] ?? []) {
+    details.push({
+      label: `בעיה · ${p["תבנית"]}`,
+      value: `${p["בעיה"]} ← ${p["מה_לעשות"]}`,
+    });
+  }
+
+  for (const line of data["שליחות_אחרונות"] ?? []) {
+    details.push({ label: "שליחה", value: text(line) });
+  }
+
+  return {
+    title: "למה סטטוס לא שולח",
+    verdict: data["מסקנה"] ?? "אין מידע",
+    details,
+    raw: data,
+  };
+}
+
 function fromBotCheck(data: any): Answer {
   if (data["נמצא"] === false) {
     return { title: "למה הבוט לא ענה", verdict: data["מסקנה"], details: [], raw: data };

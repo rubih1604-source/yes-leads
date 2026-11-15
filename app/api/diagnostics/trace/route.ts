@@ -56,8 +56,14 @@ export async function GET(request: Request) {
 
   // ---- האם קיים ליד ----
   const lead = phone
-    ? await db.lead.findUnique({
+    ? await db.lead.findFirst({
+        /**
+         * באבחון מעדיפים את הליד **שלך** ונופלים לשל
+         * המכירה רק אם אין. אחרת חיפוש של מספר שקיים
+         * בשני הערוצים היה מחזיר תשובה אקראית.
+         */
         where: { phone },
+        orderBy: { channel: "asc" },
         include: {
           events: { orderBy: { createdAt: "desc" }, take: 20 },
           entries: {

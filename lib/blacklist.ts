@@ -175,7 +175,7 @@ export async function blockPhone(args: {
 }): Promise<{ ok: boolean; created: boolean; phone: string; error?: string }> {
   const { db } = await import("./db");
   const { normalizePhone } = await import("./phone");
-  const { BROADCAST_ORIGIN } = await import("./channel");
+  const { BROADCAST_ORIGIN, MINE_CHANNEL } = await import("./channel");
 
   const phone = normalizePhone(args.phone);
 
@@ -183,19 +183,32 @@ export async function blockPhone(args: {
     return { ok: false, created: false, phone: "", error: "מספר לא תקין" };
   }
 
-  const existing = await db.lead
-    .findUnique({ where: { phone }, select: { id: true } })
-    .catch(() => null);
+  /**
+   * ============================================================
+   *  רשימה שחורה חוצה את שני הערוצים, בכוונה
+   * ============================================================
+   *
+   *  אדם שביקש לא לקבל הודעות ביקש זאת **ממך**, לא מערוץ
+   *  מסוים. לכן כאן - ורק כאן - מסתכלים על כל השורות של
+   *  המספר, וחוסמים את כולן. זו ההגדרה שלך, ולכן היא
+   *  נשמרת רחבה.
+   */
+  const { allLeadsForPhone } = await import("./lead-by-phone");
+
+  const rows = await allLeadsForPhone<{ id: string }>(phone, { id: true });
+  const existing = rows[0] ?? null;
 
   const reason = "נחסם ידנית";
   const text = args.note?.trim()?.slice(0, 500) || null;
 
   if (existing) {
-    const done = await addToBlacklist({
-      leadId: existing.id,
-      reason,
-      text,
-    });
+    let done = false;
+
+    for (const row of rows) {
+      const one = await addToBlacklist({ leadId: row.id, reason, text });
+      if (one) done = true;
+    }
+
     return { ok: done, created: false, phone };
   }
 
@@ -205,6 +218,7 @@ export async function blockPhone(args: {
         phone,
         status: "לא מעוניין/אין מענה הודעה",
         origin: BROADCAST_ORIGIN,
+        channel: MINE_CHANNEL,
         source: reason,
         doNotContact: true,
         doNotContactAt: new Date(),

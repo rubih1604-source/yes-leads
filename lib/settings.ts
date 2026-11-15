@@ -17,6 +17,10 @@ export type AppSettings = {
   /** מתי המנוע רץ לאחרונה, ומה נכשל */
   engineRanAt: Date | null;
   engineError: string | null;
+  /** המרווח בפועל בין שני הסבבים האחרונים, בשניות */
+  engineGapSeconds: number | null;
+  /** המרווח הגרוע ביממה האחרונה */
+  engineWorstGap: number | null;
   botOnlyOutsideHours: boolean;
   botPauseHours: number;
   replyCooldownMinutes: number;
@@ -62,6 +66,8 @@ const DEFAULTS: AppSettings = {
   campaignText: "",
   engineRanAt: null,
   engineError: null,
+  engineGapSeconds: null,
+  engineWorstGap: null,
   botOnlyOutsideHours: false,
   botPauseHours: 2,
   replyCooldownMinutes: 10,
@@ -109,6 +115,8 @@ export async function getSettings(): Promise<AppSettings> {
       campaignText: row.campaignText ?? "",
       engineRanAt: row.engineRanAt,
       engineError: row.engineError,
+      engineGapSeconds: row.engineGapSeconds,
+      engineWorstGap: row.engineWorstGap,
       botOnlyOutsideHours: row.botOnlyOutsideHours,
       botPauseHours: row.botPauseHours,
       replyCooldownMinutes: row.replyCooldownMinutes,

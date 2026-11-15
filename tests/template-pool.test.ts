@@ -105,20 +105,20 @@ test("בנק ריק מחזיר null ולא מתרסק", () => {
 test("בלי בנק החוק מתנהג בדיוק כמו קודם", () => {
   const rule = { templateName: "inbox_marketing_1", templatePool: null };
   for (let c = 0; c < 5; c++) {
-    assert.equal(templateForRule(rule, c), "inbox_marketing_1");
+    assert.equal(templateForRule(rule, c).chosen, "inbox_marketing_1");
   }
 });
 
 test("בנק גובר על התבנית הבודדת", () => {
   const rule = { templateName: "ישן", templatePool: "a,b" };
-  assert.equal(templateForRule(rule, 0), "a");
-  assert.equal(templateForRule(rule, 1), "b");
+  assert.equal(templateForRule(rule, 0).chosen, "a");
+  assert.equal(templateForRule(rule, 1).chosen, "b");
 });
 
 test("בנק של אחת מתנהג כתבנית קבועה", () => {
   const rule = { templateName: null, templatePool: "רק_זו" };
-  assert.equal(templateForRule(rule, 0), "רק_זו");
-  assert.equal(templateForRule(rule, 9), "רק_זו");
+  assert.equal(templateForRule(rule, 0).chosen, "רק_זו");
+  assert.equal(templateForRule(rule, 9).chosen, "רק_זו");
 });
 
 test("חוק בלי שום תבנית מחזיר null ולא מחרוזת ריקה", () => {
@@ -126,8 +126,11 @@ test("חוק בלי שום תבנית מחזיר null ולא מחרוזת ריק
    * מחרוזת ריקה הייתה עוברת את הבדיקה של המתזמן ומגיעה
    * לטקסטר כשם תבנית ריק.
    */
-  assert.equal(templateForRule({ templateName: null, templatePool: null }, 0), null);
-  assert.equal(templateForRule({}, 0), null);
+  assert.equal(
+    templateForRule({ templateName: null, templatePool: null }, 0).chosen,
+    null
+  );
+  assert.equal(templateForRule({}, 0).chosen, null);
 });
 
 /* ---------- תצוגה ---------- */
@@ -476,6 +479,163 @@ test("מסך התבניות להקמה מופיע בתפריט", () => {
 
   assert.ok(more.includes("/template-drafts"), "המסך קיים אבל אין אליו דרך");
   assert.ok(nav.includes("/template-drafts"), "התפריט התחתון לא יסמן את המסך");
+});
+
+
+/* ============================================================
+ *  תבנית שבורה לא עולה בליד
+ * ============================================================
+ *
+ *  **הכשל שנתפס בשטח:** "חלק מהתבניות הוא שולח וחלק לא."
+ *
+ *  בנק של שלוש תבניות מתחלף בסבב. אם אחת מהן לא קיימת
+ *  בטקסטר או לא מאושרת, כל ליד שלישי לא קיבל כלום -
+ *  והדפוס נראה אקראי, כי הוא תלוי רק במונה הסבב.
+ */
+
+const POOL = { templateName: "ברירת_מחדל", templatePool: "a,b,c" };
+
+/** b שבורה */
+const works = (name: string) => name !== "b";
+
+test("תבנית שבורה מדולגת, והסבב ממשיך על התקינות", () => {
+  const got = [0, 1, 2, 3].map((c) => templateForRule(POOL, c, works).chosen);
+  assert.deepEqual(got, ["a", "c", "a", "c"], "השבורה עדיין יוצאת");
+});
+
+test("הדילוג מדווח ולא נבלע", () => {
+  /**
+   * אחרת היינו מחליפים כשל גלוי בכשל שקט - בדיוק מה
+   * שאנחנו מנקים מהמערכת.
+   */
+  const r = templateForRule(POOL, 0, works);
+  assert.deepEqual(r.skipped, ["b"], "לא דווח מה דולג");
+});
+
+test("החלוקה נשארת שווה בין התקינות", () => {
+  const counts: Record<string, number> = {};
+  for (let c = 0; c < 60; c++) {
+    const name = templateForRule(POOL, c, works).chosen!;
+    counts[name] = (counts[name] ?? 0) + 1;
+  }
+  assert.equal(counts["a"], 30);
+  assert.equal(counts["c"], 30);
+  assert.equal(counts["b"], undefined);
+});
+
+test("בנק שכולו שבור נופל לתבנית הבודדת אם היא תקינה", () => {
+  const r = templateForRule(POOL, 0, (n) => n === "ברירת_מחדל");
+  assert.equal(r.chosen, "ברירת_מחדל", "הליד נשאר בלי הודעה בלי צורך");
+});
+
+test("כשאין אף תבנית תקינה - לא נבחרת שבורה", () => {
+  /**
+   * שליחה שתיכשל ממילא רק מסתירה את הסיבה. עדיף null,
+   * והמנוע מתריע בשם הסטטוס.
+   */
+  const r = templateForRule(POOL, 0, () => false);
+  assert.equal(r.chosen, null);
+  assert.deepEqual(r.skipped, ["a", "b", "c"]);
+});
+
+test("תבנית בודדת שבורה מדווחת ולא נשלחת", () => {
+  const r = templateForRule({ templateName: "שבורה", templatePool: null }, 0, () => false);
+  assert.equal(r.chosen, null);
+  assert.deepEqual(r.skipped, ["שבורה"]);
+});
+
+test("בלי בדיקת תקינות ההתנהגות זהה לקודם", () => {
+  /** לא נמסרה פונקציה - שום דבר לא מסונן */
+  const got = [0, 1, 2].map((c) => templateForRule(POOL, c).chosen);
+  assert.deepEqual(got, ["a", "b", "c"]);
+});
+
+/* ---------- החיווט במנוע ---------- */
+
+test("המתזמן מסנן לפי מה שקיים ומאושר", () => {
+  const rules = io.readFileSync("lib/rules.ts", "utf8");
+
+  assert.ok(rules.includes("db.template"), "לא נבדק מה קיים");
+  assert.ok(rules.includes("t.approved"), "תבנית לא מאושרת נחשבת תקינה");
+  assert.ok(
+    rules.includes("templateForRule(rule, rule.poolCursor, isUsable)"),
+    "הסינון לא מחובר לבחירה"
+  );
+});
+
+test("טבלת תבניות ריקה לא משתיקה את כל המערכת", () => {
+  /**
+   * טבלה ריקה פירושה שהסנכרון לא רץ, ולא שכל התבניות
+   * שבורות. חסימה במצב כזה הייתה עוצרת כל הודעה
+   * במערכת.
+   */
+  const rules = io.readFileSync("lib/rules.ts", "utf8");
+  assert.ok(
+    rules.includes("templateRows.length === 0 ? true"),
+    "סנכרון שלא רץ יחסום את כל ההודעות"
+  );
+});
+
+test("אין תבנית תקינה - מתריע ולא שולח", () => {
+  const rules = io.readFileSync("lib/rules.ts", "utf8");
+  assert.ok(rules.includes("אין תבנית תקינה לסטטוס"), "אין התראה");
+  assert.ok(rules.includes("template_skipped"), "הדילוג לא מתועד");
+});
+
+/* ============================================================
+ *  הרשימה המקומית חייבת לשקף את טקסטר
+ * ============================================================
+ *
+ *  הדילוג על תבנית שבורה שווה בדיוק כמה שהרשימה המקומית
+ *  מעודכנת. שני כשלים היו כאן:
+ *
+ *  1. הסנכרון רץ רק בלחיצת כפתור.
+ *  2. תבנית שנמחקה בטקסטר נשארה מסומנת מאושרת **לנצח** -
+ *     הסנכרון עדכן רק את מה שחזר, ומה שנעלם לא נגעו בו.
+ */
+
+const sync = io.readFileSync("lib/template-sync.ts", "utf8");
+
+test("תבנית שנעלמה מטקסטר מסומנת כלא זמינה", () => {
+  assert.ok(sync.includes("notIn: live"), "מה שנעלם נשאר מאושר לנצח");
+  assert.ok(sync.includes("approved: false"), "הסימון לא מבוצע");
+});
+
+test("תבנית שנעלמה לא נמחקת", () => {
+  /** השורה מקושרת לחוקים ולהודעות - מחיקה מוחקת את המדידה */
+  assert.ok(!sync.includes("deleteMany"), "שורות נמחקות");
+  assert.ok(!sync.includes("db.template.delete"), "שורות נמחקות");
+});
+
+test("תשובה שלא פוענחה לא מסמנת הכל כלא זמין", () => {
+  /**
+   * תשובה שלא הצלחנו לקרוא אינה הוכחה שאין תבניות.
+   * סימון גורף במצב כזה היה משתיק את כל המערכת.
+   */
+  const guard = sync.indexOf("templates.length === 0");
+  const disable = sync.indexOf("notIn: live");
+  assert.ok(guard > -1 && disable > -1);
+  assert.ok(guard < disable, "סימון גורף רץ לפני בדיקת השפיות");
+});
+
+test("הסנכרון רץ אוטומטית מהמנוע", () => {
+  const runner = io.readFileSync("lib/runner.ts", "utf8");
+  assert.ok(
+    runner.includes("syncTemplatesIfStale()"),
+    "הרשימה מתעדכנת רק בלחיצת כפתור"
+  );
+  assert.ok(
+    runner.includes("syncTemplatesIfStale().catch"),
+    "כישלון בסנכרון יעצור את כל המנוע"
+  );
+});
+
+test("אין שתי גרסאות של סנכרון", () => {
+  /** הכפילות הזו היא בדיוק מה שגרם לנזק כאן */
+  const route = io.readFileSync("app/api/templates/sync/route.ts", "utf8");
+  assert.ok(route.includes("syncTemplates()"), "הנתיב לא משתמש במשותף");
+  assert.ok(!route.includes("db.template.upsert"), "הנתיב מחזיק עותק משלו");
+  assert.ok(!route.includes("parseTemplates"), "הנתיב מפענח בעצמו");
 });
 
 console.log(`✓ template-pool: ${passed} בדיקות עברו`);

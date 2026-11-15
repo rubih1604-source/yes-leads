@@ -50,9 +50,14 @@ test("המנה היא מי שעוד לא קיבל", () => {
 });
 
 test("כל נמען נרשם, גם כשהשליחה נכשלה", () => {
+  /**
+   * ההצלחה כבר לא נקבעת לפי קוד HTTP אלא לפי ההכרעה
+   * שקוראת גם את גוף התשובה, ולכן השורה שמחפשים כאן
+   * השתנתה. העיקרון זהה.
+   */
   const create = route.indexOf("broadcastDelivery");
-  const okCheck = route.indexOf("if (result.ok) {");
-  assert.ok(create > -1 && okCheck > -1);
+  const okCheck = route.indexOf('if (verdict.state === "accepted") {');
+  assert.ok(create > -1 && okCheck > -1, "לא נמצאה נקודת הפיצול");
   assert.ok(
     create < okCheck,
     "הרישום חייב לקרות לפני פיצול להצלחה/כישלון, אחרת כישלון לא נרשם"

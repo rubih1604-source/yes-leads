@@ -189,9 +189,23 @@ test("הרישום קורה גם בהצלחה וגם בכישלון", () => {
 });
 
 test("גוף הבקשה נבנה לפני ה-try, כדי שגם כישלון יירשם", () => {
-  const bodyAt = delivery.indexOf("const body = template");
-  const tryAt = delivery.indexOf("  try {");
-  assert.ok(bodyAt > -1 && tryAt > -1);
+  /**
+   * החיפוש מצומצם ל-sendDelivery עצמה.
+   *
+   * קודם הוא רץ על כל הקובץ, ולכן כל `try` שנוסף בפונקציה
+   * אחרת למעלה היה מפיל את הבדיקה בלי שום קשר למה שהיא
+   * בודקת. בדיקה שנשברת מקוד שאינו שלה היא בדיקה שמלמדת
+   * להתעלם ממנה.
+   */
+  const fn = delivery.slice(
+    delivery.indexOf("export async function sendDelivery")
+  );
+
+  const bodyAt = fn.indexOf("const body = template");
+  const tryAt = fn.indexOf("  try {");
+
+  assert.ok(bodyAt > -1, "לא נמצאה בניית הגוף");
+  assert.ok(tryAt > -1, "לא נמצא ה-try של השליחה");
   assert.ok(bodyAt < tryAt, "הגוף נבנה בתוך ה-try ולא יהיה זמין לרישום");
 });
 

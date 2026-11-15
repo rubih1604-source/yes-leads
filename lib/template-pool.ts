@@ -80,6 +80,47 @@ export function pickFromPool(
 }
 
 /**
+ * ============================================================
+ *  בנק שמדלג על תבנית שבורה
+ * ============================================================
+ *
+ *  **הכשל שזה סוגר, במילים שלו:** "חלק מהתבניות הוא שולח
+ *  וחלק לא."
+ *
+ *  בנק של שלוש תבניות מתחלף בסבב שווה. אם אחת מהן לא
+ *  קיימת בטקסטר או לא מאושרת, **כל ליד שלישי לא מקבל
+ *  כלום** - והדפוס נראה אקראי לחלוטין, כי הוא תלוי רק
+ *  במונה הסבב.
+ *
+ *  כאן הסבב רץ על התבניות **התקינות בלבד**. תבנית שבורה
+ *  אחת כבר לא עולה בליד: היא פשוט מדולגת, והחלוקה
+ *  נשארת שווה בין מי שעובדות.
+ *
+ *  **ולא בשקט.** מי שדולגה מוחזרת ב-skipped, והמנוע
+ *  פותח התראה - אחרת היינו מחליפים כשל גלוי בכשל שקט,
+ *  וזה בדיוק מה שאנחנו מנקים מהמערכת.
+ */
+export function pickUsableFromPool(
+  pool: string[],
+  cursor: number,
+  isUsable: (name: string) => boolean
+): { chosen: string | null; skipped: string[] } {
+  if (pool.length === 0) return { chosen: null, skipped: [] };
+
+  const usable = pool.filter((name) => isUsable(name));
+  const skipped = pool.filter((name) => !isUsable(name));
+
+  /**
+   * אף תבנית תקינה. **לא בוחרים שבורה כ"עדיף משהו"** -
+   * שליחה שתיכשל ממילא רק מסתירה את הסיבה. מחזירים null,
+   * והמנוע מתריע בשם הסטטוס.
+   */
+  if (usable.length === 0) return { chosen: null, skipped };
+
+  return { chosen: pickFromPool(usable, cursor), skipped };
+}
+
+/**
  * מה באמת יישלח בחוק הזה.
  *
  * **נקודת ההכרעה היחידה.** הבנק גובר על התבנית הבודדת
@@ -88,10 +129,41 @@ export function pickFromPool(
  */
 export function templateForRule(
   rule: { templateName?: string | null; templatePool?: string | null },
-  cursor: number
-): string | null {
+  cursor: number,
+  /**
+   * אילו תבניות באמת ניתנות לשליחה. לא נמסר - כולן
+   * נחשבות תקינות, וההתנהגות זהה לקודם.
+   */
+  isUsable?: (name: string) => boolean
+): { chosen: string | null; skipped: string[] } {
   const pool = parsePool(rule.templatePool);
-  return pickFromPool(pool, cursor) ?? rule.templateName ?? null;
+
+  if (pool.length > 0) {
+    if (!isUsable) {
+      return { chosen: pickFromPool(pool, cursor), skipped: [] };
+    }
+
+    const picked = pickUsableFromPool(pool, cursor, isUsable);
+
+    /**
+     * בנק שכולו שבור נופל לתבנית הבודדת של החוק, אם היא
+     * תקינה - עדיף שההודעה תצא מאשר שהליד יישאר בלי
+     * כלום בגלל בנק לא מעודכן.
+     */
+    if (!picked.chosen && rule.templateName && isUsable(rule.templateName)) {
+      return { chosen: rule.templateName, skipped: picked.skipped };
+    }
+
+    return picked;
+  }
+
+  const single = rule.templateName ?? null;
+
+  if (single && isUsable && !isUsable(single)) {
+    return { chosen: null, skipped: [single] };
+  }
+
+  return { chosen: single, skipped: [] };
 }
 
 /** כמה תבניות בבנק - לתצוגה במסך */

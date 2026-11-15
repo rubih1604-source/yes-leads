@@ -6,6 +6,8 @@ import { parseSheet } from "@/lib/sheet-parse";
 import { normalizePhone } from "@/lib/phone";
 import { getStatuses } from "@/lib/status-store";
 import { SALE_ORIGIN } from "@/lib/sales-campaigns";
+import { channelKey } from "@/lib/channel";
+import { phoneChannel } from "@/lib/lead-by-phone";
 
 export const dynamic = "force-dynamic";
 
@@ -119,7 +121,9 @@ export async function POST(request: Request) {
       continue;
     }
 
-    const already = await db.lead.findUnique({ where: { phone } });
+    const already = await db.lead
+      .findUnique({ where: phoneChannel(phone, channelKey(toSale)) })
+      .catch(() => null);
     if (already) {
       exists++;
 
@@ -154,7 +158,7 @@ export async function POST(request: Request) {
           })
           .catch(() => null);
 
-        await bumpArrival(db, already.id, { isSale: toSale });
+        await bumpArrival(db, already.id, {});
 
         await db.leadEvent
           .create({
@@ -210,6 +214,7 @@ export async function POST(request: Request) {
         status: toSale ? defaultStatus : defaultStatus,
         source: fileName ? `ייבוא: ${String(fileName).slice(0, 80)}` : "ייבוא",
         origin: toSale ? SALE_ORIGIN : "leadmanager",
+        channel: channelKey(toSale),
         intakeAt,
         extra: Object.keys(extra).length ? extra : undefined,
       },

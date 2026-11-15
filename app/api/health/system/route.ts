@@ -89,6 +89,63 @@ export async function GET() {
   const ranAgo = minutesAgo(settings.engineRanAt);
 
   /**
+   * ============================================================
+   *  האם המשימות יוצאות בזמן שהגדרת
+   * ============================================================
+   *
+   *  **השאלה שלא הייתה לה תשובה:** "הגדרתי שישלח אחרי
+   *  דקה, וזה הגיע אחרי 7-8 דקות."
+   *
+   *  כאן נמדד האיחור בפועל - ההפרש בין הזמן שהמשימה
+   *  תוזמנה אליו לבין הזמן שהיא באמת רצה. זה מפריד בין
+   *  שתי סיבות שנראות זהות מבחוץ:
+   *
+   *  · הטיימר נרדם (מרווח גדול בין סבבים) → צריך מתזמן
+   *    חיצוני שמעיר את השרת.
+   *  · הטיימר רץ אבל המשימה נדחתה → הבעיה בקוד.
+   */
+  const lateJobs = await db.scheduledJob
+    .findMany({
+      where: {
+        state: "done",
+        ranAt: { not: null, gte: dayAgo },
+      },
+      select: { runAt: true, ranAt: true },
+      take: 300,
+    })
+    .catch(() => []);
+
+  const delays = lateJobs
+    .map((j) =>
+      j.ranAt ? Math.round((j.ranAt.getTime() - j.runAt.getTime()) / 1000) : 0
+    )
+    .filter((d) => d >= 0);
+
+  const avgDelay = delays.length
+    ? Math.round(delays.reduce((a, b) => a + b, 0) / delays.length)
+    : 0;
+  const maxDelay = delays.length ? Math.max(...delays) : 0;
+
+  const gap = settings.engineGapSeconds;
+  const worstGap = settings.engineWorstGap;
+
+  /**
+   * הטיימר אמור לרוץ כל 60 שניות. מרווח של יותר מ-150
+   * שניות פירושו שהוא נרדם - לא שהוא עסוק.
+   */
+  const timerAsleep = (worstGap ?? 0) > 150;
+
+  if (timerAsleep) {
+    problems.push(
+      `המנוע נרדם: המרווח הגרוע בין סבבים היה ${worstGap} שניות במקום 60. לכן הודעות יוצאות באיחור. הפתרון הוא מתזמן חיצוני שמעיר את השרת כל דקה - ראה "הפעלה חיצונית" למטה.`
+    );
+  } else if (maxDelay > 180) {
+    problems.push(
+      `משימה יצאה באיחור של ${Math.round(maxDelay / 60)} דקות, והמנוע דווקא רץ בזמן. כלומר העיכוב אינו בטיימר.`
+    );
+  }
+
+  /**
    * המנוע אמור לרוץ כל דקה. יותר מחמש דקות בלי סבב
    * פירושו שהוא לא רץ - לא שהוא "עסוק".
    */
@@ -154,6 +211,82 @@ export async function GET() {
     problems.push(`${failedJobs} משימות נכשלו ביממה האחרונה.`);
   }
 
+  /**
+   * ============================================================
+   *  האם ההודעות באמת מגיעות ללקוחות
+   * ============================================================
+   *
+   *  **השאלה שלא הייתה לה תשובה.** המערכת רשמה "נשלח"
+   *  לפי קוד HTTP מטקסטר, כלומר "קיבלתי את הבקשה". אם
+   *  ההודעה נפלה אחר כך - תבנית מושהית, מספר שאינו
+   *  בוואטסאפ - אף אחד לא ידע.
+   *
+   *  כאן נספר מה באמת קרה. שני מצבים אפשריים, ולכל אחד
+   *  משמעות אחרת:
+   *
+   *  · יש אישורי מסירה → הודעה שתקועה ב"יצא לטקסטר" היא
+   *    חשודה, ואפשר להצביע עליה.
+   *  · אין אף אישור מעולם → טקסטר לא שולחת אישורי מסירה
+   *    לכתובת שלנו, ואז **אי אפשר לדעת** - וזה בדיוק מה
+   *    שצריך להיאמר, במקום להציג "נשלח" כאילו זה ודאי.
+   */
+  const halfHourAgo = new Date(now.getTime() - 30 * MINUTE);
+
+  const [outDay, deliveredDay, failedDay, stuck, deliveredEver] =
+    await Promise.all([
+      db.message
+        .count({ where: { direction: "out", createdAt: { gte: dayAgo } } })
+        .catch(() => -1),
+      db.message
+        .count({
+          where: {
+            direction: "out",
+            status: { in: ["delivered", "read"] },
+            createdAt: { gte: dayAgo },
+          },
+        })
+        .catch(() => -1),
+      db.message
+        .count({
+          where: {
+            direction: "out",
+            status: "failed",
+            createdAt: { gte: dayAgo },
+          },
+        })
+        .catch(() => -1),
+      db.message
+        .count({
+          where: {
+            direction: "out",
+            status: { in: ["accepted", "sent"] },
+            createdAt: { gte: dayAgo, lte: halfHourAgo },
+          },
+        })
+        .catch(() => -1),
+      db.message
+        .count({ where: { status: { in: ["delivered", "read"] } } })
+        .catch(() => -1),
+    ]);
+
+  const confirmationsWork = deliveredEver > 0;
+
+  if (failedDay > 0) {
+    problems.push(
+      `${failedDay} הודעות לא הגיעו ללקוח ביממה האחרונה. כרטיס הליד מראה את הסיבה על ההודעה עצמה.`
+    );
+  }
+
+  if (!confirmationsWork && outDay > 0) {
+    problems.push(
+      "טקסטר לא שולחת אלינו אישורי מסירה, ולכן אי אפשר לדעת אם ההודעות מגיעות ללקוחות. הן מסומנות 'יצא לטקסטר' ולא 'נמסר'. בטקסטר: להפעיל התראות מצב הודעה (message status) לאותה כתובת וובוק."
+    );
+  } else if (confirmationsWork && stuck > 0) {
+    problems.push(
+      `${stuck} הודעות יצאו לטקסטר לפני יותר מחצי שעה ולא התקבל עליהן אישור מסירה. ייתכן שהן לא הגיעו.`
+    );
+  }
+
   const { pushConfigured } = await import("@/lib/push");
 
   if (!pushConfigured()) {
@@ -190,6 +323,16 @@ export async function GET() {
       תקין: engineAlive && !settings.engineError,
       שגיאה_אחרונה: settings.engineError ?? "אין",
     },
+    זמני_שליחה: {
+      איחור_ממוצע_שניות: avgDelay,
+      האיחור_הגדול_שניות: maxDelay,
+      מרווח_אחרון_בין_סבבים: gap,
+      מרווח_גרוע_ביממה: worstGap,
+      הטיימר_נרדם: timerAsleep,
+      הפעלה_חיצונית: timerAsleep
+        ? `הוסף Cron Job ברנדר שקורא כל דקה ל-${(process.env.APP_URL ?? "https://yes-leads.onrender.com").replace(/\/$/, "")}/api/cron/run?token=<CRON_SECRET>`
+        : "לא נדרשת כרגע",
+    },
     משימות: {
       שעבר_זמנן: overdue,
       ממתינות: pending,
@@ -203,6 +346,13 @@ export async function GET() {
     בוט_הדיוור: {
       דלוק: settings.campaignBot,
       קרס_ביממה: botCrashes,
+    },
+    הודעות_ללקוחות: {
+      יצאו_ביממה: outDay,
+      אושרו_כנמסרו: deliveredDay,
+      נכשלו: failedDay,
+      בלי_אישור_מעל_חצי_שעה: stuck,
+      טקסטר_שולחת_אישורי_מסירה: confirmationsWork,
     },
     התראות: {
       מפתחות_מוגדרים: Boolean(process.env.VAPID_PUBLIC_KEY?.trim()),

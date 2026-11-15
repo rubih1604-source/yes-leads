@@ -65,6 +65,35 @@ export async function scheduleForStatus(
    */
   let dueNow = false;
 
+  /**
+   * ============================================================
+   *  אילו תבניות באמת ניתנות לשליחה
+   * ============================================================
+   *
+   *  **הכשל שזה סוגר:** "חלק מהתבניות הוא שולח וחלק לא."
+   *
+   *  בנק של שלוש תבניות מתחלף בסבב, ואם אחת לא קיימת
+   *  בטקסטר או לא מאושרת - כל ליד שלישי לא קיבל כלום.
+   *  הדפוס נראה אקראי כי הוא תלוי רק במונה הסבב.
+   *
+   *  נטען פעם אחת לכל הקריאה ולא פעם לכל חוק.
+   */
+  const templateRows = await db.template
+    .findMany({ select: { name: true, approved: true } })
+    .catch(() => []);
+
+  const usableNames = new Set(
+    templateRows.filter((t) => t.approved).map((t) => t.name)
+  );
+
+  /**
+   * טבלה ריקה פירושה שהתבניות עוד לא סונכרנו, ולא
+   * שכולן שבורות. במצב כזה לא חוסמים כלום - אחרת
+   * סנכרון שלא רץ היה משתיק את כל המערכת.
+   */
+  const isUsable = (name: string) =>
+    templateRows.length === 0 ? true : usableNames.has(name);
+
   for (const rule of rules) {
     const rawRunAt = new Date(now + rule.delayMinutes * 60000);
 
@@ -83,7 +112,47 @@ export async function scheduleForStatus(
      *  ראשונה, שנייה, שלישית, ושוב מהתחלה.
      */
     const pool = parsePool(rule.templatePool);
-    const chosen = templateForRule(rule, rule.poolCursor);
+    const picked = templateForRule(rule, rule.poolCursor, isUsable);
+    const chosen = picked.chosen;
+
+    /**
+     * תבנית שדולגה היא תקלה שצריך לתקן, ולכן היא מתועדת -
+     * אחרת החלפנו כשל גלוי בכשל שקט.
+     */
+    if (picked.skipped.length > 0) {
+      await db.leadEvent
+        .create({
+          data: {
+            leadId,
+            type: "template_skipped",
+            actor: "system",
+            payload: {
+              status: rule.triggerStatus,
+              skipped: picked.skipped,
+              used: chosen,
+            },
+          },
+        })
+        .catch(() => null);
+    }
+
+    /**
+     * אין אף תבנית תקינה בחוק הזה. **לא שולחים שבורה** -
+     * זה ייכשל ממילא ויסתיר את הסיבה. מתריעים בשם
+     * הסטטוס ובשם התבניות, וממשיכים לחוק הבא.
+     */
+    if (rule.action === "send_template" && !chosen) {
+      await db.alert
+        .create({
+          data: {
+            leadId,
+            title: `אין תבנית תקינה לסטטוס "${rule.triggerStatus}"`,
+            body: `התבניות ${picked.skipped.join(", ")} לא קיימות בטקסטר או לא מאושרות. אבחון → "למה סטטוס לא שולח".`,
+          },
+        })
+        .catch(() => null);
+      continue;
+    }
 
     if (pool.length > 1) {
       await db.rule

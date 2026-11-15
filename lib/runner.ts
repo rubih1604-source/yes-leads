@@ -9,6 +9,11 @@
 
 import { db } from "./db";
 import { sendTemplate, shouldRetrySend } from "./texter";
+import { judgeSend } from "./send-result";
+import { syncTemplatesIfStale } from "./template-sync";
+import { fillChannels } from "./channel-fill";
+import { warnIfStuck } from "./sale-hold";
+import { findGap, importMissing, GAP_CHECK_EVERY_MINUTES } from "./facebook-gap";
 /**
  * ============================================================
  *  למה הייבוא הזה דינמי
@@ -101,6 +106,12 @@ async function runOne(jobId: string, summary: RunSummary) {
         state,
         lastError: error ?? null,
         attempts: { increment: 1 },
+        /**
+         * מתי המשימה באמת רצה. ההפרש מול runAt הוא
+         * האיחור - וזה המספר שהיה חסר כדי לענות על
+         * "הגדרתי דקה וזה הגיע אחרי שבע".
+         */
+        ranAt: new Date(),
       },
     });
   }
@@ -273,6 +284,14 @@ async function runOne(jobId: string, summary: RunSummary) {
 
       const data = (result.data ?? {}) as { text?: string; messageId?: string };
 
+      /**
+       * **ההכרעה אינה קוד ה-HTTP.** 200 מטקסטר אומר
+       * "קיבלתי את הבקשה", לא "הלקוח קיבל". הגוף מחזיק
+       * success, וקודם הוא לא נקרא בכלל.
+       */
+      const verdict = judgeSend(result);
+      const accepted = verdict.state === "accepted";
+
       await db.message.create({
         data: {
           leadId: lead.id,
@@ -298,25 +317,23 @@ async function runOne(jobId: string, summary: RunSummary) {
           templateName: job.templateName,
           bodyText: data.text ?? template.bodyText ?? null,
           texterMessageId: data.messageId ?? null,
-          status: result.ok ? "sent" : "failed",
-          error: result.ok
-            ? null
-            : `${result.error ?? "שגיאה"} · ${JSON.stringify(result.raw).slice(0, 400)}`,
+          status: verdict.state,
+          error: verdict.reason,
         },
       });
 
       await db.leadEvent.create({
         data: {
           leadId: lead.id,
-          type: result.ok ? "message_sent" : "message_failed",
+          type: accepted ? "message_sent" : "message_failed",
           actor: "system",
           payload: { templateName: job.templateName, automatic: true },
         },
       });
 
-      if (result.ok) {
+      if (accepted) {
         summary.sent++;
-        summary.details.push(`${lead.phone}: נשלחה ${job.templateName}`);
+        summary.details.push(`${lead.phone}: יצאה ${job.templateName}`);
         await finish("done");
       } else {
         summary.failed++;
@@ -327,10 +344,10 @@ async function runOne(jobId: string, summary: RunSummary) {
           data: {
             leadId: lead.id,
             title: "שליחה אוטומטית נכשלה",
-            body: `${lead.firstName ?? displayPhone(lead.phone)} · ${job.templateName} · ${result.error ?? "שגיאה"}`,
+            body: `${lead.firstName ?? displayPhone(lead.phone)} · ${job.templateName} · ${verdict.reason ?? "שגיאה"}`,
           },
         });
-        await finish("failed", result.error ?? "שליחה נכשלה");
+        await finish("failed", verdict.reason ?? "שליחה נכשלה");
       }
       return;
     }
@@ -438,6 +455,54 @@ async function runOne(jobId: string, summary: RunSummary) {
  */
 let engineRunning = false;
 
+/**
+ * ============================================================
+ *  ליד שקיים בפייסבוק ולא אצלנו - נתפס לבד
+ * ============================================================
+ *
+ *  **למה זה רץ מהמנוע ולא מחכה לך.** כל שאר ההגנות
+ *  מניחות שההתראה מפייסבוק הגיעה. אם מטא לא שלחה אותה,
+ *  או שהשרת היה למטה באותו רגע, אין שום סימן שליד קיים -
+ *  והוא מתגלה רק בהשוואה ידנית, ימים אחרי, אחרי שהכסף
+ *  כבר אבד.
+ *
+ *  **ומייבא, לא רק מתריע.** ליד חסר הוא כסף על הרצפה;
+ *  אין שום סיבה לחכות ללחיצה. ההכנסה עוברת דרך מסלול
+ *  הקליטה הרגיל, ולכן הוא מקבל את כל מה שליד רגיל מקבל.
+ */
+async function checkFacebookGap(): Promise<void> {
+  const settings = await db.settings.findFirst({
+    select: { gapCheckedAt: true },
+  });
+
+  if (settings?.gapCheckedAt) {
+    const minutes = (Date.now() - settings.gapCheckedAt.getTime()) / 60000;
+    if (minutes < GAP_CHECK_EVERY_MINUTES) return;
+  }
+
+  await db.settings.updateMany({ data: { gapCheckedAt: new Date() } });
+
+  const gap = await findGap(3);
+
+  if (gap.missing.length === 0) return;
+
+  const result = await importMissing(gap.missing);
+
+  await db.alert
+    .create({
+      data: {
+        title: `${gap.missing.length} לידים חסרו מפייסבוק`,
+        body:
+          `הושלמו אוטומטית: ${result.imported}.` +
+          (result.failed > 0
+            ? ` ${result.failed} עדיין חסרים: ${result.problems.slice(0, 3).join(" · ")}`
+            : "") +
+          " ההתראה מפייסבוק עליהם מעולם לא הגיעה.",
+      },
+    })
+    .catch(() => null);
+}
+
 export async function runDueJobs(limit = 50): Promise<RunSummary> {
   if (engineRunning) {
     return {
@@ -455,6 +520,36 @@ export async function runDueJobs(limit = 50): Promise<RunSummary> {
   engineRunning = true;
 
   try {
+    /**
+     * ============================================================
+     *  רשימת התבניות מתעדכנת לבד
+     * ============================================================
+     *
+     *  **בלי זה התיקון היה חצי.** המנוע מדלג עכשיו על
+     *  תבנית שאינה קיימת או אינה מאושרת - אבל הוא יודע
+     *  את זה מהרשימה המקומית, שהתעדכנה רק בלחיצת כפתור.
+     *  תבנית שמטא השהתה אתמול הייתה ממשיכה להיבחר היום.
+     *
+     *  רץ לכל היותר פעם בשעה, וכישלון שלו לא עוצר כלום.
+     */
+    /**
+     * מילוי הערוץ ללידים הוותיקים.
+     *
+     * רץ פעם אחת, בסבב הראשון אחרי העדכון, ומסמן את עצמו.
+     * בלי זה כל הלידים של המכירה היו קופצים לרשימה שלך.
+     */
+    await fillChannels().catch(() => null);
+
+    /**
+     * עצירה שנשכחה דלוקה מתריעה על עצמה. לידים שמחכים
+     * ולא יוצאים הם כסף שיושב, ואי אפשר לגלות את זה
+     * ממסך שנראה תקין.
+     */
+    await warnIfStuck().catch(() => null);
+
+    await syncTemplatesIfStale().catch(() => null);
+    await checkFacebookGap().catch(() => null);
+
     return await runDueJobsInner(limit);
   } finally {
     engineRunning = false;

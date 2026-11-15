@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sendTemplate, shouldRetrySend } from "@/lib/texter";
 import { isLoggedIn } from "@/lib/auth";
+import { judgeSend } from "@/lib/send-result";
 
 export const dynamic = "force-dynamic";
 
@@ -82,6 +83,13 @@ export async function POST(
     messageId?: string;
   };
 
+  /**
+   * **ההכרעה אינה קוד ה-HTTP.** טקסטר מחזירה 200 גם
+   * כשהיא דוחה את ההודעה; השדה success בגוף הוא מה
+   * שמכריע, והוא לא נקרא קודם.
+   */
+  const verdict = judgeSend(result);
+
   await db.message.create({
     data: {
       leadId: lead.id,
@@ -89,24 +97,22 @@ export async function POST(
       templateName,
       bodyText: data.text ?? template?.bodyText ?? null,
       texterMessageId: data.messageId ?? null,
-      status: result.ok ? "sent" : "failed",
-      error: result.ok
-        ? null
-        : `${result.error ?? "שגיאה"} · ${JSON.stringify(result.raw).slice(0, 500)}`,
+      status: verdict.state,
+      error: verdict.reason,
     },
   });
 
   await db.leadEvent.create({
     data: {
       leadId: lead.id,
-      type: result.ok ? "message_sent" : "message_failed",
+      type: verdict.state === "accepted" ? "message_sent" : "message_failed",
       actor: "user",
       payload: { templateName, status: result.status, attempts },
     },
   });
 
   // אם טקסטר החזיר את הטקסט האמיתי - שומרים אותו לתבנית להבא
-  if (result.ok && data.text && template && !template.bodyText) {
+  if (verdict.state === "accepted" && data.text && template && !template.bodyText) {
     await db.template
       .update({
         where: { name: templateName },
@@ -115,7 +121,7 @@ export async function POST(
       .catch(() => null);
   }
 
-  if (!result.ok) {
+  if (verdict.state !== "accepted") {
     return NextResponse.json(
       { error: result.error || "השליחה נכשלה", raw: result.raw },
       { status: 502 }

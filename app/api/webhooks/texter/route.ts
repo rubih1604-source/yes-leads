@@ -4,6 +4,9 @@ import { normalizePhone, displayPhone } from "@/lib/phone";
 import { mapInboundMessage } from "@/lib/texter-mapping";
 import { cancelPendingJobs } from "@/lib/rules";
 import { Prisma } from "@prisma/client";
+import { readDeliveryUpdate } from "@/lib/send-result";
+import { MINE_CHANNEL } from "@/lib/channel";
+import { mineKey } from "@/lib/lead-by-phone";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +84,121 @@ async function handle(request: Request) {
   }
 
   try {
+    /**
+     * ============================================================
+     *  עדכון מסירה - מה שבאמת קרה להודעה
+     * ============================================================
+     *
+     *  **הבאג שזה סוגר.** המערכת רשמה "נשלח" ברגע
+     *  שטקסטר החזירה 200, כלומר "קיבלתי את הבקשה". מה
+     *  שקורה אחר כך - תבנית שמטא השהתה, מספר שאינו
+     *  בוואטסאפ, חסימה - קורה **אחרי** התשובה הזו, ואף
+     *  אחד לא שמע עליו. ראית במערכת "נשלח" ובצ'אט לא
+     *  היה כלום.
+     *
+     *  כאן נקלט מה שוואטסאפ מדווחת בפועל, וההודעה
+     *  מתעדכנת ל"נמסר" או ל"נכשל" עם הסיבה.
+     *
+     *  **רץ ראשון ויוצא.** עדכון מסירה אינו הודעה נכנסת,
+     *  ואסור שייכנס למסלול של טיפול בלקוח.
+     */
+    const delivery = readDeliveryUpdate(raw);
+
+    if (delivery) {
+      let existing = await db.message.findFirst({
+        where: { texterMessageId: delivery.messageId, direction: "out" },
+        select: { id: true, status: true, leadId: true },
+      });
+
+      /**
+       * **גיבוי לפי טלפון.** המזהה שטקסטר שולחת בעדכון
+       * אינו בהכרח המזהה ששמרנו ברגע השליחה. בלי הגיבוי
+       * הזה, אי-התאמה אחת פירושה שאף אישור מסירה לא
+       * נקלט - ונישאר בדיוק עם "לא יודעים אם ההודעה
+       * הגיעה".
+       *
+       * נלקחת ההודעה היוצאת האחרונה לאותו מספר בשעתיים
+       * האחרונות, ורק כזו שעדיין לא אושרה.
+       */
+      if (!existing && delivery.phone) {
+        const phone = normalizePhone(delivery.phone);
+
+        if (phone) {
+          existing = await db.message.findFirst({
+            where: {
+              direction: "out",
+              status: { in: ["accepted", "sent"] },
+              createdAt: {
+                gte: new Date(Date.now() - 2 * 60 * 60 * 1000),
+              },
+              lead: { phone },
+            },
+            orderBy: { createdAt: "desc" },
+            select: { id: true, status: true, leadId: true },
+          });
+        }
+      }
+
+      if (!existing) {
+        await db.webhookLog.update({
+          where: { id: log.id },
+          data: {
+            processed: true,
+            error: `עדכון מסירה להודעה שלא נמצאה אצלנו (${delivery.messageId})`,
+          },
+        });
+        return NextResponse.json({ ok: true, delivery: "לא נמצאה הודעה" });
+      }
+
+      /**
+       * "נקרא" לא מוריד חזרה ל"נמסר", וכישלון תמיד גובר -
+       * אחרת אישור מאוחר היה מסתיר כישלון אמיתי.
+       */
+      const rank: Record<string, number> = {
+        accepted: 1,
+        sent: 1,
+        delivered: 2,
+        read: 3,
+      };
+
+      const keep =
+        delivery.status !== "failed" &&
+        (rank[existing.status] ?? 0) > (rank[delivery.status] ?? 0);
+
+      if (!keep) {
+        await db.message.update({
+          where: { id: existing.id },
+          data: {
+            status: delivery.status,
+            error: delivery.reason,
+          },
+        });
+
+        /**
+         * כישלון מסירה הוא דבר שאתה חייב לדעת עליו: הלקוח
+         * מחכה לתשובה שלא תגיע.
+         */
+        if (delivery.status === "failed") {
+          await db.alert
+            .create({
+              data: {
+                leadId: existing.leadId,
+                title: "הודעה לא הגיעה ללקוח",
+                body: delivery.reason ?? "וואטסאפ דיווחה על כישלון מסירה",
+              },
+            })
+            .catch(() => null);
+        }
+      }
+
+      await db.webhookLog.update({
+        where: { id: log.id },
+        data: { processed: true },
+      });
+
+      return NextResponse.json({ ok: true, delivery: delivery.status });
+    }
+
     const mapped = mapInboundMessage(raw);
 
     const phone = normalizePhone(mapped.phone);
@@ -97,7 +215,17 @@ async function handle(request: Request) {
      */
     if (mapped.isOutgoing) {
       if (phone) {
-        const lead = await db.lead.findUnique({ where: { phone } });
+        /**
+         * הודעה נכנסת נוגעת **בעולם שלך בלבד**.
+         *
+         * קודם זו הייתה שליפה לפי טלפון בלבד, ולכן הודעה
+         * ממספר שקיים אצל המכירה נחתה על הליד של המכירה
+         * והפעילה עליו אוטומציות שלך. שתי מערכות נפרדות -
+         * גם בשיחות.
+         */
+        const lead = await db.lead
+          .findUnique({ where: mineKey(phone) })
+          .catch(() => null);
 
         if (lead) {
           const alreadyOurs = mapped.messageId
@@ -195,15 +323,43 @@ async function handle(request: Request) {
     }
 
     if (!phone) {
+      /**
+       * ============================================================
+       *  אירוע בלי טלפון - כנראה עדכון מצב שלא זוהה
+       * ============================================================
+       *
+       *  עדכון מסירה מזוהה לפי שם האירוע, והשמות שטקסטר
+       *  משתמשת בהם אינם מתועדים אצלנו. אירוע שנראה כמו
+       *  עדכון מצב אבל לא נתפס מסומן כאן במפורש, עם שם
+       *  האירוע - כדי שיהיה אפשר להוסיף אותו, במקום
+       *  לחפש אותו ביומן בין עשרות שורות.
+       */
+      const name =
+        typeof raw.eventName === "string"
+          ? raw.eventName
+          : typeof raw.event === "string"
+            ? raw.event
+            : "";
+
+      const looksLikeStatus =
+        /status|deliver|receipt|ack/i.test(name) ||
+        /status|deliver/i.test(JSON.stringify(raw).slice(0, 1500));
+
       await db.webhookLog.update({
         where: { id: log.id },
-        data: { error: "לא נמצא מספר טלפון בהודעה" },
+        data: {
+          error: looksLikeStatus
+            ? `נראה כמו עדכון מצב הודעה שלא זוהה. שם האירוע: "${name || "(אין)"}" - שלח את השורה הזו כדי שנוסיף אותו`
+            : "לא נמצא מספר טלפון בהודעה",
+        },
       });
       return NextResponse.json({ ok: true, warning: "no phone" });
     }
 
     // מוצאים את הליד, ואם אין - יוצרים אחד
-    let lead = await db.lead.findUnique({ where: { phone } });
+    let lead = await db.lead
+      .findUnique({ where: mineKey(phone) })
+      .catch(() => null);
     if (!lead) {
       /**
        * מישהו כתב בוואטסאפ בלי שהוא ליד מליד מנגר.
@@ -217,6 +373,7 @@ async function handle(request: Request) {
           status: "חדש",
           source: "הודעה נכנסת",
           origin: "whatsapp",
+          channel: MINE_CHANNEL,
         },
       });
       await db.leadEvent.create({
