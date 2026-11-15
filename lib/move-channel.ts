@@ -60,8 +60,8 @@ export async function moveLeadToChannel(
   if (lead.channel === target) return { moved: false, alreadyThere: true };
 
   const taken = await db.lead
-    .findUnique({
-      where: { phone_channel: { phone: lead.phone, channel: target } },
+    .findFirst({
+      where: { phone: lead.phone, channel: target },
       select: { id: true },
     })
     .catch(() => null);

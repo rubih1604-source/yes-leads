@@ -59,6 +59,8 @@ const read = (p: string) =>
 
 const schema = read("../prisma/schema.prisma");
 const intake = read("../app/api/webhooks/leadmanager/route.ts");
+const index = read("../lib/lead-index.ts");
+const runner = read("../lib/runner.ts");
 
 /* ============================================================
  *  1. הסכימה
@@ -72,10 +74,64 @@ test("לטלפון אין יותר @unique לבדו", () => {
   );
 });
 
-test("המפתח המורכב קיים", () => {
+test("הייחודיות של טלפון+ערוץ נאכפת על המסד", () => {
+  /**
+   * ============================================================
+   *  למה לא `@@unique` בסכימה
+   * ============================================================
+   *
+   *  `prisma db push` מסרב ליצור אינדקס ייחודי חדש בלי
+   *  `--accept-data-loss`, והבנייה ברנדר נכשלה בגלל זה.
+   *  הדגל הזה נשאר בפקודת הבנייה לתמיד וימחק עמודה בשקט
+   *  ביום שבו תהיה טעות אמיתית - ולכן הוא לא בא בחשבון
+   *  על מערכת חיה.
+   *
+   *  האכיפה נעשית ישירות על המסד במקום. התוצאה זהה.
+   */
   assert.ok(
-    schema.includes("@@unique([phone, channel])"),
-    "אין מפתח טלפון+ערוץ - שום דבר לא מונע שתי שורות זהות"
+    !schema.includes("@@unique([phone, channel])"),
+    "`@@unique` חזר לסכימה - הבנייה ברנדר תיכשל שוב"
+  );
+
+  assert.ok(
+    schema.includes("@@index([phone, channel])"),
+    "אין אפילו אינדקס רגיל - החיפוש לפי טלפון+ערוץ יהיה איטי"
+  );
+
+  assert.ok(
+    index.includes("CREATE UNIQUE INDEX IF NOT EXISTS"),
+    "אין אכיפה במסד - שתי קליטות במקביל ייצרו שתי שורות"
+  );
+
+  assert.ok(
+    runner.includes("ensureLeadIndex()"),
+    "האכיפה לא רצה מעצמה"
+  );
+});
+
+test("האכיפה רצה אחרי מילוי הערוצים, לא לפניו", () => {
+  const fill = runner.indexOf("fillChannels()");
+  const ensure = runner.indexOf("ensureLeadIndex()");
+
+  assert.ok(fill > -1 && ensure > -1);
+  assert.ok(
+    fill < ensure,
+    "נאכפת ייחודיות לפני שלכל שורה יש את הערוץ הנכון שלה"
+  );
+});
+
+test("האכיפה לא מנסה בלי סוף על כפילויות קיימות", () => {
+  /**
+   * בלי בדיקת הכפילויות מראש, היצירה נכשלת בשגיאה סתומה
+   * בכל דקה, לנצח, בלי שאף אחד יודע למה.
+   */
+  assert.ok(
+    index.includes("HAVING COUNT(*) > 1"),
+    "אין בדיקת כפילויות לפני היצירה"
+  );
+  assert.ok(
+    index.includes("duplicates"),
+    "מספר הכפילויות לא מדווח"
   );
 });
 
@@ -178,12 +234,40 @@ test("'כולל מכירה' מסיר את ההגבלה ולא מוסיף תנא�
   );
 });
 
-test("המפתחות שהקוד בונה הם בדיוק מה שפריזמה מצפה לו", () => {
+test("תנאי החיפוש נושא תמיד גם טלפון וגם ערוץ", () => {
   assert.deepEqual(phoneChannel("0501234567", MINE_CHANNEL), {
-    phone_channel: { phone: "0501234567", channel: "mine" },
+    phone: "0501234567",
+    channel: "mine",
   });
-  assert.deepEqual(mineKey("0501234567").phone_channel.channel, "mine");
-  assert.deepEqual(saleKey("0501234567").phone_channel.channel, "sale");
+  assert.equal(mineKey("0501234567").channel, "mine");
+  assert.equal(saleKey("0501234567").channel, "sale");
+});
+
+test("אין יותר אף findUnique לפי טלפון+ערוץ", () => {
+  /**
+   * פריזמה לא יודעת שהצמד ייחודי, ולכן `findUnique` עליו
+   * הוא שגיאת טיפוסים שתפיל את הבנייה.
+   */
+  for (const file of [
+    "../app/api/webhooks/leadmanager/route.ts",
+    "../app/api/webhooks/texter/route.ts",
+    "../app/api/leads/route.ts",
+    "../app/api/import-leads/route.ts",
+    "../lib/facebook-gap.ts",
+    "../lib/broadcast-lead.ts",
+    "../lib/move-channel.ts",
+    "../lib/lead-by-phone.ts",
+  ]) {
+    const src = read(file);
+    assert.ok(
+      !/findUnique\(\{\s*where:\s*(phoneChannel|mineKey|saleKey)/.test(src),
+      `${file} עדיין קורא findUnique על צמד שאינו מפתח של פריזמה`
+    );
+    assert.ok(
+      !src.includes("phone_channel"),
+      `${file} עדיין משתמש במפתח המורכב שפריזמה כבר לא מכירה`
+    );
+  }
 });
 
 test("channelKey מתרגם נכון לשני הכיוונים", () => {
@@ -321,7 +405,6 @@ test("אף מקום אחר לא כותב origin: sale ישירות", () => {
 console.log("\nמילוי הערוץ ללידים הוותיקים");
 
 const fill = read("../lib/channel-fill.ts");
-const runner = read("../lib/runner.ts");
 
 test("המילוי רץ מעצמו מהמנוע, בלי כפתור", () => {
   assert.ok(

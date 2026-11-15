@@ -122,7 +122,7 @@ export async function POST(request: Request) {
     }
 
     const already = await db.lead
-      .findUnique({ where: phoneChannel(phone, channelKey(toSale)) })
+      .findFirst({ where: phoneChannel(phone, channelKey(toSale)) })
       .catch(() => null);
     if (already) {
       exists++;

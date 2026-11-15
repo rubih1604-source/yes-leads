@@ -25,13 +25,26 @@
 import { MINE_CHANNEL, SALE_CHANNEL, type Channel } from "./channel";
 
 /**
- * המפתח המורכב כפי שפריזמה מצפה לו.
+ * ============================================================
+ *  תנאי החיפוש: טלפון **וגם** ערוץ, תמיד שניהם
+ * ============================================================
  *
- * חישוב טהור, בלי מסד - כדי שהבדיקות יוכלו לאמת את הצורה
- * בלי להתקין את הלקוח של פריזמה.
+ *  **למה זה תנאי רגיל ולא מפתח של פריזמה.**
+ *
+ *  הייחודיות של טלפון+ערוץ נאכפת על המסד ישירות ולא דרך
+ *  `@@unique` בסכימה - ראה את ההסבר המלא ב-`lead-index.ts`
+ *  (בקצרה: `db push` מסרב ליצור אינדקס ייחודי חדש בלי דגל
+ *  מסוכן שנשאר בפקודת הבנייה לתמיד). פריזמה לא יודעת שזה
+ *  מפתח, ולכן משתמשים ב-`findFirst` עם התנאי הזה.
+ *
+ *  ההגנה במסד זהה לחלוטין. מה שמשתנה זו רק המילה שבה
+ *  קוראים לה בקוד.
+ *
+ *  חישוב טהור, בלי מסד - כדי שהבדיקות יוכלו לאמת את הצורה
+ *  בלי להתקין את הלקוח של פריזמה.
  */
 export function phoneChannel(phone: string, channel: Channel) {
-  return { phone_channel: { phone, channel } };
+  return { phone, channel };
 }
 
 /** המפתח של הליד שלך */
@@ -61,7 +74,7 @@ export async function leadInChannel<T = { id: string }>(
 
   if (select) args.select = select;
 
-  return (await (db.lead.findUnique as (a: unknown) => Promise<unknown>)(args)
+  return (await (db.lead.findFirst as (a: unknown) => Promise<unknown>)(args)
     .catch(() => null)) as T | null;
 }
 

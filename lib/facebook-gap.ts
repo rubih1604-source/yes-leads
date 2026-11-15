@@ -218,7 +218,7 @@ export async function findGap(days: number) {
        */
       const byPhone = phone
         ? await db.lead
-            .findUnique({ where: mineKey(phone), select: { id: true } })
+            .findFirst({ where: mineKey(phone), select: { id: true } })
             .catch(() => null)
         : null;
 

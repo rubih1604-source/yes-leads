@@ -329,7 +329,7 @@ async function handle(request: Request) {
     const leadChannel = channelKey(channel.isSale);
 
     const existing = await db.lead
-      .findUnique({ where: phoneChannel(phone, leadChannel) })
+      .findFirst({ where: phoneChannel(phone, leadChannel) })
       .catch(() => null);
 
     /**

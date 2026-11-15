@@ -224,7 +224,7 @@ async function handle(request: Request) {
          * גם בשיחות.
          */
         const lead = await db.lead
-          .findUnique({ where: mineKey(phone) })
+          .findFirst({ where: mineKey(phone) })
           .catch(() => null);
 
         if (lead) {
@@ -358,7 +358,7 @@ async function handle(request: Request) {
 
     // מוצאים את הליד, ואם אין - יוצרים אחד
     let lead = await db.lead
-      .findUnique({ where: mineKey(phone) })
+      .findFirst({ where: mineKey(phone) })
       .catch(() => null);
     if (!lead) {
       /**

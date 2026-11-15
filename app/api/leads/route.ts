@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
    * מה שההפרדה אמורה לתת.
    */
   const existing = await db.lead
-    .findUnique({
+    .findFirst({
       where: phoneChannel(plan.phone, channelKey(isSale)),
       select: { id: true },
     })

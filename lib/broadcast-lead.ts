@@ -47,7 +47,7 @@ export async function ensureLeadForContact(
   const { mineKey } = await import("./lead-by-phone");
 
   const existing = await db.lead
-    .findUnique({
+    .findFirst({
       where: mineKey(phone),
       select: { id: true, firstName: true },
     })

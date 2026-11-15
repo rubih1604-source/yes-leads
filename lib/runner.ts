@@ -13,6 +13,7 @@ import { judgeSend } from "./send-result";
 import { syncTemplatesIfStale } from "./template-sync";
 import { fillChannels } from "./channel-fill";
 import { warnIfStuck } from "./sale-hold";
+import { ensureLeadIndex } from "./lead-index";
 import { findGap, importMissing, GAP_CHECK_EVERY_MINUTES } from "./facebook-gap";
 /**
  * ============================================================
@@ -539,6 +540,18 @@ export async function runDueJobs(limit = 50): Promise<RunSummary> {
      * בלי זה כל הלידים של המכירה היו קופצים לרשימה שלך.
      */
     await fillChannels().catch(() => null);
+
+    /**
+     * אכיפת הייחודיות של טלפון + ערוץ על המסד.
+     *
+     * **אחרי** מילוי הערוצים, ובכוונה: קודם כל שורה
+     * מקבלת את הערוץ הנכון שלה, ורק אז נאכף שאין שתיים
+     * זהות. אידמפוטנטי - מהסבב השני זו פעולה ריקה.
+     *
+     * ההסבר למה זה כאן ולא ב-`@@unique` בסכימה נמצא
+     * ב-`lib/lead-index.ts`.
+     */
+    await ensureLeadIndex().catch(() => null);
 
     /**
      * עצירה שנשכחה דלוקה מתריעה על עצמה. לידים שמחכים
