@@ -22,7 +22,21 @@ export async function POST(
   const reset = await db.leadDelivery
     .update({
       where: { id: params.id },
-      data: { state: "pending", attempts: 0, nextTryAt: new Date() },
+      /**
+       * `createdAt` נדרך מחדש, כמו בשחרור קבוצתי.
+       *
+       * הוא התאריך שהקונה מקבל במטען, ולכן שליחה ידנית
+       * עכשיו חייבת לשאת את עכשיו - אחרת העברה שבוצעה
+       * במוצאי שבת תגיע עם תאריך של שבת בבוקר.
+       */
+      data: {
+        state: "pending",
+        attempts: 0,
+        nextTryAt: new Date(),
+        createdAt: new Date(),
+        releasedAt: new Date(),
+        error: null,
+      },
     })
     .catch(() => null);
 

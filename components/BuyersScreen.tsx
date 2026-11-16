@@ -52,14 +52,24 @@ export type DeliveryRow = {
   sentAt: string | null;
 };
 
+/**
+ * "מוחזקת" הוא מצב משלו, ולא "ממתינה".
+ *
+ * ממתינה = המערכת תשלח בסבב הקרוב מעצמה.
+ * מוחזקת = אתה עצרת את ההעברות, והיא תצא רק כשתשחרר.
+ * בלי ההבחנה הזו המסך מראה "ממתינה" על משהו שלא ילך
+ * לשום מקום, וזו בדיוק תקלה שלא מגלים.
+ */
 const STATE_LABEL: Record<string, string> = {
   pending: "ממתינה",
+  held: "מוחזקת - ממתינה לשחרור",
   sent: "נשלחה",
   failed: "נכשלה",
 };
 
 const STATE_COLOR: Record<string, string> = {
   pending: "#b54708",
+  held: "#b42318",
   sent: "#12805c",
   failed: "#b42318",
 };

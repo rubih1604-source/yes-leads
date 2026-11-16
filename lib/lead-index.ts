@@ -55,6 +55,17 @@ export async function ensureLeadIndex(): Promise<IndexResult> {
   const { db } = await import("./db");
 
   /**
+   * קיים כבר? יוצאים מיד.
+   *
+   * זה רץ בכל סבב של המנוע, כלומר כל דקה. בלי היציאה
+   * המוקדמת היינו סורקים את כל טבלת הלידים כל דקה לנצח
+   * בשביל שאלה שהתשובה לה כבר ידועה.
+   */
+  if (await leadIndexExists()) {
+    return { ok: true, existed: true };
+  }
+
+  /**
    * בודקים קודם אם יש כפילויות.
    *
    * בלי הבדיקה הזו ניסיון היצירה פשוט נכשל בשגיאה סתומה
@@ -74,6 +85,15 @@ export async function ensureLeadIndex(): Promise<IndexResult> {
     const count = Number(dups?.[0]?.n ?? 0);
 
     if (count > 0) {
+      /**
+       * **זה חייב להיראות, לא להיבלע.**
+       *
+       * כפילות מונעת את האכיפה, והאכיפה היא מה ששומר על
+       * ההפרדה. בלי התראה המערכת הייתה ממשיכה לרוץ בלי
+       * הגנה, בשקט, והאדם היחיד שהיה מגלה את זה הוא אתה -
+       * כשליד היה נכפל אצלך על המסך.
+       */
+      await warnDuplicates(count);
       return { ok: false, duplicates: count };
     }
   } catch (err) {
@@ -95,6 +115,39 @@ export async function ensureLeadIndex(): Promise<IndexResult> {
       error: err instanceof Error ? err.message.slice(0, 200) : "שגיאה",
     };
   }
+}
+
+/**
+ * מתריע על כפילויות שמונעות את האכיפה, פעם ביממה.
+ *
+ * פעם ביממה ולא בכל סבב, אחרת הפעמון מתמלא ומפסיקים
+ * להסתכל עליו - וזה אותו דבר כמו לא להתריע בכלל.
+ */
+async function warnDuplicates(count: number): Promise<void> {
+  const { db } = await import("./db");
+
+  const title = "יש לידים כפולים שחוסמים את ההפרדה";
+
+  const recent = await db.alert
+    .findFirst({
+      where: {
+        title,
+        createdAt: { gte: new Date(Date.now() - 20 * 60 * 60 * 1000) },
+      },
+      select: { id: true },
+    })
+    .catch(() => null);
+
+  if (recent) return;
+
+  await db.alert
+    .create({
+      data: {
+        title,
+        body: `נמצאו ${count} מספרים שמופיעים פעמיים באותו ערוץ. עד שהם יאוחדו, המערכת לא אוכפת שליד לא ייכפל. אמור לי ואני מטפל.`,
+      },
+    })
+    .catch(() => null);
 }
 
 /** האם האכיפה פעילה במסד ברגע זה - לדיווח במסך האבחון */

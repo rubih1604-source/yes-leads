@@ -7,6 +7,7 @@
     "build": "prisma generate && next build",
     "start": "prisma db push --skip-generate; next start",
     "postinstall": "prisma generate",
+    "check": "node scripts/check-syntax.mjs",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "seed": "npx tsx scripts/seed-test-lead.ts"
