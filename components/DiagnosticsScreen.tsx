@@ -59,7 +59,24 @@ function text(value: unknown): string {
   return String(value);
 }
 
-export default function DiagnosticsScreen() {
+/**
+ * ============================================================
+ *  המסך מקבל children, ומציג אותם **בתוך** המסגרת שלו
+ * ============================================================
+ *
+ *  **הבאג שזה מתקן.** הקטעים הנוספים של מסך האבחון הוצגו
+ *  כאחים של המסך הזה, כלומר **מחוץ** ל-`div.app` שנותן
+ *  את הרוחב והשוליים. התוצאה: הם נשפכו מתחת לסרגל הצד
+ *  במקום לשבת בעמודת התוכן, בניגוד לכל שאר המסכים.
+ *
+ *  המסגרת נמצאת כאן, ולכן כל תוכן נוסף חייב להיכנס דרך
+ *  כאן - ולא להיתלות לידה.
+ */
+export default function DiagnosticsScreen({
+  children,
+}: {
+  children?: React.ReactNode;
+}) {
   const [query, setQuery] = useState("");
   const [check, setCheck] = useState<CheckKey>("lead");
   const [busy, setBusy] = useState(false);
@@ -253,6 +270,9 @@ export default function DiagnosticsScreen() {
           )}
         </>
       )}
+
+      {/* תוכן נוסף של המסך, בתוך המסגרת ולא לצידה */}
+      {children}
     </div>
   );
 }
