@@ -22,11 +22,14 @@ export default function SaleHoldBar({
   on,
   waiting,
   leads,
+  mine,
   since,
 }: {
   on: boolean;
   waiting: number;
   leads: number;
+  /** כמה לידים נחתו אצלך בזמן העצירה */
+  mine: number;
   since: string | null;
 }) {
   const [busy, setBusy] = useState(false);
@@ -48,12 +51,10 @@ export default function SaleHoldBar({
     if (!res?.ok || data.error) {
       setMessage(data.error || "הפעולה נכשלה");
     } else if (body.on === true) {
-      setMessage("העברות עצורות. לידים ייכנסו כרגיל ולא ייצאו.");
+      setMessage("העברות עצורות. לידים מקמפיינים של הקונה ייכנסו אליך.");
     } else {
       setMessage(
-        data.released > 0
-          ? `שוחררו ${data.leads} לידים. יוצאים תוך דקה.`
-          : "אין מה לשחרר. העברות חזרו לפעול."
+        "ההעברות חזרו לפעול. הלידים שנכנסו אליך בינתיים נשארים שלך."
       );
     }
 
@@ -108,14 +109,15 @@ export default function SaleHoldBar({
       </div>
 
       <div style={{ fontSize: 13, color: "#475467", marginBottom: 12 }}>
-        {waiting > 0 ? (
+        {mine > 0 ? (
           <>
-            <strong>{leads}</strong> לידים נכנסו ומחכים לשחרור. הם רשומים
-            אצלך במערכת כרגיל — רק עוד לא יצאו החוצה.
+            <strong>{mine}</strong> לידים מקמפיינים של הקונה נכנסו{" "}
+            <strong>אליך</strong>. הם שלך לכל דבר — ההדלקה לא תיקח אותם.
           </>
         ) : (
-          "עדיין לא נכנס אף ליד להמתנה."
+          "ליד שיגיע מקמפיין של הקונה ייכנס לרשימה שלך."
         )}
+        {waiting > 0 ? ` · ${leads} העברות ידניות מחכות לשחרור` : ""}
         {since ? ` · מאז ${since}` : ""}
       </div>
 
@@ -124,11 +126,7 @@ export default function SaleHoldBar({
         onClick={() => call({ on: false })}
         disabled={busy}
       >
-        {busy
-          ? "משחרר..."
-          : waiting > 0
-            ? `שחרר ${leads} לידים והחזר לפעולה`
-            : "החזר העברות לפעולה"}
+        {busy ? "מחזיר..." : "החזר העברות לפעולה"}
       </button>
 
       {message ? (

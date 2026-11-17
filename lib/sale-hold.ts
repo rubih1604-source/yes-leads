@@ -39,10 +39,18 @@ export const HELD_STATE = "held";
 export type HoldState = {
   on: boolean;
   since: Date | null;
-  /** כמה שליחות מחכות ברגע זה */
+  /** כמה שליחות מחכות ברגע זה (העברות ידניות שנעצרו) */
   waiting: number;
   /** כמה לידים שונים הן מייצגות */
   leads: number;
+  /**
+   * כמה לידים נכנסו **אליך** מאז שהעצירה הופעלה.
+   *
+   * אלה הלידים שהקמפיין שלהם שייך לקונה, ונחתו ברשימה
+   * שלך כי המתג היה כבוי. הם שלך לכל דבר, וההדלקה
+   * החוזרת לא נוגעת בהם.
+   */
+  mine: number;
 };
 
 /** האם העצירה פעילה כרגע */
@@ -77,11 +85,30 @@ export async function holdState(): Promise<HoldState> {
     })
     .catch(() => []);
 
+  /**
+   * הלידים שנחתו אצלך בזמן העצירה הנוכחית.
+   *
+   * נספרים מרגע ההפעלה ולא מאז ומתמיד, אחרת המספר היה
+   * גדל לנצח ולא אומר כלום על השבת הזו.
+   */
+  const since = row?.holdSaleSince ?? null;
+
+  const mine = since
+    ? await db.leadEntry
+        .findMany({
+          where: { heldFromSale: true, at: { gte: since } },
+          select: { leadId: true },
+          distinct: ["leadId"],
+        })
+        .catch(() => [])
+    : [];
+
   return {
     on: row?.holdSaleTransfers === true,
-    since: row?.holdSaleSince ?? null,
+    since,
     waiting: held.length,
     leads: new Set(held.map((d) => d.leadId)).size,
+    mine: mine.length,
   };
 }
 

@@ -27,6 +27,7 @@ import {
   SAME_SUBMISSION_MINUTES_NO_ID,
 } from "@/lib/channel";
 import { phoneChannel } from "@/lib/lead-by-phone";
+import { isHolding as holdingNow } from "@/lib/sale-hold";
 
 export const dynamic = "force-dynamic";
 
@@ -299,11 +300,47 @@ async function handle(request: Request) {
      *  כולל המקרה שאף אחד לא תפס: "נשאר אצלך" הוא גם
      *  החלטה, וגם היא צריכה להיות כתובה.
      */
-    const matchedOn =
-      channel.matchedOn ??
-      (channel.isSale
-        ? "קמפיין מכירה - לפי מזהה"
-        : "ללא התאמה - נשאר אצלך");
+    /**
+     * ============================================================
+     *  העברות עצורות -> הליד נכנס **אצלך**, לא אצל הקונה
+     * ============================================================
+     *
+     *  **מה שזה עושה.** כשהמתג כבוי (שבת), ליד שהקמפיין
+     *  שלו שייך לקונה לא נכנס בכלל לצד שלו - הוא נכנס
+     *  לרשימה **שלך**, ואתה עובד אותו.
+     *
+     *  **ולמה זה מוכרע כאן ולא אחר כך.** הדרך הקלה הייתה
+     *  ליצור את הליד אצל הקונה ואז "להעביר" אותו אליך.
+     *  זה היה אומר לכתוב מחדש את הערוץ - שהוא **מפתח של
+     *  השורה** - ולהתמודד עם התנגשויות, כניסות שכבר
+     *  נרשמו, ומחיר שכבר נחתם. בדיוק סוג הבלאגן שנמנעים
+     *  ממנו.
+     *
+     *  לכן ההכרעה היא **לפני** שנולד משהו: הליד פשוט נולד
+     *  בצד הנכון מלכתחילה. שום דבר לא זז אחר כך.
+     *
+     *  **הם נשארים שלך.** הדלקה חוזרת של המתג משפיעה רק
+     *  על לידים **חדשים**. מה שכבר נכנס אליך הוא שלך, עד
+     *  שתחליט אחרת ותעביר אותו ידנית.
+     */
+    const stopped = channel.isSale ? await holdingNow() : false;
+
+    /**
+     * "האם ההגעה הזו הולכת לקונה" - שאלה אחת, משתנה אחד.
+     *
+     * כל מה שתלוי בה (הבעלות, המחיר, החיוב, השליחה,
+     * האוטומציות) נגזר מכאן ולא מ-`channel.isSale` ישירות,
+     * כדי שלא ייווצר מצב ששדה אחד חושב שהליד של הקונה
+     * ושדה אחר חושב שהוא שלך.
+     */
+    const goesToSale = channel.isSale && !stopped;
+
+    const matchedOn = stopped
+      ? `${channel.matchedOn ?? "קמפיין מכירה"} · ההעברות היו עצורות, נכנס אצלך`
+      : channel.matchedOn ??
+        (channel.isSale
+          ? "קמפיין מכירה - לפי מזהה"
+          : "ללא התאמה - נשאר אצלך");
 
     /**
      * ============================================================
@@ -326,7 +363,7 @@ async function handle(request: Request) {
      *  הזה**?". אין - נולד ליד חדש, גם אם לאותו אדם כבר יש
      *  שורה בערוץ השני. שתי מערכות, אפס נגיעה.
      */
-    const leadChannel = channelKey(channel.isSale);
+    const leadChannel = channelKey(goesToSale);
 
     const existing = await db.lead
       .findFirst({ where: phoneChannel(phone, leadChannel) })
@@ -377,7 +414,7 @@ async function handle(request: Request) {
            * כמו ליד שלך - והאוטומציות שלך רצו עליו. ככה
            * לקוחות שלו קיבלו ממך הודעות.
            */
-          origin: channel.isSale ? "sale" : "leadmanager",
+          origin: goesToSale ? "sale" : "leadmanager",
 
           /**
            * הערוץ נחתם בלידה, והוא חלק מהמפתח של השורה.
@@ -430,8 +467,10 @@ async function handle(request: Request) {
             source: mapped.source,
             via,
             channelId: inChannel?.id ?? null,
-            isSale: channel.isSale,
+            isSale: goesToSale,
             matchedOn,
+            /** הגעה שהגיעה אליך כי ההעברות היו עצורות */
+            heldFromSale: stopped,
             price: entryPrice,
             /** השדות שההגעה הזו נשאה - ראה ההערה בסכימה */
             extra: Object.keys(extra).length
@@ -462,11 +501,11 @@ async function handle(request: Request) {
         status: lead.status,
         extra,
         channelName: inChannel?.name ?? null,
-        isSale: channel.isSale,
+        isSale: goesToSale,
         at: new Date(),
       });
 
-      if (channel.isSale && firstEntry) {
+      if (goesToSale && firstEntry) {
         await queueDelivery({
           leadId: lead.id,
           entryId: firstEntry.id,
@@ -480,7 +519,16 @@ async function handle(request: Request) {
        * אוטומציות רצות רק על הערוץ שלך.
        * ליד של המכירה לא מקבל ממך הודעה, לעולם.
        */
-      if (!channel.isSale) {
+      /**
+       * אוטומציות לא רצות על ליד של הקונה, וגם לא על ליד
+       * שנכנס אליך בזמן שההעברות עצורות.
+       *
+       * העצירה היא בשבת, ואתה לא עובד בשבת. הודעת וואטסאפ
+       * שיוצאת לבד בשבת היא בדיוק הדבר שהעצירה נועדה
+       * למנוע. הליד מחכה לך ברשימה, ואתה מתחיל איתו כשאתה
+       * חוזר.
+       */
+      if (!goesToSale && !stopped) {
         await scheduleForStatus(lead.id, lead.status);
       }
     } else {
@@ -494,7 +542,7 @@ async function handle(request: Request) {
        * הכלל הנכון: הקמפיין שממנו הוא נכנס עכשיו הוא
        * שקובע של מי הליד.
        */
-      const isSaleNow = channel.isSale;
+      const isSaleNow = goesToSale;
 
       /**
        * סטטוס שמגיע מליד מנגר נוגע רק בערוץ שלך.
@@ -694,7 +742,7 @@ async function handle(request: Request) {
        */
       if (sameSubmission && !statusOnly) {
         const matching = recentEntries
-          .filter((e) => e.isSale === channel.isSale)
+          .filter((e) => e.isSale === goesToSale)
           .sort((a, b) => b.at.getTime() - a.at.getTime())[0];
 
         if (matching) {
@@ -723,8 +771,9 @@ async function handle(request: Request) {
               source: mapped.source,
               via,
               channelId: inChannel?.id ?? null,
-              isSale: channel.isSale,
+              isSale: goesToSale,
               matchedOn,
+              heldFromSale: stopped,
               price: entryPrice,
               /**
                * **השדות של ההגעה הזו, ולא תערובת.** זה
@@ -740,7 +789,7 @@ async function handle(request: Request) {
           .catch(() => null);
 
         // הגעה חדשה בערוץ המכירה = שליחה חדשה לקונה
-        if (channel.isSale && entry) {
+        if (goesToSale && entry) {
           await queueDelivery({
             leadId: existing.id,
             entryId: entry.id,
@@ -805,14 +854,31 @@ async function handle(request: Request) {
        *  חדש: ערוץ המכירה לא מקבל אוטומציות לעולם, ואותה
        *  הגשה שהגיעה משתי הדלתות אינה הגעה שנייה.
        */
-      if (!sameSubmission && !channel.isSale) {
+      if (!sameSubmission && !goesToSale && !stopped) {
         await scheduleForStatus(
           existing.id,
           incomingStatus ?? existing.status
         ).catch(() => 0);
       }
 
-      if (!sameSubmission && !channel.isSale) {
+      /**
+       * ============================================================
+       *  **הגעה חוזרת מתריעה תמיד, גם אם היא של המכירה**
+       * ============================================================
+       *
+       *  כאן היה `&& !channel.isSale`, וזו הייתה חוסר
+       *  אחידות שאין לה שום הצדקה: ליד **חדש** של המכירה
+       *  כן קרא ל-notifyNewLead, וליד **חוזר** של המכירה
+       *  לא קרא לה בכלל. אותו אירוע בדיוק, שתי התנהגויות
+       *  הפוכות, לפי ענף בקוד.
+       *
+       *  זה המקרה המדויק שנפל: ליד שכבר היה במערכת נכנס
+       *  שוב, שויך למכירה, ועבר בשקט מוחלט.
+       *
+       *  התנאי היחיד שנשאר הוא `sameSubmission` - אותה
+       *  הגשה שנשמעה משתי דלתות אינה הגעה שנייה.
+       */
+      if (!sameSubmission) {
         void notifyNewLead({
           leadId: existing.id,
           firstName: mapped.firstName ?? existing.firstName,
@@ -821,7 +887,7 @@ async function handle(request: Request) {
           status: incomingStatus ?? existing.status,
           extra,
           channelName: inChannel?.name ?? null,
-          isSale: channel.isSale,
+          isSale: goesToSale,
           returning: true,
           at: new Date(),
         });

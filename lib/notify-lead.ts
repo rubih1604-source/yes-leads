@@ -73,17 +73,35 @@ export async function notifyNewLead(
   /* ---------- 1. הפעמון. תמיד, ולפני הכל ---------- */
   try {
     /**
-     * ליד של ערוץ המכירה הוא של הקונה ולא שלך - אין טעם
-     * להתריע לך עליו, בדיוק כמו שהאוטומציות לא רצות עליו.
+     * ============================================================
+     *  **כל ליד שנכנס מתריע. בלי יוצא מן הכלל.**
+     * ============================================================
+     *
+     *  **מה שהיה כאן, ולמה זו הייתה טעות שלי.**
+     *
+     *  היה כאן תנאי שהשתיק כל ליד של ערוץ המכירה, בנימוק
+     *  "הוא של הקונה ולא שלך". לקחתי כלל נכון - שהאוטומציות
+     *  שלך לא רצות על ליד של הקונה - והחלתי אותו גם על
+     *  **מידע**. זה לא אותו דבר בכלל.
+     *
+     *  התוצאה בשטח: ליד נכנס, שויך בטעות לקונה, ולא קיבלת
+     *  עליו **שום** סימן - לא פעמון, לא נייד, ולא מייל.
+     *  הדרך היחידה לגלות הייתה להסתכל במקרה ברשימה של
+     *  הקונה. כלומר דווקא השיוך השגוי, המקרה שהכי חשוב
+     *  לתפוס, היה המקרה השקט ביותר.
+     *
+     *  זאת מערכת לידים. כל ליד שנכנס מתריע - והשיוך כתוב
+     *  בהתראה עצמה, כדי שתראה מיד אם הוא הלך לצד הלא נכון.
      */
-    if (input.isSale !== true && !input.manual && input.leadId) {
+    if (!input.manual && input.leadId) {
       const from = input.channelName ? ` · ${input.channelName}` : "";
+      const side = input.isSale === true ? " · למכירה" : "";
 
       await db.alert.create({
         data: {
           leadId: input.leadId,
           title: input.returning ? "ליד נכנס שוב" : "ליד חדש",
-          body: `${who}${from}${input.status ? ` · ${input.status}` : ""}`,
+          body: `${who}${from}${side}${input.status ? ` · ${input.status}` : ""}`,
         },
       });
 
@@ -111,7 +129,8 @@ export async function notifyNewLead(
    *  לא תלוי במתג המייל ולא בסינון שלו.
    */
   try {
-    if (input.isSale !== true && !input.manual) {
+    /** גם כאן: כל ליד. ראה ההסבר המלא אצל הפעמון */
+    if (!input.manual) {
       const { sendPush, pushConfigured } = await import("./push");
 
       if (!pushConfigured()) {
@@ -119,7 +138,9 @@ export async function notifyNewLead(
       } else {
         const sent = await sendPush({
           title: input.returning ? "ליד נכנס שוב" : "ליד חדש",
-          body: `${who}${input.channelName ? ` · ${input.channelName}` : ""}`,
+          body: `${who}${input.channelName ? ` · ${input.channelName}` : ""}${
+            input.isSale === true ? " · למכירה" : ""
+          }`,
           url: input.leadId ? `/leads/${input.leadId}` : "/leads",
           tag: input.leadId ? `lead-${input.leadId}` : undefined,
         });

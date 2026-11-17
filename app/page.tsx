@@ -38,6 +38,7 @@ export default async function HomePage({
         since: null,
         waiting: 0,
         leads: 0,
+        mine: 0,
       })),
     ]);
 
@@ -247,6 +248,7 @@ export default async function HomePage({
         on={hold.on}
         waiting={hold.waiting}
         leads={hold.leads}
+        mine={hold.mine}
         since={
           hold.since
             ? hold.since.toLocaleString("he-IL", {
