@@ -9,6 +9,8 @@ import { getStatuses } from "@/lib/status-store";
 import { getSubStatusMap } from "@/lib/substatus";
 import { isExistingCustomer, supplierAnswer } from "@/lib/existing-customer";
 import LeadCardActions from "@/components/LeadCardActions";
+import EditLeadDetails from "@/components/EditLeadDetails";
+import { checkPhone } from "@/lib/phone-valid";
 import LeadNotes from "@/components/LeadNotes";
 import CallLink from "@/components/CallLink";
 import { getSettings } from "@/lib/settings";
@@ -142,6 +144,17 @@ export default async function LeadPage({
   /** האם מה שמוצג הוא של ההגעה האחרונה או של ההיסטוריה */
   const fieldsAreFromThisArrival = Object.keys(entryFields).length > 0;
 
+  /** האם המספר יכול בכלל להיות מספר אמיתי בישראל */
+  const phoneState = checkPhone(lead.phone);
+
+  /**
+   * מייל וכתובת לתיקון נקראים מ-`lead.extra` ולא מהכניסה.
+   *
+   * התיקון נשמר על הליד, ולכן הטופס חייב להציג את מה
+   * שבאמת יישמר - אחרת תראה ערך אחד ותשמור ערך אחר.
+   */
+  const leadExtra = leadFields as Record<string, string | undefined>;
+
   /**
    * של מי הליד, וכמה כניסות יש לו **בערוץ שלו**.
    *
@@ -242,6 +255,46 @@ export default async function LeadPage({
           {lead.source ? ` · ${lead.source}` : ""}
           {lead.duplicateOf ? " · ליד כפול" : ""}
         </div>
+
+        {/*
+          ============================================================
+           מספר שלא יכול להיות אמיתי
+          ============================================================
+
+          מוצג כאן ולא רק ברשימה, כי זה המסך שממנו מתקשרים.
+          הטקסט אומר **מה** לא בסדר - חסרה ספרה, יש ספרה
+          מיותרת, או קידומת שלא קיימת - כדי שתדע מיד אם
+          מדובר בטעות הקלדה או במספר מזויף.
+        */}
+        {!phoneState.valid ? (
+          <div
+            style={{
+              padding: "8px 12px",
+              borderRadius: 8,
+              border: "1px solid #fecdca",
+              background: "#fef3f2",
+              color: "#b42318",
+              fontSize: 13,
+              marginBottom: 12,
+            }}
+          >
+            <strong>מספר לא תקין</strong> — {phoneState.reason}
+          </div>
+        ) : null}
+
+        {/*
+          תיקון פרטים: לקוח שמשאיר מספר שגוי בטופס ושולח
+          את הנכון בהודעה. בלי זה הליד נשאר לנצח עם מספר
+          שלא עונה.
+        */}
+        <EditLeadDetails
+          leadId={lead.id}
+          firstName={lead.firstName}
+          lastName={lead.lastName}
+          phone={dialPhone(lead.phone)}
+          email={leadExtra.email ?? null}
+          address={leadExtra.address ?? null}
+        />
 
         <LeadCardActions
           leadId={lead.id}

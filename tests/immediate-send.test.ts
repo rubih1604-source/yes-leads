@@ -80,7 +80,12 @@ test("השומר משתחרר גם כשההרצה נכשלת", () => {
 });
 
 test("קריאה שדילגה לא מדווחת על שליחות שלא קרו", () => {
-  const at = runner.indexOf("if (engineRunning)");
+  /**
+   * התנאי כולל עכשיו גם את משך ההחזקה, כדי שנעילה
+   * תקועה לא תחסום את המנוע לנצח - ראה
+   * tests/engine-never-stuck.test.ts.
+   */
+  const at = runner.indexOf("if (engineRunning && heldFor");
   const block = runner.slice(at, at + 400);
   assert.ok(block.includes("sent: 0"));
   assert.ok(block.includes("picked: 0"));

@@ -4,6 +4,7 @@ import { isLoggedIn } from "@/lib/auth";
 import { clearChannelCache } from "@/lib/channels";
 import { parseHeaders, checkTemplate } from "@/lib/delivery-payload";
 import { clearLeadFormCache } from "@/lib/lead-forms";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
 export const dynamic = "force-dynamic";
 
@@ -294,7 +295,7 @@ export async function POST(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20_000);
 
-    const response = await fetch(channel.webhookUrl.trim(), {
+    const response = await fetchWithTimeout(channel.webhookUrl.trim(), {
       method: "POST",
       headers,
       body: bodyText,

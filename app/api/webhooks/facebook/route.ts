@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { db } from "@/lib/db";
@@ -182,7 +183,7 @@ async function graphLead(
   token: string,
   fields: string[]
 ): Promise<{ ok: boolean; status: number; body: string }> {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${GRAPH}/${leadId}?fields=${fields.join(",")}&access_token=${encodeURIComponent(
       token
     )}`,

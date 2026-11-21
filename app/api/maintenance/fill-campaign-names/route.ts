@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { isLoggedIn } from "@/lib/auth";
 import { Prisma } from "@prisma/client";
 import { pageTokens } from "@/lib/facebook-sources";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
 export const dynamic = "force-dynamic";
 
@@ -102,7 +103,7 @@ export async function POST(request: Request) {
     const fields = fieldsOf(lead.extra);
     const leadgenId = text(fields, "fb_leadid");
 
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `${GRAPH}/${leadgenId}?fields=campaign_name,adset_name,ad_name&access_token=${encodeURIComponent(
         token
       )}`,

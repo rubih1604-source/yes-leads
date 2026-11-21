@@ -7,7 +7,12 @@ import { getRevenue } from "@/lib/revenue";
 import { getSettings } from "@/lib/settings";
 import { isExistingCustomer } from "@/lib/existing-customer";
 import { MY_LEADS_WHERE, leadsWhere } from "@/lib/channel";
-import { viewWhere, describeView, type ViewDef } from "@/lib/lead-views";
+import {
+  viewWhere,
+  describeView,
+  spellingsOf,
+  type ViewDef,
+} from "@/lib/lead-views";
 import RevenueBar from "@/components/RevenueBar";
 import ViewPicker from "@/components/ViewPicker";
 import AddLeadForm from "@/components/AddLeadForm";
@@ -76,7 +81,72 @@ export default async function HomePage({
       ? views.find((v) => v.id === searchParams.view)
       : null) ?? null;
 
-  const narrowed = viewWhere(activeView as ViewDef | null, channelRefs);
+  /**
+   * ============================================================
+   *  הכתיבים האמיתיים של הקמפיינים שנבחרו
+   * ============================================================
+   *
+   *  הסינון לא מסתמך יותר על `channelId` בלבד - ראה את
+   *  ההסבר המלא ב-lib/lead-views.ts. כדי להשוות לפי שם
+   *  צריך לדעת **באילו כתיבים** השם הזה באמת שמור, כי
+   *  פייסבוק מעבירה אותו קצת אחרת בכל פעם.
+   */
+  const wantedCampaignNames = activeView
+    ? campaignTree
+        .filter((c) => (activeView as ViewDef).campaignIds.includes(c.id))
+        .map((c) => c.name)
+    : [];
+
+  const seenCampaigns = wantedCampaignNames.length
+    ? await db.leadEntry
+        .findMany({
+          where: { campaign: { not: null } },
+          select: { campaign: true },
+          distinct: ["campaign"],
+          take: 500,
+        })
+        .catch(() => [])
+    : [];
+
+  /**
+   * ============================================================
+   *  אילו קמפיינים עוד חיים
+   * ============================================================
+   *
+   *  רשימת הקמפיינים צוברת כל קמפיין שאי פעם רץ, ואחרי
+   *  שנה אי אפשר למצוא בה כלום. סופרים כניסות מ-60 הימים
+   *  האחרונים לפי הערוצים של כל קמפיין, והבוחר מציג כברירת
+   *  מחדל רק את מי שחי.
+   */
+  const since60 = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+
+  const recentEntries = await db.leadEntry
+    .groupBy({
+      by: ["channelId"],
+      where: { channelId: { not: null }, at: { gte: since60 } },
+      _count: { _all: true },
+    })
+    .catch(() => [] as Array<{ channelId: string | null; _count: { _all: number } }>);
+
+  const byChannel = new Map(
+    recentEntries.map((r) => [r.channelId ?? "", r._count._all])
+  );
+
+  const recentByCampaign = new Map<string, number>();
+
+  for (const campaign of campaignTree) {
+    let total = 0;
+    for (const channel of campaign.channels) {
+      total += byChannel.get(channel.id) ?? 0;
+    }
+    recentByCampaign.set(campaign.id, total);
+  }
+
+  const narrowed = viewWhere(
+    activeView as ViewDef | null,
+    channelRefs,
+    spellingsOf(wantedCampaignNames, seenCampaigns)
+  );
 
   const leads = await db.lead.findMany({
     // סדר קבוע: הליד האחרון שנכנס תמיד למעלה.
@@ -143,6 +213,9 @@ export default async function HomePage({
       intakeAt: true,
       extra: true,
 
+      /** רק כדי לדעת אם יש הערה - התוכן עצמו לא נדרש ברשימה */
+      notes: true,
+
       /**
        * נספרות רק הכניסות של הערוץ שלך.
        *
@@ -204,6 +277,14 @@ export default async function HomePage({
        */
       origin: l.origin,
       entryCount: l._count.entries,
+
+      /**
+       * יש הערה שכתבת על הלקוח.
+       *
+       * מועבר כסימן ולא כתוכן: הרשימה צריכה רק לדעת
+       * שצריך להציג תווית, והטקסט עצמו נקרא בכרטיס.
+       */
+      hasNote: Boolean(l.notes && l.notes.trim()),
       intakeAt: mineAt.toISOString(),
       campaign: extra.fb_campaign || extra.campaign || null,
       supplier: extra.supplier_question || null,
@@ -280,6 +361,8 @@ export default async function HomePage({
             id: c.id,
             name: c.name,
             channels: c.channels,
+            /** כמה לידים נכנסו ממנו לאחרונה - מה שמבדיל חי מגמור */
+            recent: recentByCampaign.get(c.id) ?? 0,
           }))}
         />
       )}

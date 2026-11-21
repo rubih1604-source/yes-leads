@@ -116,7 +116,56 @@ export async function register() {
   setTimeout(tick, 15_000);
   setInterval(tick, INTERVAL_MS);
 
+  /**
+   * ============================================================
+   *  הסוכן הבודק - טיימר **נפרד** מהמנוע, ובכוונה
+   * ============================================================
+   *
+   *  **למה לא בתוך הסבב של המנוע.** תפקידו של הסוכן הוא,
+   *  בין השאר, לתפוס מנוע שנתקע ולהעיר אותו. סוכן שרץ
+   *  בתוך המנוע היה נתקע יחד איתו ולא תופס כלום - שומר
+   *  שישן באותו חדר עם מי שהוא שומר עליו.
+   *
+   *  **ולמה כל 5 דקות ולא כל דקה.** הוא סורק ומתקן, ולא
+   *  סתם מציץ. כל דקה זו עבודה מיותרת על מערכת תקינה;
+   *  5 דקות מספיק מהר כדי שתקלה לא תשב שעה.
+   */
+  const WATCHDOG_MS =
+    Number(process.env.WATCHDOG_INTERVAL_MS) || 5 * 60_000;
+
+  let watching = false;
+
+  async function watch() {
+    if (watching) return;
+    watching = true;
+
+    try {
+      const { runWatchdog } = await import("./lib/watchdog");
+      const result = await runWatchdog();
+
+      const problems = result.findings.filter((f) => f.needsYou);
+
+      if (result.findings.length > 0) {
+        console.log(
+          `[סוכן] ${result.findings.length} ממצאים, ` +
+            `${problems.length} דורשים טיפול`
+        );
+      }
+    } catch (err) {
+      console.error("[סוכן] שגיאה בבדיקה:", err);
+    } finally {
+      watching = false;
+    }
+  }
+
+  /** אחרי המנוע, שלא יתנגשו בהרצה הראשונה */
+  setTimeout(watch, 90_000);
+  setInterval(watch, WATCHDOG_MS);
+
   console.log(
     `[מנוע] טיימר הופעל - הרצה כל ${Math.round(INTERVAL_MS / 1000)} שניות`
+  );
+  console.log(
+    `[סוכן] בדיקת מערכת כל ${Math.round(WATCHDOG_MS / 60_000)} דקות`
   );
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isLoggedIn } from "@/lib/auth";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,7 @@ export async function GET() {
   }
 
   try {
-    const response = await fetch("https://api.resend.com/emails", {
+    const response = await fetchWithTimeout("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         "content-type": "application/json",

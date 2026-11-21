@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { statusColor, type StatusDef } from "@/lib/statuses";
 import { displayPhone, dialPhone, phoneMatches, waLink } from "@/lib/phone";
+import { checkPhone, isBadPhone as badPhone } from "@/lib/phone-valid";
 import { DEFAULT_ROW_FIELDS, type RowFieldKey } from "@/lib/row-fields";
 import { DEFAULT_DIALER } from "@/lib/dialer";
 import CallLink from "./CallLink";
@@ -28,6 +29,8 @@ export type LeadRow = {
   price: string | null;
   email: string | null;
   address: string | null;
+  /** יש הערה שכתבת על הלקוח */
+  hasNote?: boolean;
 };
 
 const SAVE_KEY = "leads:filters";
@@ -1073,6 +1076,38 @@ export default function LeadList({
                         {lead.entryCount > 1
                           ? `כפול · ${lead.entryCount}`
                           : "כפול"}
+                      </span>
+                    )}
+
+                    {/*
+                      ============================================
+                       מספר שלא יכול להיות אמיתי
+                      ============================================
+
+                      ליד עם מספר שגוי הוא ליד אבוד: מתקשרים
+                      ולא עונים, שולחים וואטסאפ ולא מגיע, ואין
+                      שום סימן שהבעיה במספר ולא בלקוח.
+
+                      התווית אומרת **מה** לא בסדר, כדי שתדע
+                      מיד אם חסרה ספרה או שהקידומת שגויה.
+                    */}
+                    {badPhone(lead.phone) && (
+                      <span
+                        className="dup-tag"
+                        style={{ background: "#fee4e2", color: "#b42318" }}
+                        title={checkPhone(lead.phone).reason ?? ""}
+                      >
+                        מספר לא תקין
+                      </span>
+                    )}
+
+                    {/* הערה שכתבת - כדי שתדע לפני שאתה מתקשר */}
+                    {lead.hasNote && (
+                      <span
+                        className="dup-tag"
+                        style={{ background: "#eef2f7", color: "#1b4d8f" }}
+                      >
+                        הערה
                       </span>
                     )}
                   </div>

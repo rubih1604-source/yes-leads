@@ -10,6 +10,8 @@
  *  את הדפים שהוקצו לו.
  */
 
+import { fetchWithTimeout } from "./fetch-timeout";
+
 const GRAPH = "https://graph.facebook.com/v21.0";
 
 export type FacebookPage = {
@@ -33,7 +35,11 @@ export type FacebookQuestion = {
 };
 
 export async function graph<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${GRAPH}${path}`, { cache: "no-store", ...init });
+  /** תקרת זמן - ראה ההסבר ב-lib/fetch-timeout.ts */
+  const response = await fetchWithTimeout(`${GRAPH}${path}`, {
+    cache: "no-store",
+    ...init,
+  });
   const json = await response.json().catch(() => ({}));
 
   if (!response.ok) {

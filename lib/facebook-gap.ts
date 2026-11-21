@@ -2,6 +2,7 @@ import { db } from "./db";
 import { normalizePhone } from "./phone";
 import { pageTokens } from "./facebook-sources";
 import { mineKey } from "./lead-by-phone";
+import { fetchWithTimeout } from "./fetch-timeout";
 
 /**
  * ============================================================
@@ -162,7 +163,14 @@ export async function findGap(days: number) {
         ) +
         `&access_token=${encodeURIComponent(token)}`;
 
-      const response = await fetch(url, { cache: "no-store" }).catch(() => null);
+      /**
+       * תקרת זמן. הבדיקה הזו רצה בתוך המנוע ועוברת על
+       * כל טופס ועל כל עמוד תוצאות - קריאה אחת תלויה
+       * הייתה משתקת את כל האוטומציות.
+       */
+      const response = await fetchWithTimeout(url, {
+        cache: "no-store",
+      }).catch(() => null);
 
       if (!response || !response.ok) {
         const body = await response?.text().catch(() => "");

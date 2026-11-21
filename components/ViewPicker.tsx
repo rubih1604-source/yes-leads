@@ -25,6 +25,13 @@ export type PickerCampaign = {
   id: string;
   name: string;
   channels: Array<{ id: string; name: string; isSale: boolean }>;
+  /**
+   * כמה לידים נכנסו מהקמפיין הזה ב-60 הימים האחרונים.
+   *
+   * זה מה שמבדיל בין קמפיין חי לקמפיין שסיים את דרכו
+   * לפני חצי שנה ועדיין תופס מקום ברשימה.
+   */
+  recent?: number;
 };
 
 export default function ViewPicker({
@@ -41,6 +48,26 @@ export default function ViewPicker({
   const [pickedCampaigns, setPickedCampaigns] = useState<Set<string>>(new Set());
   const [pickedChannels, setPickedChannels] = useState<Set<string>>(new Set());
   const [includeSale, setIncludeSale] = useState(false);
+
+  /**
+   * ============================================================
+   *  מציגים רק קמפיינים בשימוש
+   * ============================================================
+   *
+   *  הרשימה צברה כל קמפיין שאי פעם רץ, ואחרי שנה היא
+   *  ארוכה מדי מכדי למצוא בה משהו. ברירת המחדל היא מה
+   *  שחי עכשיו; מה שנגמר עדיין נגיש בלחיצה.
+   */
+  const [onlyActive, setOnlyActive] = useState(true);
+
+  /** קמפיין "חי" = נכנסו ממנו לידים לאחרונה */
+  const liveCampaigns = campaigns.filter((c) => (c.recent ?? 0) > 0);
+
+  /** יש בכלל מה להסתיר? אם לא, אין טעם להציג מתג */
+  const hasQuiet =
+    liveCampaigns.length > 0 && liveCampaigns.length < campaigns.length;
+
+  const shown = onlyActive && hasQuiet ? liveCampaigns : campaigns;
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -176,7 +203,18 @@ export default function ViewPicker({
 
       {open && (
         <div style={{ marginTop: 11 }}>
-          {campaigns.length === 0 ? (
+          {shown.length === 0 && campaigns.length > 0 ? (
+            <div style={{ fontSize: 13, color: "#475467", lineHeight: 1.6 }}>
+              אין קמפיינים עם לידים ב-60 הימים האחרונים.{" "}
+              <button
+                className="btn"
+                style={{ fontSize: 12.5, padding: "4px 10px" }}
+                onClick={() => setOnlyActive(false)}
+              >
+                הצג את כולם
+              </button>
+            </div>
+          ) : campaigns.length === 0 ? (
             <div style={{ fontSize: 13, color: "#b54708", lineHeight: 1.6 }}>
               אין עוד קמפיינים וערוצים. צור אותם קודם במסך
               &quot;קמפיינים וערוצים&quot;, ואז אפשר לשמור תצוגה.
@@ -191,7 +229,36 @@ export default function ViewPicker({
                 onChange={(e) => setName(e.target.value)}
               />
 
-              {campaigns.map((campaign) => (
+              {/* מתג בין "בשימוש" לבין הכל */}
+              {hasQuiet ? (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    margin: "10px 0 12px",
+                    fontSize: 12.5,
+                  }}
+                >
+                  {[
+                    { on: true, label: `בשימוש (${liveCampaigns.length})` },
+                    { on: false, label: `הכל (${campaigns.length})` },
+                  ].map((opt) => (
+                    <button
+                      key={String(opt.on)}
+                      className="chip"
+                      onClick={() => setOnlyActive(opt.on)}
+                      style={{
+                        background: onlyActive === opt.on ? "#1b4d8f" : "#fff",
+                        color: onlyActive === opt.on ? "#fff" : "#475467",
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {shown.map((campaign) => (
                 <div key={campaign.id} style={{ marginBottom: 9 }}>
                   <label
                     style={{

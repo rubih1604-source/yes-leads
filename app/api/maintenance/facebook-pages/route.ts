@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isLoggedIn } from "@/lib/auth";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,7 @@ type PageStatus = {
 };
 
 async function graph(path: string, init?: RequestInit) {
-  const response = await fetch(`${GRAPH}${path}`, {
+  const response = await fetchWithTimeout(`${GRAPH}${path}`, {
     cache: "no-store",
     ...init,
   });

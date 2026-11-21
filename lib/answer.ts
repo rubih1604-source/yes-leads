@@ -11,6 +11,7 @@
  */
 
 import { db } from "./db";
+import { fetchWithTimeout } from "./fetch-timeout";
 
 export type MatchResult = {
   matched: boolean;
@@ -50,7 +51,9 @@ export async function matchKnowledge(params: {
     .join("\n\n");
 
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const response = await fetchWithTimeout(
+      "https://api.anthropic.com/v1/messages",
+      {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -68,8 +71,9 @@ export async function matchKnowledge(params: {
           },
         ],
       }),
-      cache: "no-store",
-    });
+        cache: "no-store",
+      }
+    );
 
     if (!response.ok) return { matched: false, answer: null, topic: null };
 

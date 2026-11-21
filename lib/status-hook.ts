@@ -20,6 +20,7 @@
 
 import { deliveryVerdict } from "./delivery-payload";
 import { hookBody } from "./hook-payload";
+import { fetchWithTimeout } from "./fetch-timeout";
 
 export type HookResult =
   | { sent: false; reason: string }
@@ -108,19 +109,17 @@ export async function fireStatusHook(
     /**
      * פסק זמן של 15 שניות. שרת שלא עונה לא יתקע את שינוי
      * הסטטוס - הסטטוס כבר השתנה, והשליחה היא תוספת.
+     *
+     * דרך העטיפה המשותפת, ולא מימוש משלו: שלושה מימושים
+     * של אותו דבר הם שלוש הזדמנויות לשכוח אחד מהם.
      */
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15_000);
-
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: "POST",
       headers,
       body,
-      signal: controller.signal,
       cache: "no-store",
+      timeoutMs: 15_000,
     });
-
-    clearTimeout(timer);
 
     httpStatus = response.status;
     responseText = (await response.text().catch(() => "")).slice(0, 400);

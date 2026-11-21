@@ -14,6 +14,7 @@
  *  שים לב: התבניות יושבות תחת /whatsapp/templates, אבל ההודעות
  *  והצ'אטים יושבים ישירות תחת /messages ו-/chats. בלי זה מקבלים 404.
  */
+import { fetchWithTimeout } from "./fetch-timeout";
 
 function baseUrl(): string {
   const override = process.env.TEXTER_BASE_URL?.trim();
@@ -62,7 +63,15 @@ async function call<T>(
   }
 
   try {
-    const response = await fetch(url, {
+    /**
+     * **תקרת זמן, וזה קריטי כאן מכל מקום אחר.**
+     *
+     * דרך הפונקציה הזו עוברת גם שליחת ההודעה עצמה וגם
+     * סנכרון התבניות שרץ בתוך המנוע. קריאה תלויה כאן
+     * השאירה את נעילת המנוע דלוקה לנצח, ואז שום
+     * אוטומציה במערכת לא יצאה - בלי שום שגיאה.
+     */
+    const response = await fetchWithTimeout(url, {
       ...init,
       headers: {
         Authorization: authHeader(),

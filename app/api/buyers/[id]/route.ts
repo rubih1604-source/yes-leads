@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isLoggedIn } from "@/lib/auth";
@@ -215,7 +216,7 @@ export async function POST(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20_000);
 
-    const response = await fetch(buyer.webhookUrl, {
+    const response = await fetchWithTimeout(buyer.webhookUrl, {
       method: "POST",
       headers,
       body,

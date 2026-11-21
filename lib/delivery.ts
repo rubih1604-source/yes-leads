@@ -18,6 +18,7 @@
  *   3. **כישלון לא מאבד ליד.** הוא נשאר בתור ומנסה שוב.
  */
 
+import { fetchWithTimeout } from "./fetch-timeout";
 import { db } from "./db";
 import { HELD_STATE, isHolding } from "./sale-hold";
 import {
@@ -307,19 +308,16 @@ export async function sendDelivery(deliveryId: string): Promise<boolean> {
     /**
      * פסק זמן של 20 שניות. שרת שלא עונה תוך זה ייחשב
      * ככישלון וינוסה שוב, במקום לתקוע את המנוע.
+     *
+     * דרך העטיפה המשותפת - ראה lib/fetch-timeout.ts.
      */
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20_000);
-
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: "POST",
       headers,
       body,
-      signal: controller.signal,
       cache: "no-store",
+      timeoutMs: 20_000,
     });
-
-    clearTimeout(timer);
 
     httpStatus = response.status;
     responseText = (await response.text().catch(() => "")).slice(0, 500);

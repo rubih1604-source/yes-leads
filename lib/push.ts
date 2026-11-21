@@ -18,6 +18,7 @@
  */
 
 import { db } from "./db";
+import { fetchWithTimeout } from "./fetch-timeout";
 
 export type PushMessage = {
   title: string;
@@ -269,7 +270,7 @@ export async function sendPush(message: PushMessage): Promise<number> {
        * כל הלופ, ובסביבה שמריצה פונקציות עם מגבלת זמן
        * זה אומר שגם המכשירים הבאים לא מקבלים כלום.
        */
-      const response = await fetch(sub.endpoint, {
+      const response = await fetchWithTimeout(sub.endpoint, {
         method: "POST",
         headers: {
           TTL: "86400",
@@ -279,7 +280,7 @@ export async function sendPush(message: PushMessage): Promise<number> {
           Urgency: message.urgent ? "high" : "normal",
         },
         body: toBuffer(body),
-        signal: AbortSignal.timeout(10_000),
+        timeoutMs: 10_000,
       });
 
       if (response.ok) {

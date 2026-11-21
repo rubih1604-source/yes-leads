@@ -10,6 +10,7 @@
  *  ALERT_EMAIL     - כתובת המייל שלך
  *  EMAIL_FROM      - אופציונלי. ברירת מחדל onboarding@resend.dev
  */
+import { fetchWithTimeout } from "./fetch-timeout";
 
 export async function sendEmail(params: {
   subject: string;
@@ -46,7 +47,7 @@ export async function sendEmail(params: {
   const from = address.includes("<") ? address : `${name} <${address}>`;
 
   try {
-    const response = await fetch("https://api.resend.com/emails", {
+    const response = await fetchWithTimeout("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         "content-type": "application/json",

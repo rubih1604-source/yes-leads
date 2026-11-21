@@ -186,8 +186,18 @@ test("כל שליחה לנייד נרשמת על המכשיר", () => {
 });
 
 test("שרת דחיפה תקוע לא חוסם את שאר המכשירים", () => {
+  /**
+   * פסק הזמן עבר לעטיפה המשותפת `fetchWithTimeout`.
+   *
+   * קודם כל מקום מימש לעצמו פסק זמן, וזה אומר שכל מקום
+   * הוא הזדמנות לשכוח - וקריאה אחת בלי פסק זמן מספיקה
+   * כדי להשתיק את כל המערכת.
+   */
   const push = io.readFileSync("lib/push.ts", "utf8");
-  assert.ok(push.includes("AbortSignal.timeout"), "אין פסק זמן לשליחה");
+  assert.ok(
+    push.includes("fetchWithTimeout") && push.includes("timeoutMs"),
+    "אין פסק זמן לשליחה"
+  );
 });
 
 test("אין catch ריק שבולע הכל", () => {
