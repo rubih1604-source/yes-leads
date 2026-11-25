@@ -40,22 +40,133 @@ export async function scheduleForStatus(
    */
   actor: "user" | "system" | "bot" = "system"
 ) {
+  /**
+   * ============================================================
+   *  כל יציאה מהפונקציה הזו נרשמת
+   * ============================================================
+   *
+   *  **זה התיקון האמיתי, ולא עוד תיקון נקודתי.**
+   *
+   *  עד עכשיו היו כאן חמש דרכים לצאת בלי לשלוח כלום,
+   *  וארבע מהן לא השאירו שום עקבה: ליד של מכירה, אין
+   *  חוק, החוק כבוי, והכי גרוע - `catch` ריק סביב יצירת
+   *  המשימה, שבלע כל תקלה בלי מילה.
+   *
+   *  **התוצאה בשטח הייתה תמיד אותה תוצאה:** שינית סטטוס,
+   *  לא קרה כלום, ואף אחד לא ידע להגיד למה. לא אתה, ולא
+   *  המערכת. זו הסיבה שהנושא הזה חוזר כבר חודשיים - לא
+   *  כי התיקון לא עבד, אלא כי לא היה מה לבדוק.
+   *
+   *  מעכשיו כל החלטה נרשמת על הליד עצמו. אם לא נשלח
+   *  כלום - הסיבה כתובה שם, בשורה אחת, במקום שבו אתה
+   *  כבר עומד.
+   */
+  const decisions: string[] = [];
+  let created = 0;
+
+  const receipt = async (conclusion: string) => {
+    await db.leadEvent
+      .create({
+        data: {
+          leadId,
+          type: "rules_evaluated",
+          toStatus: status,
+          actor,
+          payload: { conclusion, decisions, created },
+        },
+      })
+      .catch(() => null);
+  };
+
   // ליד מכירה לא מקבל שום אוטומציה, מאיזה מסלול שלא יגיע
   const owner = await db.lead.findUnique({
     where: { id: leadId },
-    select: { origin: true },
+    select: { origin: true, channel: true },
   });
-  if (owner?.origin === "sale") return 0;
+
+  if (owner?.origin === "sale") {
+    /**
+     * **הסתירה הזו כבר קרתה.** ליד שיושב ברשימה שלך
+     * (channel "mine") אבל נושא origin של מכירה נראה
+     * לגמרי רגיל במסך - ושקט לחלוטין באוטומציות.
+     *
+     * זה בדיוק המקרה שאי אפשר היה לאבחן בלי השורה הזו.
+     */
+    const contradiction = owner.channel !== "sale";
+
+    await receipt(
+      contradiction
+        ? `הליד מסומן origin="sale" אבל יושב בערוץ "${owner.channel}" - סתירה. בגללה הוא לא מקבל אוטומציות למרות שהוא ברשימה שלך.`
+        : "ליד של מכירת לידים - לא מקבל אוטומציות בכוונה."
+    );
+
+    if (contradiction) {
+      await db.alert
+        .create({
+          data: {
+            leadId,
+            title: "ליד ברשימה שלך שלא יקבל אף הודעה",
+            body: `הליד מסומן כליד מכירה (origin) אבל יושב בערוץ "${owner.channel}". כל שינוי סטטוס שלו לא ישלח כלום. תחזוקה → "תיקון שיוך לידים".`,
+          },
+        })
+        .catch(() => null);
+    }
+
+    return 0;
+  }
 
   const rules = await db.rule.findMany({
-    where: { triggerStatus: status, active: true },
+    where: { triggerStatus: status },
     orderBy: { stepIndex: "asc" },
   });
 
-  if (rules.length === 0) return 0;
+  if (rules.length === 0) {
+    await receipt(`אין אף חוק מוגדר לסטטוס "${status}".`);
+    return 0;
+  }
+
+  /**
+   * ============================================================
+   *  חוק כבוי הוא סיבה, לא "אין חוק"
+   * ============================================================
+   *
+   *  קודם השאילתה סיננה `active: true`, ולכן חוק כבוי
+   *  נראה בדיוק כמו חוק שלא קיים - ושניהם יצאו בשקט.
+   *
+   *  **זו הטעות הכי יקרה כאן**, כי חוקי ברירת המחדל של
+   *  "נשלחה הצעת מחיר" נכנסים כבויים בכוונה: מערכת
+   *  שעובדת לא אמורה להתחיל לשלוח הודעות בגלל פעולת
+   *  תחזוקה. אבל אם אף אחד לא אומר לך שהם כבויים, אתה
+   *  מחכה להודעה שלא תגיע לעולם.
+   */
+  const off = rules.filter((r) => !r.active);
+  const active = rules.filter((r) => r.active);
+
+  if (active.length === 0) {
+    await receipt(
+      `יש ${off.length} חוקים לסטטוס "${status}" וכולם כבויים. הדלק אותם במסך "חוקים" כדי שישלחו.`
+    );
+
+    await db.alert
+      .create({
+        data: {
+          leadId,
+          title: `הסטטוס "${status}" לא שולח כלום - החוקים כבויים`,
+          body: `${off.map((r) => r.note).join(" · ")}. מסך "חוקים" → להדליק.`,
+        },
+      })
+      .catch(() => null);
+
+    return 0;
+  }
+
+  if (off.length > 0) {
+    decisions.push(
+      `${off.length} חוקים כבויים ולכן לא רצים: ${off.map((r) => r.note).join(" · ")}`
+    );
+  }
 
   const now = Date.now();
-  let created = 0;
 
   /**
    * האם נוצרה משימה שזמנה **עכשיו**.
@@ -94,7 +205,7 @@ export async function scheduleForStatus(
   const isUsable = (name: string) =>
     templateRows.length === 0 ? true : usableNames.has(name);
 
-  for (const rule of rules) {
+  for (const rule of active) {
     const rawRunAt = new Date(now + rule.delayMinutes * 60000);
 
     /**
@@ -120,6 +231,10 @@ export async function scheduleForStatus(
      * אחרת החלפנו כשל גלוי בכשל שקט.
      */
     if (picked.skipped.length > 0) {
+      decisions.push(
+        `שלב ${rule.stepIndex}: דולגו תבניות ${picked.skipped.join(", ")}, נבחרה ${chosen ?? "—"}`
+      );
+
       await db.leadEvent
         .create({
           data: {
@@ -142,6 +257,10 @@ export async function scheduleForStatus(
      * הסטטוס ובשם התבניות, וממשיכים לחוק הבא.
      */
     if (rule.action === "send_template" && !chosen) {
+      decisions.push(
+        `שלב ${rule.stepIndex}: אין אף תבנית תקינה (${picked.skipped.join(", ")}) - לא נשלח כלום`
+      );
+
       await db.alert
         .create({
           data: {
@@ -199,9 +318,39 @@ export async function scheduleForStatus(
         },
       });
       created++;
+      decisions.push(
+        `שלב ${rule.stepIndex}: תוזמן ל-${runAt.toLocaleString("he-IL", {
+          timeZone: "Asia/Jerusalem",
+        })}${chosen ? ` · ${chosen}` : ""}`
+      );
       if (runAt.getTime() <= now) dueNow = true;
-    } catch {
-      // אם התזמון נכשל - ממשיכים לשאר הצעדים
+    } catch (err) {
+      /**
+       * ============================================================
+       *  כאן היה `catch` ריק
+       * ============================================================
+       *
+       *  **זה היה הכשל הכי שקט במערכת.** אם יצירת המשימה
+       *  נכשלה - חיבור שנפל, התנגשות, כל דבר - השגיאה
+       *  נבלעה, הלולאה המשיכה, והליד נשאר בלי שום משימה
+       *  ובלי שום סימן שמשהו קרה.
+       *
+       *  שינית סטטוס, לא הגיעה הודעה, ולא היה שום מקום
+       *  לבדוק בו. מעכשיו זה נרשם ומתריע.
+       */
+      const message = err instanceof Error ? err.message : String(err);
+
+      decisions.push(`שלב ${rule.stepIndex}: התזמון נכשל - ${message}`);
+
+      await db.alert
+        .create({
+          data: {
+            leadId,
+            title: `תזמון נכשל בסטטוס "${status}"`,
+            body: `שלב ${rule.stepIndex} (${rule.note}) לא תוזמן: ${message}. ההודעה הזו לא תצא בלי התערבות.`,
+          },
+        })
+        .catch(() => null);
     }
   }
 
@@ -228,6 +377,29 @@ export async function scheduleForStatus(
     } catch {
       // נכשל - הטיימר יתפוס את זה בסבב הבא
     }
+  }
+
+  /**
+   * הקבלה: מה הוחלט, ולמה. נרשמת תמיד, גם כשהכל עבד -
+   * כי "עבד" שאי אפשר להוכיח הוא בדיוק מה שהחזיר אותנו
+   * לכאן שוב ושוב.
+   */
+  await receipt(
+    created > 0
+      ? `תוזמנו ${created} משימות לסטטוס "${status}".`
+      : `לא תוזמנה אף משימה לסטטוס "${status}" למרות ש-${active.length} חוקים פעילים.`
+  );
+
+  if (created === 0) {
+    await db.alert
+      .create({
+        data: {
+          leadId,
+          title: `שינוי סטטוס שלא יצר שום פעולה`,
+          body: `הסטטוס שונה ל"${status}", יש ${active.length} חוקים פעילים, ולא נוצרה אף משימה. ${decisions.join(" · ")}`,
+        },
+      })
+      .catch(() => null);
   }
 
   return created;

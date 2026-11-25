@@ -654,6 +654,7 @@ async function runDueJobsInner(limit = 50): Promise<RunSummary> {
    * ובעיקר לא מונעת תזכורות.
    */
   const steps: Array<[string, () => Promise<unknown>]> = [
+    ["דחיפה לפני שיחה", () => sendPreCallNudges()],
     ["תזכורות משימות", () => sendTaskReminders(summary)],
     ["סימון לקוחות קיימים", () => enforceExistingCustomer()],
     ["רשימת חזרה", () => sendCallbackList()],
@@ -689,6 +690,158 @@ async function runDueJobsInner(limit = 50): Promise<RunSummary> {
  * אתה פותח משימה ל-17:00, ובשעה 17:00 מגיע לך מייל.
  * כל משימה מקבלת תזכורת אחת בלבד.
  */
+/**
+ * ============================================================
+ *  הדחיפה שלפני השיחה
+ * ============================================================
+ *
+ *  **מה שזה פותר:** "לקוח אומר לי תתקשר ב-10, אני מתקשר
+ *  בדיוק ב-10 - ותמיד מישהו כמה דקות לפניי סוגר אותו."
+ *
+ *  רבע שעה עד חצי שעה לפני כל תזכורת יוצאת התראה לנייד
+ *  שאומרת: עכשיו, לפניו. התזכורת עצמה **לא זזה** - היא
+ *  הזמן שסיכמת עם הלקוח, והיא צריכה להישאר נכונה.
+ *
+ *  ------------------------------------------------------------
+ *   למה זה רץ לפני תזכורות ולא אחריהן
+ *  ------------------------------------------------------------
+ *
+ *  אם תזכורת שהגיע זמנה הייתה מסומנת קודם, הדחיפה שלה
+ *  הייתה יוצאת באותו סיבוב - שתי התראות על אותה שיחה,
+ *  בפער של שנייה. הסדר כאן הוא חלק מההתנהגות, לא עניין
+ *  של נוחות.
+ */
+async function sendPreCallNudges() {
+  const { shouldNudge, nudgeAt } = await import("./pre-call");
+
+  const settings = await getSettings().catch(() => null);
+
+  /** אותם ערוצים של התזכורות. כיבוי שלך מכובד גם כאן. */
+  const toBanner = settings?.notifyBanner ?? true;
+  const toPush = settings?.notifyPush ?? true;
+
+  /** מתג משלה: אפשר לכבות דחיפות בלי לכבות תזכורות */
+  if (settings && settings.preCallNudge === false) return;
+
+  if (!toBanner && !toPush) return;
+
+  const now = new Date();
+
+  /**
+   * רק תזכורות שעוד לא הגיע זמנן, ובטווח של חצי שעה
+   * קדימה. חלון רחב יותר היה מושך מאות משימות עתידיות
+   * בכל דקה בלי שום סיבה.
+   */
+  const soon = await db.task
+    .findMany({
+      where: {
+        done: false,
+        preNotifiedAt: null,
+        dueAt: {
+          gt: now,
+          lte: new Date(now.getTime() + 31 * 60_000),
+        },
+      },
+      include: { lead: true },
+      take: 25,
+    })
+    .catch(() => []);
+
+  if (soon.length === 0) return;
+
+  /**
+   * מונה הסבב נקרא ישירות מהשורה ולא דרך getSettings,
+   * שמחזירה רק את השדות שהמסכים צריכים.
+   *
+   * הוא מתקדם **גם מקומית** בתוך הלולאה: שתי תזכורות
+   * שנופלות באותה דקה היו מקבלות אחרת את אותו מלל בדיוק,
+   * וזה נראה כמו תקלה.
+   */
+  const row = await db.settings
+    .findUnique({ where: { id: "main" }, select: { nudgeCursor: true } })
+    .catch(() => null);
+
+  let cursor = row?.nudgeCursor ?? 0;
+  let sentNow = 0;
+
+  for (const task of soon) {
+    if (!task.dueAt) continue;
+    if (!shouldNudge({ taskId: task.id, dueAt: task.dueAt, now })) continue;
+
+    /**
+     * המלל מתקדם בסבב, ולכן כל התראה שונה מקודמתה.
+     * הגרלה הייתה חוזרת על עצמה, וחזרה הופכת התראה לרעש.
+     */
+    const text = nudgeAt(cursor);
+    cursor++;
+
+    const who = task.lead
+      ? `${task.lead.firstName ?? ""} ${displayPhone(task.lead.phone)}`.trim()
+      : task.title;
+
+    const minutes = Math.max(
+      1,
+      Math.round((task.dueAt.getTime() - now.getTime()) / 60_000)
+    );
+
+    let delivered = 0;
+
+    if (toBanner) {
+      const notice = await db.notice
+        .create({
+          data: {
+            kind: "task",
+            leadId: task.leadId,
+            level: "bad",
+            title: `⏰ עוד ${minutes} דק׳ — ${who}`,
+            body: text,
+            campaignName: null,
+          },
+        })
+        .catch(() => null);
+
+      if (notice) delivered++;
+    }
+
+    if (toPush) {
+      const sent = await sendPush({
+        title: `⏰ עוד ${minutes} דק׳ — ${who}`,
+        body: text,
+        url: task.leadId ? `/leads/${task.leadId}` : "/tasks",
+        urgent: true,
+        tag: `pre-${task.id}`,
+      }).catch(() => 0);
+
+      if (sent > 0) delivered++;
+    }
+
+    /**
+     * מסומן רק אם משהו באמת יצא.
+     *
+     * סימון בלי שליחה היה אומר שדחיפה שנכשלה לא תנסה
+     * שוב לעולם - וזו בדיוק השיחה שרצית לא לפספס.
+     */
+    if (delivered > 0) {
+      sentNow++;
+      await db.task
+        .update({ where: { id: task.id }, data: { preNotifiedAt: now } })
+        .catch(() => null);
+    }
+  }
+
+  /**
+   * המונה נשמר פעם אחת בסוף, ורק אם באמת יצא משהו.
+   *
+   * קידום לפני השליחה היה "שורף" מלל על התראה שנכשלה,
+   * ואז חלק מהבנק לא היה יוצא לעולם.
+   */
+  if (sentNow > 0) {
+    await db.settings
+      .update({ where: { id: "main" }, data: { nudgeCursor: cursor } })
+      .catch(() => null);
+  }
+}
+
 async function sendTaskReminders(summary: RunSummary) {
   /**
    * לאן לשלוח - לפי מה שבחרת בהגדרות.

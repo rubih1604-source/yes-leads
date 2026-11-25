@@ -34,6 +34,8 @@ export type AppSettings = {
   notifyEmail: boolean;
   notifyPush: boolean;
   notifyBanner: boolean;
+  /** דחיפה 15-30 דקות לפני כל תזכורת */
+  preCallNudge: boolean;
   /** תבניות החיוג - איזו אפליקציה פותחת שיחה */
   dialerMobile: string;
   dialerDesktop: string;
@@ -81,6 +83,7 @@ const DEFAULTS: AppSettings = {
   notifyEmail: true,
   notifyPush: true,
   notifyBanner: true,
+  preCallNudge: true,
   dialerMobile: DEFAULT_DIALER,
   dialerDesktop: DEFAULT_DIALER,
   botFromHour: 8,
@@ -136,6 +139,7 @@ export async function getSettings(): Promise<AppSettings> {
       notifyEmail: row.notifyEmail ?? true,
       notifyPush: row.notifyPush ?? true,
       notifyBanner: row.notifyBanner ?? true,
+      preCallNudge: row.preCallNudge ?? true,
       botFromHour: row.botFromHour,
       botToHour: row.botToHour,
       closeStatuses: Array.isArray(row.closeStatuses)

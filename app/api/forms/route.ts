@@ -82,6 +82,8 @@ export async function POST(request: NextRequest) {
     existingMsg?: string;
     consentText?: string;
     requireConsent?: boolean;
+    requireEmail?: boolean;
+    requireSupplier?: boolean;
   };
 
   const name = body.name?.trim();
@@ -206,6 +208,10 @@ export async function POST(request: NextRequest) {
   if (body.requireConsent !== undefined) {
     data.requireConsent = body.requireConsent;
   }
+  if (body.requireEmail !== undefined) data.requireEmail = body.requireEmail;
+  if (body.requireSupplier !== undefined) {
+    data.requireSupplier = body.requireSupplier;
+  }
 
   const form = body.id
     ? await db.publicForm
@@ -240,6 +246,8 @@ export async function POST(request: NextRequest) {
             ...(body.requireConsent !== undefined
               ? { requireConsent: body.requireConsent }
               : {}),
+            requireEmail: body.requireEmail ?? false,
+            requireSupplier: body.requireSupplier ?? false,
           },
         })
         .catch(() => null);

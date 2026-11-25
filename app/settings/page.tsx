@@ -12,6 +12,7 @@ import { getStatuses } from "@/lib/status-store";
 import PushSetup from "@/components/PushSetup";
 import LeadEmailSetting from "@/components/LeadEmailSetting";
 import NotifyChannels from "@/components/NotifyChannels";
+import PreCallSettings from "@/components/PreCallSettings";
 import DialerSettings from "@/components/DialerSettings";
 
 export const dynamic = "force-dynamic";
@@ -78,6 +79,7 @@ export default async function SettingsPage() {
         push={settings.notifyPush}
         banner={settings.notifyBanner}
       />
+      <PreCallSettings on={settings.preCallNudge} />
       <LeadEmailSetting mode={settings.leadEmailMode} />
       <PushSetup />
 

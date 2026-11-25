@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { leadMinutesFor } from "@/lib/pre-call";
 
 /**
  * המשימות של הליד, בתוך הכרטיס שלו.
@@ -22,6 +23,23 @@ type Task = {
   createdAt: string;
   notifiedAt: string | null;
 };
+
+/**
+ * מתי תצא הדחיפה שלפני השיחה.
+ *
+ * מוצג כדי שתדע שהיא מזוינת: הפיצ'ר עובד לבד, ובלי
+ * השורה הזו אין שום דרך לראות שהוא קיים.
+ */
+function nudgeTime(iso: string, id: string): string | null {
+  const at = new Date(iso).getTime() - leadMinutesFor(id) * 60_000;
+  if (at <= Date.now()) return null;
+
+  return new Date(at).toLocaleTimeString("he-IL", {
+    timeZone: "Asia/Jerusalem",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 function formatWhen(iso: string): string {
   return new Date(iso).toLocaleString("he-IL", {
@@ -147,6 +165,14 @@ export default function LeadTasks({ leadId }: { leadId: string }) {
                     {task.body}
                   </div>
                 )}
+
+                {task.dueAt && !late && nudgeTime(task.dueAt, task.id) ? (
+                  <div
+                    style={{ fontSize: 12.5, color: "#0b4a6f", marginTop: 4 }}
+                  >
+                    ⏰ דחיפה לנייד ב-{nudgeTime(task.dueAt, task.id)}
+                  </div>
+                ) : null}
 
                 <div className="when">
                   {task.dueAt ? (

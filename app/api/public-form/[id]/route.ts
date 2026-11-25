@@ -146,6 +146,20 @@ export async function POST(
    *  ההסכמה היא מה שמאפשר לשלוח הודעה אחרי השיחה, ולכן
    *  היא נשמרת על הליד עצמו ולא רק נבדקת כאן.
    */
+  if (form.requireEmail && !/^\S+@\S+\.\S+$/.test((body.email ?? "").trim())) {
+    return NextResponse.json(
+      { error: "נא למלא כתובת מייל תקינה" },
+      { status: 400 }
+    );
+  }
+
+  if (form.requireSupplier && !body.supplier_question?.trim()) {
+    return NextResponse.json(
+      { error: "נא לבחור את הספק הנוכחי" },
+      { status: 400 }
+    );
+  }
+
   if (form.requireConsent && !body.consent?.trim()) {
     return NextResponse.json(
       { error: "צריך לאשר את תנאי יצירת הקשר" },
@@ -228,6 +242,44 @@ export async function POST(
       { error: "אירעה תקלה. נסו שוב או התקשרו אלינו." },
       { status: 500 }
     );
+  }
+
+  /**
+   * ============================================================
+   *  האסמכתא נשמרת על הליד
+   * ============================================================
+   *
+   *  **זו הראיה האמיתית, ולא מצב של תיבת סימון.**
+   *
+   *  אם יתלוננו בעתיד על דיוור, מה שצריך להראות הוא
+   *  שלושת אלה יחד: מתי בדיוק נשלח הטופס, מאיזו כתובת,
+   *  ומה **בדיוק** היה כתוב באותו רגע. הנוסח בטופס יכול
+   *  להשתנות מחר, והראיה חייבת להישאר נכונה לאתמול.
+   *
+   *  נשמר כאן ולא בתוך extra בכוונה: extra נסרק בזיהוי
+   *  לקוח קיים לפי שמות שדות, והנוסח מכיל את המילה yes.
+   */
+  if (form.requireConsent) {
+    const saved = await db.lead
+      .findFirst({
+        where: { phone },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      })
+      .catch(() => null);
+
+    if (saved) {
+      await db.lead
+        .update({
+          where: { id: saved.id },
+          data: {
+            consentAt: new Date(),
+            consentText: form.consentText,
+            consentIp: ip,
+          },
+        })
+        .catch(() => null);
+    }
   }
 
   await db.publicForm

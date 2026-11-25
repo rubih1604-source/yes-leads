@@ -58,6 +58,8 @@ type Form = {
   existingMsg: string;
   consentText: string;
   requireConsent: boolean;
+  requireEmail: boolean;
+  requireSupplier: boolean;
 };
 
 /** התכלת של yes, כפי שהיא מוגדרת אצלם: --yes-blue-100 */
@@ -93,6 +95,8 @@ const EMPTY = {
   existingMsg: "",
   consentText: DEFAULT_CONSENT,
   requireConsent: true,
+  requireEmail: false,
+  requireSupplier: false,
 };
 
 export default function FormsScreen({ origin }: { origin: string }) {
@@ -201,6 +205,8 @@ export default function FormsScreen({ origin }: { origin: string }) {
       existingMsg: form.existingMsg ?? "",
       consentText: form.consentText || DEFAULT_CONSENT,
       requireConsent: form.requireConsent ?? true,
+      requireEmail: form.requireEmail ?? false,
+      requireSupplier: form.requireSupplier ?? false,
     });
     setAdding(true);
     setError("");
@@ -641,9 +647,12 @@ export default function FormsScreen({ origin }: { origin: string }) {
               marginBottom: 10,
             }}
           >
-            תיבת סימון שהלקוח חייב לאשר לפני השארת הפרטים — אותו נוסח שיש
-            לך בטופס של פייסבוק. <strong>היא לא מסומנת מראש</strong>, כי
-            הסכמה שסומנה בשבילו אינה הסכמה. השינוי חל על פניות מכאן והלאה.
+            המשפט מופיע מעל כפתור השליחה, ו<strong>הלחיצה עצמה היא
+            ההסכמה</strong> — בדיוק כמו בטופס של פייסבוק. אין מה לסמן, ואי
+            אפשר לשלוח בלי זה, כך שכל מי שנכנס לרשימה הסכים.
+            <br />
+            על כל ליד נשמרת האסמכתא: מתי נשלח, מאיזו כתובת, ומה בדיוק היה
+            כתוב באותו רגע — גם אם תשנה את הנוסח אחר כך.
           </div>
 
           <textarea
@@ -670,7 +679,7 @@ export default function FormsScreen({ origin }: { origin: string }) {
                 setDraft({ ...draft, requireConsent: e.target.checked })
               }
             />
-            חובה לאשר לפני השליחה
+            להציג את משפט ההסכמה ולשמור אסמכתא
           </label>
 
           <label
@@ -691,6 +700,64 @@ export default function FormsScreen({ origin }: { origin: string }) {
             />
             לשאול מי הספק הנוכחי
           </label>
+
+          {/* ============================================================
+           *  מה חובה
+           * ========================================================= */}
+          <div style={groupTitle}>שדות חובה</div>
+
+          <div
+            style={{
+              fontSize: 12.5,
+              color: "#667085",
+              lineHeight: 1.6,
+              marginBottom: 10,
+            }}
+          >
+            שם וטלפון חובה תמיד — בלעדיהם אין ליד. את השאר אתה מחליט לכל
+            קישור בנפרד. <strong>שדה חובה מקטין כמות ומעלה איכות</strong>,
+            וזה שיקול שתלוי בפלטפורמה ובמבצע.
+          </div>
+
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              fontSize: 14,
+              margin: "4px 0 10px",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={draft.requireEmail}
+              onChange={(e) =>
+                setDraft({ ...draft, requireEmail: e.target.checked })
+              }
+            />
+            מייל הוא שדה חובה
+          </label>
+
+          {draft.askSupplier ? (
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 14,
+                margin: "4px 0 12px",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={draft.requireSupplier}
+                onChange={(e) =>
+                  setDraft({ ...draft, requireSupplier: e.target.checked })
+                }
+              />
+              חובה לבחור ספק נוכחי
+            </label>
+          ) : null}
 
           {error ? (
             <div style={{ color: "#b42318", fontSize: 13, marginBottom: 10 }}>

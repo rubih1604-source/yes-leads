@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { leadMinutesFor } from "@/lib/pre-call";
 
 /**
  * משימות עסק שאינן קשורות לליד.
@@ -16,6 +17,24 @@ export type GeneralTask = {
   urgent: boolean;
   done: boolean;
 };
+
+/**
+ * מתי תצא הדחיפה שלפני השיחה.
+ *
+ * **מוצג כדי שתדע שהיא מזוינת.** הפיצ'ר עובד לבד על כל
+ * תזכורת, ובלי השורה הזו אין שום דרך לראות שהוא קיים -
+ * ופיצ'ר שאי אפשר לראות הוא פיצ'ר שלא בטוח שהוא עובד.
+ */
+function nudgeTime(iso: string, id: string): string | null {
+  const at = new Date(iso).getTime() - leadMinutesFor(id) * 60_000;
+  if (at <= Date.now()) return null;
+
+  return new Date(at).toLocaleTimeString("he-IL", {
+    timeZone: "Asia/Jerusalem",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 function when(iso: string): string {
   return new Date(iso).toLocaleString("he-IL", {
@@ -242,6 +261,18 @@ export default function GeneralTasks({ tasks }: { tasks: GeneralTask[] }) {
                     {t.dueAt ? when(t.dueAt) : "בלי שעה"}
                     {late && " · עבר הזמן"}
                   </div>
+
+                  {t.dueAt && !late && nudgeTime(t.dueAt, t.id) ? (
+                    <div
+                      style={{
+                        fontSize: 12.5,
+                        color: "#0b4a6f",
+                        marginTop: 4,
+                      }}
+                    >
+                      ⏰ דחיפה לנייד ב-{nudgeTime(t.dueAt, t.id)}
+                    </div>
+                  ) : null}
 
                   <div className="actions" style={{ marginTop: 10 }}>
                     <button

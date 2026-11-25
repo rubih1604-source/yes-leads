@@ -114,12 +114,35 @@ export async function GET(request: Request) {
             ערוץ: e.channelRef?.name ?? null,
             at: e.at.toISOString(),
           })),
-          events: lead.events.map((e) => ({
-            type: e.type,
-            from: e.fromStatus,
-            to: e.toStatus,
-            at: e.createdAt.toISOString(),
-          })),
+          events: lead.events.map((e) => {
+            /**
+             * המסקנה של מנוע החוקים, אם יש.
+             *
+             * בלי זה הטיימליין היה אומר "הסטטוס השתנה"
+             * ולא "ולכן לא נשלח כלום, כי X" - וזו בדיוק
+             * השאלה שבגללה פותחים את המסך הזה.
+             */
+            const payload =
+              e.payload && typeof e.payload === "object" && !Array.isArray(e.payload)
+                ? (e.payload as Record<string, unknown>)
+                : null;
+
+            const conclusion =
+              typeof payload?.conclusion === "string" ? payload.conclusion : null;
+
+            const decisions = Array.isArray(payload?.decisions)
+              ? (payload.decisions as unknown[]).map(String)
+              : [];
+
+            return {
+              type: e.type,
+              from: e.fromStatus,
+              to: e.toStatus,
+              at: e.createdAt.toISOString(),
+              ...(conclusion ? { מסקנה: conclusion } : {}),
+              ...(decisions.length > 0 ? { פירוט: decisions } : {}),
+            };
+          }),
         }
       : null,
     /**

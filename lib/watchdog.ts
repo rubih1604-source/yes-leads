@@ -401,6 +401,89 @@ async function checkDeliveries(): Promise<Finding | null> {
 }
 
 /* ============================================================
+ *  6. סטטוס שאתה משתמש בו, וכל החוקים שלו כבויים
+ * ========================================================= */
+
+/**
+ * **הכשל שזה סוגר, והוא הכשל שחזר הכי הרבה פעמים.**
+ *
+ *  חוקי ברירת המחדל נכנסים **כבויים** בכוונה - מערכת
+ *  שעובדת לא אמורה להתחיל לשלוח הודעות בגלל פעולת
+ *  תחזוקה. אבל התוצאה בשטח הייתה שאתה משנה סטטוס, מחכה
+ *  להודעה אחרי 5 שעות, והיא לא מגיעה לעולם - בלי שום
+ *  שגיאה, כי מבחינת המערכת הכל תקין.
+ *
+ *  הבדיקה מצטלבת בין **סטטוסים שאתה באמת משתמש בהם**
+ *  לבין חוקים כבויים. סטטוס שלא נגעת בו כבר חודש לא
+ *  מעניין אותך, וחוק כבוי שלו הוא לא תקלה.
+ *
+ *  הסוכן **לא מדליק אותם לבד**: הדלקה אוטומטית הייתה
+ *  מתחילה לשלוח הודעות ללקוחות בלי שביקשת. זו החלטה
+ *  שלך, והתפקיד שלו הוא להגיד לך שהיא ממתינה.
+ */
+async function checkDisabledRules(): Promise<Finding | null> {
+  const { db } = await import("./db");
+
+  const since = new Date(Date.now() - 14 * 24 * 60 * 60_000);
+
+  /** סטטוסים ששינית אליהם בשבועיים האחרונים */
+  const used = await db.leadEvent
+    .findMany({
+      where: { type: "status_changed", createdAt: { gte: since } },
+      select: { toStatus: true },
+      distinct: ["toStatus"],
+      take: 60,
+    })
+    .catch(() => []);
+
+  const names = used
+    .map((e) => e.toStatus)
+    .filter((n): n is string => Boolean(n));
+
+  if (names.length === 0) return null;
+
+  const rules = await db.rule
+    .findMany({
+      where: { triggerStatus: { in: names } },
+      select: { triggerStatus: true, active: true, note: true },
+    })
+    .catch(() => []);
+
+  if (rules.length === 0) return null;
+
+  const byStatus = new Map<string, { on: number; off: string[] }>();
+
+  for (const r of rules) {
+    const entry = byStatus.get(r.triggerStatus) ?? { on: 0, off: [] };
+    if (r.active) entry.on++;
+    else entry.off.push(r.note);
+    byStatus.set(r.triggerStatus, entry);
+  }
+
+  /** רק סטטוס שכל חוקיו כבויים - סטטוס עם חוק אחד פעיל עובד */
+  const silent = [...byStatus.entries()].filter(
+    ([, v]) => v.on === 0 && v.off.length > 0
+  );
+
+  if (silent.length === 0) return null;
+
+  return {
+    code: "disabled_rules",
+    title: `${silent.length} סטטוסים שאתה משתמש בהם לא שולחים כלום`,
+    detail:
+      silent
+        .slice(0, 4)
+        .map(([status, v]) => `"${status}" (${v.off.length} חוקים כבויים)`)
+        .join(" · ") +
+      '. מסך "חוקים" → להדליק. הסוכן לא מדליק לבד כדי שלא יתחילו לצאת הודעות בלי שביקשת.',
+    severity: "high",
+    count: silent.length,
+    fixed: 0,
+    needsYou: true,
+  };
+}
+
+/* ============================================================
  *  ההרצה
  * ========================================================= */
 
@@ -409,6 +492,7 @@ const CHECKS = [
   checkLateJobs,
   checkMissingJobs,
   checkRuleTemplates,
+  checkDisabledRules,
   checkDeliveries,
 ];
 

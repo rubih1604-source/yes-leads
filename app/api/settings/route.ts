@@ -126,7 +126,12 @@ export async function PATCH(request: Request) {
     data[key] = Math.round(n);
   }
 
-  for (const key of ["notifyEmail", "notifyPush", "notifyBanner"]) {
+  for (const key of [
+    "notifyEmail",
+    "notifyPush",
+    "notifyBanner",
+    "preCallNudge",
+  ]) {
     if (typeof body[key] === "boolean") data[key] = body[key];
   }
 

@@ -35,6 +35,15 @@ import { looksLikeExistingCustomer } from "@/lib/leadmanager-mapping";
  * מנוי קיים, והבחירה הזו היא הבחירה היחידה שעוצרת את
  * השליחה.
  */
+/**
+ * מה נבחר כשמנוי קיים לוחץ "מנוי נוסף בכתובת אחרת".
+ *
+ * **לא מחזירים אותו לרשימה עם תשובה ריקה**, כי אז הוא
+ * יבחר yes שוב וייחסם שוב, בלולאה. הבחירה הזו אומרת
+ * בדיוק מה המצב, והיא לא נחסמת.
+ */
+const SECOND_HOME = "כתובת נוספת (מנוי קיים)";
+
 const DEFAULT_SUPPLIERS = [
   "הוט / נקסט",
   "יס\\סטינג",
@@ -65,7 +74,6 @@ export default function PublicLeadForm({
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [supplier, setSupplier] = useState("");
-  const [consent, setConsent] = useState(false);
   const [website, setWebsite] = useState(""); // מלכודת לבוטים
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -73,7 +81,15 @@ export default function PublicLeadForm({
   const [blocked, setBlocked] = useState(false);
   const [touched, setTouched] = useState(false);
 
-  const list = suppliers.length > 0 ? suppliers : DEFAULT_SUPPLIERS;
+  const base = suppliers.length > 0 ? suppliers : DEFAULT_SUPPLIERS;
+
+  /**
+   * "כתובת נוספת" מופיעה ברשימה **רק אחרי** שנבחרה.
+   *
+   * אחרת כל אחד היה בוחר אותה מראש ועוקף את החסימה, וזה
+   * בדיוק מה שסגרנו עכשיו.
+   */
+  const list = supplier === SECOND_HOME ? [...base, SECOND_HOME] : base;
 
   const phoneCheck = checkPhone(phone);
   const showPhoneError = touched && phone.trim().length > 3 && !phoneCheck.valid;
@@ -115,15 +131,13 @@ export default function PublicLeadForm({
       return;
     }
 
-    /**
-     * **ההסכמה נבדקת לפני השליחה, ולא נשלחת "מסומנת מראש".**
-     *
-     * זו ההסכמה לדיוור, והיא מה שמאפשר לשלוח הודעה
-     * אחרי השיחה. הסכמה שסומנה בשביל הלקוח אינה הסכמה,
-     * ולא תחזיק אם מישהו יבדוק אותה.
-     */
-    if (requireConsent && !consent) {
-      setError("צריך לאשר את תנאי יצירת הקשר");
+    if (requireEmail && !/^\S+@\S+\.\S+$/.test(email.trim())) {
+      setError("נא למלא כתובת מייל תקינה");
+      return;
+    }
+
+    if (requireSupplier && askSupplier && !supplier.trim()) {
+      setError("נא לבחור את הספק הנוכחי");
       return;
     }
 
@@ -138,7 +152,7 @@ export default function PublicLeadForm({
         phone: phone.trim(),
         email: email.trim(),
         supplier_question: supplier,
-        consent: requireConsent ? (consent ? "1" : "") : "1",
+        consent: requireConsent ? "1" : "",
         website,
       }),
     }).catch(() => null);
@@ -220,22 +234,53 @@ export default function PublicLeadForm({
           חיוג לשירות *2080
         </a>
 
+        {/**
+         * ============================================================
+         *  הדרך היחידה חזרה היא מנוי נוסף
+         * ============================================================
+         *
+         *  **קודם היה כאן "טעות? חזרה לטופס", וזה היה פתח
+         *  פתוח לעקיפה.** מי שבחר yes או סטינג יכול היה
+         *  ללחוץ, לשנות תשובה, ולהיכנס כליד - והרשימה שלך
+         *  מתמלאת במנויים קיימים שאין בהם מכירה.
+         *
+         *  המקרה האמיתי היחיד הוא מנוי קיים שרוצה מנוי
+         *  **נוסף בכתובת אחרת**, וזו מכירה לכל דבר. לכן זו
+         *  הדלת היחידה, והיא אומרת בדיוק מה היא - בלי
+         *  לרמוז שאפשר "לתקן" את התשובה.
+         */}
         <button
           onClick={() => {
             setBlocked(false);
-            setSupplier("");
+            setSupplier(SECOND_HOME);
           }}
           style={{
-            background: "none",
-            border: "none",
-            color: "#71717a",
-            fontSize: 13.5,
+            width: "100%",
             marginTop: 16,
+            padding: "14px",
+            fontSize: 16.5,
+            fontWeight: 700,
+            color: "#fff",
+            background: "transparent",
+            border: `1.5px solid ${brandColor}`,
+            borderRadius: 10,
             cursor: "pointer",
             fontFamily: "inherit",
+            lineHeight: 1.4,
           }}
         >
-          טעות? חזרה לטופס
+          מנוי נוסף בכתובת אחרת?
+          <span
+            style={{
+              display: "block",
+              fontSize: 13,
+              fontWeight: 400,
+              color: "#a0a0a8",
+              marginTop: 4,
+            }}
+          >
+            לחצו כאן להשארת פרטים
+          </span>
         </button>
       </div>
     );
@@ -317,7 +362,7 @@ export default function PublicLeadForm({
 
       <input
         style={{ ...field, direction: "ltr", textAlign: "left" }}
-        placeholder="מייל (לא חובה)"
+        placeholder={requireEmail ? "מייל" : "מייל (לא חובה)"}
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         inputMode="email"
@@ -329,12 +374,16 @@ export default function PublicLeadForm({
           <label
             style={{
               display: "block",
-              fontSize: 13.5,
-              color: "#475467",
-              margin: "4px 0 6px",
+              fontSize: 15,
+              fontWeight: 700,
+              color: "#fff",
+              margin: "6px 0 8px",
             }}
           >
             איפה אתם היום?
+            {requireSupplier ? (
+              <span style={{ color: brandColor }}> *</span>
+            ) : null}
           </label>
 
           <select
@@ -369,34 +418,36 @@ export default function PublicLeadForm({
         }}
       />
 
+      {/**
+       * ============================================================
+       *  ההסכמה היא הלחיצה, ולא תיבת סימון
+       * ============================================================
+       *
+       *  **למה אין כאן תיבה מסומנת מראש.** תיבה שמסומנת
+       *  בשביל הלקוח ואי אפשר להוריד אותה לא מוכיחה שום
+       *  דבר - היא מוכיחה שהמערכת סימנה, לא שהוא הסכים.
+       *  כאסמכתא היא שווה אפס, ובדיוק במקרה שבו תצטרך
+       *  אותה היא לא תעזור.
+       *
+       *  מה שכן מחזיק זה בדיוק מה שיש בטופס של פייסבוק:
+       *  המשפט כתוב מעל הכפתור, **הלחיצה היא ההסכמה**, ואי
+       *  אפשר לשלוח בלעדיה. וזה גם מה שרצית בפועל: כל מי
+       *  שנכנס לרשימה הסכים, בלי יוצא מן הכלל.
+       *
+       *  הראיה עצמה נשמרת בשרת: מתי, מאיזו כתובת, ומה
+       *  בדיוק היה כתוב באותו רגע.
+       */}
       {requireConsent ? (
-        <label
+        <p
           style={{
-            display: "flex",
-            gap: 10,
-            alignItems: "flex-start",
-            margin: "4px 0 14px",
-            cursor: "pointer",
+            fontSize: 12.5,
+            color: "#a0a0a8",
+            lineHeight: 1.65,
+            margin: "2px 0 14px",
           }}
         >
-          <input
-            type="checkbox"
-            checked={consent}
-            onChange={(e) => setConsent(e.target.checked)}
-            style={{
-              width: 19,
-              height: 19,
-              flexShrink: 0,
-              marginTop: 1,
-              accentColor: brandColor,
-            }}
-          />
-          <span
-            style={{ fontSize: 12.5, color: "#a0a0a8", lineHeight: 1.6 }}
-          >
-            {consentText}
-          </span>
-        </label>
+          {consentText}
+        </p>
       ) : null}
 
       {error ? (

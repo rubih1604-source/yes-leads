@@ -28,7 +28,28 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/f/") ||
     pathname.startsWith("/api/public-form/");
 
-  if (isPublic) return NextResponse.next();
+  /**
+   * ============================================================
+   *  הנתיב עובר הלאה, כדי שהעטיפה תדע מי היא
+   * ============================================================
+   *
+   *  **הבאג שזה סוגר, והוא היה חמור מכפי שנראה.**
+   *
+   *  העטיפה הראשית של האתר מצרפת לכל עמוד סרגל צד
+   *  ובאנרים. היא חלה גם על דף הנחיתה - ולכן לקוח שפתח
+   *  את הטופס ראה את הסרגל של המערכת שלך.
+   *
+   *  וזה לא היה רק מכוער: הסרגל נבנה בשרת מתוך שאילתות
+   *  למסד - ספירת משימות פתוחות וצ'אטים ממתינים. המספרים
+   *  האלה נכנסו ל-HTML של עמוד **שפתוח לאינטרנט כולו**.
+   *
+   *  מהרגע הזה העטיפה יודעת שהיא על דף ציבורי, ולא מצרפת
+   *  כלום.
+   */
+  const headers = new Headers(request.headers);
+  headers.set("x-pathname", pathname);
+
+  if (isPublic) return NextResponse.next({ request: { headers } });
 
   const session = request.cookies.get("yl_session")?.value;
   if (!session || !session.includes(".")) {
@@ -37,7 +58,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  return NextResponse.next();
+  return NextResponse.next({ request: { headers } });
 }
 
 export const config = {

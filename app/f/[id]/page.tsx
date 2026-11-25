@@ -89,22 +89,36 @@ export default async function PublicFormPage({
     images.length === 1 ? "banner" : images.length <= 3 ? "strip" : "grid";
 
   return (
-    <html lang="he" dir="rtl">
-      <head>
-        <link
-          href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;900&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <>
+      {/**
+       * ============================================================
+       *  העמוד לא בונה <html> משלו
+       * ============================================================
+       *
+       *  קודם הוא כן, ואז היה כאן <html> בתוך <html> - מה
+       *  שגרם לדפדפן לשטח את השניים ולהציג את הסרגל של
+       *  המערכת סביב דף הנחיתה.
+       *
+       *  הרקע נקבע כאן בכלל CSS על `body`, כי העטיפה היא
+       *  זו שמחזיקה אותו.
+       */}
+      <style>{`
+        body {
+          margin: 0;
+          background: ${INK};
+          color: #fff;
+          min-height: 100vh;
+          font-family: 'Heebo', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+      `}</style>
 
-      <body
+      <div
         style={{
-          margin: 0,
           background: INK,
+          minHeight: "100vh",
+          color: "#fff",
           fontFamily:
             "'Heebo', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-          color: "#fff",
-          minHeight: "100vh",
         }}
       >
         <div style={{ maxWidth: 480, margin: "0 auto", padding: "26px 16px 46px" }}>
@@ -290,6 +304,8 @@ export default async function PublicFormPage({
               existingMsg={form.existingMsg}
               consentText={form.consentText}
               requireConsent={form.requireConsent}
+              requireEmail={form.requireEmail}
+              requireSupplier={form.requireSupplier}
             />
           </div>
 
@@ -327,7 +343,7 @@ export default async function PublicFormPage({
             </div>
           ) : null}
         </div>
-      </body>
-    </html>
+      </div>
+    </>
   );
 }
