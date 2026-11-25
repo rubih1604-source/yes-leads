@@ -224,7 +224,11 @@ async function handle(request: Request) {
          * גם בשיחות.
          */
         const lead = await db.lead
-          .findFirst({ where: mineKey(phone) })
+          .findFirst({
+            where: mineKey(phone),
+            /** ההגעה האחרונה - הלקוח עונה לה, לא לישנה */
+            orderBy: { intakeAt: "desc" },
+          })
           .catch(() => null);
 
         if (lead) {
@@ -358,7 +362,10 @@ async function handle(request: Request) {
 
     // מוצאים את הליד, ואם אין - יוצרים אחד
     let lead = await db.lead
-      .findFirst({ where: mineKey(phone) })
+      .findFirst({
+        where: mineKey(phone),
+        orderBy: { intakeAt: "desc" },
+      })
       .catch(() => null);
     if (!lead) {
       /**

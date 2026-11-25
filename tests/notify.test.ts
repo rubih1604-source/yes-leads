@@ -252,7 +252,9 @@ test("עדכון סטטוס מליד מנגר אינו הגעה ואינו מת�
    * מכסה גם אותו. הבדיקה כאן היא שהקשר הזה לא נשבר.
    */
   assert.ok(
-    /const sameSubmission =\s*\n\s*statusOnly \|\|/.test(hook),
+    /const sameSubmission =\s*\n\s*Boolean\(existing\) &&\s*\n\s*\(statusOnly \|\|/.test(
+      hook
+    ),
     "עדכון סטטוס יתריע כאילו הליד נכנס שוב"
   );
 });

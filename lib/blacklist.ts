@@ -195,6 +195,7 @@ export async function blockPhone(args: {
    */
   const { allLeadsForPhone } = await import("./lead-by-phone");
 
+  /** כל השורות של המספר - חסימה חלה על כולן */
   const rows = await allLeadsForPhone<{ id: string }>(phone, { id: true });
   const existing = rows[0] ?? null;
 

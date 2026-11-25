@@ -49,6 +49,8 @@ export async function ensureLeadForContact(
   const existing = await db.lead
     .findFirst({
       where: mineKey(phone),
+      /** ההגעה האחרונה של המספר הזה */
+      orderBy: { intakeAt: "desc" },
       select: { id: true, firstName: true },
     })
     .catch(() => null);
