@@ -1,17 +1,19 @@
+import { headers } from "next/headers";
 import FormsScreen from "@/components/FormsScreen";
-import BackLink from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * הכתובת נקראת מהבקשה ולא מהגדרה.
+ *
+ * כך הקישור שמוצג הוא תמיד הכתובת האמיתית שממנה נכנסת,
+ * ולא ערך שנשמר פעם ועלול להיות ישן.
+ */
 export default function FormsPage() {
-  return (
-    <div className="app">
-      <div className="topbar">
-        <BackLink fallback="/more" label="חזרה" />
-        <h1>התממשקות</h1>
-      </div>
+  const h = headers();
 
-      <FormsScreen />
-    </div>
-  );
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "";
+  const proto = h.get("x-forwarded-proto") ?? "https";
+
+  return <FormsScreen origin={host ? `${proto}://${host}` : ""} />;
 }

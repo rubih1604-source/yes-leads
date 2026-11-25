@@ -8,10 +8,25 @@ import type { NextRequest } from "next/server";
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  /**
+   * ============================================================
+   *  מה פתוח לכולם, ולמה
+   * ============================================================
+   *
+   *  `/f/` ו-`/api/public-form/` הם טופס הלידים שמתפרסם
+   *  במודעות. לקוח שלוחץ על מודעה חייב להגיע לטופס ולא
+   *  למסך סיסמה - אחרת אין טופס.
+   *
+   *  ההגנה שם אינה סיסמה אלא מה שמתאים לדף ציבורי: שדה
+   *  מלכודת לבוטים, תקרת פניות לכתובת, ובדיקת טלפון.
+   *  הטופס גם לא חושף כלום - הוא רק מקבל.
+   */
   const isPublic =
     pathname.startsWith("/login") ||
     pathname.startsWith("/api/login") ||
-    pathname.startsWith("/api/webhooks");
+    pathname.startsWith("/api/webhooks") ||
+    pathname.startsWith("/f/") ||
+    pathname.startsWith("/api/public-form/");
 
   if (isPublic) return NextResponse.next();
 

@@ -46,6 +46,12 @@ export default async function MorePage() {
           desc: "למה ליד לא ברשימה · למה הבוט לא שאל",
         },
         {
+          href: "/forms",
+          glyph: "⊞",
+          label: "טופסי לידים",
+          desc: "טופס משלך לכל פלטפורמה - עם מקור הגעה אוטומטי",
+        },
+        {
           href: "/transfers",
           glyph: "⇄",
           label: "העברות לקונים",
